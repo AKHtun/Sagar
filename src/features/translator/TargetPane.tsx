@@ -1,15 +1,17 @@
 import { DOMSerializer, DOMParser as ProseMirrorParser } from "@tiptap/pm/model";
 import type { Editor as TiptapEditor } from "@tiptap/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
 import { validateChapterHtml } from "../../lib/tauri/commands";
 import type { ChapterContent } from "../../types/chapter";
+import { AiGenerateDialog } from "./AiGenerateDialog";
 import { ChapterEditor } from "./ChapterEditor";
 import { comparableDocument, hasContent } from "./richText";
 import type { useChapterEditor } from "./useChapterEditor";
 
 export function TargetPane({
+  projectId,
   content,
   loading,
   error,
@@ -17,6 +19,7 @@ export function TargetPane({
   onReloadAfterConflict,
   editor,
 }: {
+  projectId: string;
   content: ChapterContent | null;
   loading: boolean;
   error: string | null;
@@ -28,13 +31,15 @@ export function TargetPane({
   const [, refreshToolbar] = useState(0);
   const [imageError, setImageError] = useState<string | null>(null);
   const [imagePicker, setImagePicker] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [view, setView] = useState<"rich" | "html">("rich");
   const [viewError, setViewError] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
   const viewRef = useRef(view);
   viewRef.current = view;
   const currentHtml = useRef("");
-  currentHtml.current = editor.draft?.html ?? content?.document.html ?? "";
+  const draftHtml = editor.draft?.html ?? content?.document.html ?? "";
+  currentHtml.current = draftHtml;
   const fileInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!activeEditor) return;
@@ -51,14 +56,15 @@ export function TargetPane({
     setImageError(null);
     setView("rich");
     setViewError(null);
+    setAiOpen(false);
   }, [content?.chapterId]);
   const canEdit =
     view === "rich" &&
     !!activeEditor &&
     !activeEditor.isDestroyed &&
     activeEditor.isEditable;
-  const showRichText = async () => {
-    if (view === "rich" || !activeEditor || activeEditor.isDestroyed) return;
+  const showRichText = useCallback(async () => {
+    if (!activeEditor || activeEditor.isDestroyed) return;
     const html = currentHtml.current;
     const destination = activeEditor;
     setSwitching(true);
@@ -77,6 +83,7 @@ export function TargetPane({
         validated.trim() !== "" &&
         comparableDocument(validated) !== comparableDocument(roundTrip.innerHTML)
       ) {
+        setView("html");
         setViewError(
           "This HTML cannot be represented faithfully in rich text. Your code is kept; continue editing it here or adjust its structure.",
         );
@@ -85,6 +92,8 @@ export function TargetPane({
       destination.commands.setContent(validated || "<p></p>", { emitUpdate: false });
       setView("rich");
     } catch (error) {
+      if (currentHtml.current !== html || destination.isDestroyed) return;
+      setView("html");
       setViewError(
         error instanceof Error
           ? error.message
@@ -93,7 +102,18 @@ export function TargetPane({
     } finally {
       setSwitching(false);
     }
-  };
+  }, [activeEditor]);
+  useEffect(() => {
+    if (view !== "rich" || !activeEditor || activeEditor.isDestroyed) return;
+    const displayed = activeEditor.getHTML();
+    // Ordinary editor keystrokes already updated the draft. Do not reload
+    // those transactions: doing so would reset the caret and undo history.
+    if (draftHtml.trim() === "" && activeEditor.isEmpty) return;
+    if (comparableDocument(draftHtml) === comparableDocument(displayed)) return;
+    // AI insertion / external draft updates must refresh the mounted editor
+    // through the same validation and preservation checks as HTML → Rich.
+    void showRichText();
+  }, [activeEditor, draftHtml, showRichText, view]);
   const insertImage = (src: string, alt: string) => {
     if (canEdit) activeEditor.chain().focus().setImage({ src, alt }).run();
     setImagePicker(false);
@@ -126,6 +146,15 @@ export function TargetPane({
             HTML
           </button>
         </fieldset>
+        <button
+          type="button"
+          className="btn"
+          disabled={!editor.draft || editor.draft.conflict}
+          title="Generate an AI translation proposal"
+          onClick={() => setAiOpen(true)}
+        >
+          AI
+        </button>
         <div className="chapter-review-actions">
           <button
             type="button"
@@ -293,7 +322,10 @@ export function TargetPane({
               destination
                 .chain()
                 .focus()
-                .setImage({ src: reader.result, alt: file.name.replace(/\.[^.]+$/, "") })
+                .setImage({
+                  src: reader.result,
+                  alt: file.name.replace(/\.[^.]+$/, ""),
+                })
                 .run();
               setImagePicker(false);
               setImageError(null);
@@ -458,6 +490,14 @@ export function TargetPane({
           <StatusNotice kind="info">No chapter selected.</StatusNotice>
         ) : null}
       </div>
+      {aiOpen && content ? (
+        <AiGenerateDialog
+          projectId={projectId}
+          chapterId={content.chapterId}
+          editor={editor}
+          onClose={() => setAiOpen(false)}
+        />
+      ) : null}
     </section>
   );
 }

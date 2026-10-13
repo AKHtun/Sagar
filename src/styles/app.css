@@ -65,9 +65,11 @@ button {
 }
 
 .btn:disabled {
+  border-color: var(--color-border);
+  background: var(--color-bg);
   color: var(--color-text-muted);
   cursor: not-allowed;
-  opacity: 0.7;
+  opacity: 1;
 }
 
 .btn--primary {
@@ -393,6 +395,22 @@ button {
   background: var(--color-surface);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
+}
+
+.workspace__lang {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+}
+
+.workspace__lang:hover {
+  color: var(--color-text);
 }
 
 /* Chapter sidebar (mock) */
@@ -771,7 +789,8 @@ button {
   font-size: var(--text-sm);
 }
 
-.form-field input {
+.form-field input,
+.form-field select {
   height: var(--control-height);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
@@ -836,6 +855,131 @@ button {
   gap: var(--space-2);
   align-items: flex-start;
   font-size: var(--text-sm);
+}
+
+/* Settings tabs */
+
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: var(--border-subtle);
+  padding-bottom: var(--space-2);
+}
+
+.tab {
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.tab[aria-selected="true"] {
+  background: var(--color-surface-selected);
+  color: var(--color-text);
+  border-color: var(--color-border);
+  font-weight: 600;
+}
+
+/* AI assist panel */
+
+.ai-assist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ai-proposal {
+  max-height: 320px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-bg);
+  padding: var(--space-3) var(--space-4);
+  line-height: var(--leading-book);
+}
+
+.ai-stream {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 120px;
+  max-height: 280px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-bg);
+  color: var(--color-text);
+  padding: var(--space-3) var(--space-4);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  resize: vertical;
+}
+
+/* Searchable model picker */
+
+.model-refresh-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.model-list {
+  max-height: 240px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-bg);
+}
+
+.model-list__row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-2);
+  border-bottom: var(--border-subtle);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.model-list__row:last-child {
+  border-bottom: none;
+}
+
+.model-list__row:hover {
+  background: var(--color-surface-hover);
+}
+
+.model-list__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.model-list__title {
+  overflow-wrap: anywhere;
+}
+
+.model-list__meta {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
 }
 
 /* Library appearance controls */
@@ -1355,6 +1499,16 @@ button {
   flex: none;
   vertical-align: middle;
 }
+
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.icon--spin {
+  animation: icon-spin 0.9s linear infinite;
+}
 .btn {
   display: inline-flex;
   align-items: center;
@@ -1733,10 +1887,16 @@ button {
   flex: none;
 }
 
+.chapter-editor > p:only-child:has(> br.ProseMirror-trailingBreak:only-child) {
+  position: relative;
+}
+
 .chapter-editor > p:only-child:has(> br.ProseMirror-trailingBreak:only-child)::before {
   content: "Type / for blocks";
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
   color: var(--color-text-muted);
   font: 14px / var(--leading-book) var(--font-ui);
-  float: left;
   pointer-events: none;
 }

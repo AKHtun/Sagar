@@ -714,6 +714,42 @@ fn package_images(
     Ok(result)
 }
 
+/// Reads the raw inner HTML of a chapter's `<body>` (between the body's own
+/// start tag and its closing tag). Used as translation source material so the
+/// original structure — tables, images, attributes — travels with the text.
+pub(crate) fn chapter_body_inner(original: &[u8]) -> Result<String, AppError> {
+    let invalid = || {
+        AppError::new(
+            "export_failed",
+            "The chapter body could not be read safely.",
+        )
+    };
+    let source = std::str::from_utf8(original).map_err(|_| invalid())?;
+    let doc = roxmltree::Document::parse(source).map_err(|_| invalid())?;
+    let body = doc
+        .descendants()
+        .find(|n| n.has_tag_name(("http://www.w3.org/1999/xhtml", "body")))
+        .ok_or_else(invalid)?;
+    let range = body.range();
+    let mut reader = quick_xml::Reader::from_reader(&original[range.clone()]);
+    let mut buffer = Vec::new();
+    let start = loop {
+        match reader.read_event_into(&mut buffer).map_err(|_| invalid())? {
+            quick_xml::events::Event::Start(_) => {
+                break range.start + reader.buffer_position() as usize;
+            }
+            quick_xml::events::Event::Empty(_) => return Ok(String::new()),
+            quick_xml::events::Event::Eof => return Err(invalid()),
+            _ => buffer.clear(),
+        }
+    };
+    let end = range.start + source[range.clone()].rfind('<').ok_or_else(invalid)?;
+    if end < start {
+        return Err(invalid());
+    }
+    Ok(source[start..end].to_string())
+}
+
 /// Replace the authored chapter body, preserving its outer attributes, head,
 /// source resources and old anchor IDs so existing navigation remains resolvable.
 fn replace_chapter_body(original: &[u8], html: &str) -> Result<Vec<u8>, AppError> {
@@ -799,5 +835,21 @@ mod chapter_document_tests {
                         && n.attribute("id") == Some("chapter"))
             );
         }
+    }
+
+    #[test]
+    fn reads_body_inner_html_verbatim() {
+        let source = r#"<html xmlns="http://www.w3.org/1999/xhtml"><head><title>T</title></head><body id="chapter"><h1>Hi</h1><p>Text <img src="images/a.png" alt="A"/></p><table><tbody><tr><td>Cell</td></tr></tbody></table></body></html>"#;
+        let inner = chapter_body_inner(source.as_bytes()).expect("inner");
+        assert!(inner.contains("<h1>Hi</h1>"), "{inner}");
+        assert!(
+            inner.contains("<img src=\"images/a.png\" alt=\"A\"/>"),
+            "{inner}"
+        );
+        assert!(inner.contains("<table>"), "{inner}");
+        assert!(!inner.contains("<body"), "{inner}");
+
+        let empty = r#"<html xmlns="http://www.w3.org/1999/xhtml"><head><title>T</title></head><body id="chapter"/></html>"#;
+        assert_eq!(chapter_body_inner(empty.as_bytes()).expect("empty"), "");
     }
 }

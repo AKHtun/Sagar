@@ -151,6 +151,11 @@ pub fn run() {
             commands::save_ai_custom_provider,
             commands::delete_ai_custom_provider,
             commands::test_ai_custom_provider,
+            commands::list_translation_models,
+            commands::get_translation_selection,
+            commands::set_translation_selection,
+            commands::start_ai_translation,
+            commands::cancel_ai_translation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

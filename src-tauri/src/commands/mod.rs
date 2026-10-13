@@ -1,12 +1,13 @@
 //! Thin Tauri command adapters. Business logic lives in `services`; commands
 //! only translate between the WebView and service calls.
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::domain::{
-    AiProviderList, ChapterContent, ChapterSummary, CliCheckResult, CoverImage,
-    CustomProviderSummary, CustomTestResult, ExportOutcome, ExportReview, ImportResult,
-    ProjectSummary, SaveResult,
+    AiProviderList, AiTranslationEvent, AiTranslationStart, ChapterContent, ChapterSummary,
+    CliCheckResult, CoverImage, CustomProviderSummary, CustomTestResult, ExportOutcome,
+    ExportReview, ImportResult, ProjectSummary, SaveResult, TranslationModelList,
+    TranslationSelection,
 };
 use crate::error::AppError;
 use crate::services::{self, HealthReport};
@@ -136,6 +137,7 @@ pub async fn update_project_metadata(
     project_id: String,
     translated_title: Option<String>,
     target_language: Option<String>,
+    source_language: Option<String>,
 ) -> Result<(), AppError> {
     let data_dir = app_data_dir(&app)?;
     run_blocking(move || {
@@ -144,6 +146,7 @@ pub async fn update_project_metadata(
             &project_id,
             translated_title,
             target_language,
+            source_language,
         )
     })
     .await
@@ -281,4 +284,81 @@ pub async fn test_ai_custom_provider(
 ) -> Result<CustomTestResult, AppError> {
     let data_dir = app_data_dir(&app)?;
     run_blocking(move || services::ai::test_ai_custom_provider(&data_dir, &id)).await
+}
+
+/// Translation model catalog + persisted selection (selection only; no
+/// translation runs and no book content is involved).
+#[tauri::command]
+pub async fn list_translation_models(
+    app: AppHandle,
+    agent: String,
+) -> Result<TranslationModelList, AppError> {
+    let data_dir = app_data_dir(&app)?;
+    run_blocking(move || services::ai::list_translation_models(&data_dir, &agent)).await
+}
+
+#[tauri::command]
+pub async fn get_translation_selection(
+    app: AppHandle,
+) -> Result<Option<TranslationSelection>, AppError> {
+    let data_dir = app_data_dir(&app)?;
+    run_blocking(move || services::ai::get_translation_selection(&data_dir)).await
+}
+
+#[tauri::command]
+pub async fn set_translation_selection(
+    app: AppHandle,
+    agent: String,
+    model: String,
+    reasoning_effort: Option<String>,
+) -> Result<TranslationSelection, AppError> {
+    let data_dir = app_data_dir(&app)?;
+    run_blocking(move || {
+        services::ai::set_translation_selection(
+            &data_dir,
+            &agent,
+            &model,
+            reasoning_effort.as_deref(),
+        )
+    })
+    .await
+}
+
+/// AI translation proposals (assist slice). The run executes the user's chosen
+/// local CLI with the chapter text after explicit consent; the saved draft is
+/// never modified — the frontend inserts the proposal only on confirmation.
+#[tauri::command]
+pub async fn start_ai_translation(
+    app: AppHandle,
+    chapter_id: String,
+    agent: String,
+    model: String,
+    consent: bool,
+    previous_output: Option<String>,
+    reasoning_effort: Option<String>,
+) -> Result<AiTranslationStart, AppError> {
+    let data_dir = app_data_dir(&app)?;
+    let emitter = app.clone();
+    run_blocking(move || {
+        services::ai_translate::start_ai_translation(
+            &data_dir,
+            services::ai_translate::StartTranslationInput {
+                chapter_id,
+                agent,
+                model,
+                consent,
+                previous_output,
+                reasoning_effort,
+            },
+            move |event: AiTranslationEvent| {
+                let _ = emitter.emit("ai-translation-event", event);
+            },
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn cancel_ai_translation(job_id: String) -> Result<(), AppError> {
+    services::ai_translate::cancel_ai_translation(&job_id)
 }

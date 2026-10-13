@@ -2,9 +2,9 @@
 //! and never returned to callers: reads produce masked summaries only. No
 //! book content is involved; rows hold endpoint configuration.
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
-use crate::domain::CustomProviderSummary;
+use crate::domain::{CustomProviderSummary, TranslationSelection};
 use crate::error::AppError;
 
 pub struct NewCustomProvider {
@@ -137,6 +137,49 @@ pub fn update_custom(
     })
 }
 
+/// Reads the persisted translation selection, if the user chose one.
+pub fn get_translation_selection(
+    conn: &Connection,
+) -> Result<Option<TranslationSelection>, AppError> {
+    let row = conn
+        .query_row(
+            "SELECT agent, model, updated_at, reasoning_effort FROM ai_translation_selection WHERE id = 1",
+            [],
+            |row| {
+                Ok(TranslationSelection {
+                    agent: row.get(0)?,
+                    model: row.get(1)?,
+                    updated_at: row.get(2)?,
+                    reasoning_effort: row.get(3)?,
+                })
+            },
+        )
+        .optional()?;
+    Ok(row)
+}
+
+/// Persists the translation selection, replacing any previous choice.
+pub fn set_translation_selection(
+    conn: &Connection,
+    agent: &str,
+    model: &str,
+    reasoning_effort: Option<&str>,
+    updated_at: &str,
+) -> Result<TranslationSelection, AppError> {
+    conn.execute(
+        "INSERT INTO ai_translation_selection (id, agent, model, updated_at, reasoning_effort)
+         VALUES (1, ?1, ?2, ?3, ?4)
+         ON CONFLICT (id) DO UPDATE SET agent = ?1, model = ?2, updated_at = ?3, reasoning_effort = ?4",
+        rusqlite::params![agent, model, updated_at, reasoning_effort],
+    )?;
+    Ok(TranslationSelection {
+        reasoning_effort: reasoning_effort.map(str::to_string),
+        agent: agent.to_string(),
+        model: model.to_string(),
+        updated_at: updated_at.to_string(),
+    })
+}
+
 /// Returns false when the provider does not exist.
 pub fn delete_custom(conn: &Connection, id: &str) -> Result<bool, AppError> {
     let deleted = conn.execute(
@@ -166,6 +209,38 @@ mod tests {
             model: "local-model".into(),
             created_at: "2026-10-13T00:00:00Z".into(),
         }
+    }
+
+    #[test]
+    fn migration_preserves_existing_model_and_effort_round_trips() {
+        let conn = Connection::open_in_memory().expect("db");
+        conn.execute_batch("CREATE TABLE ai_translation_selection (id INTEGER PRIMARY KEY, agent TEXT NOT NULL, model TEXT NOT NULL, updated_at TEXT NOT NULL);
+            INSERT INTO ai_translation_selection VALUES (1, 'codex', 'existing-model', 'before');
+            PRAGMA user_version = 5;").expect("v5");
+        migrations::apply(&conn).expect("upgrade");
+        let selection = get_translation_selection(&conn)
+            .expect("read")
+            .expect("saved");
+        assert_eq!(selection.model, "existing-model");
+        assert_eq!(selection.reasoning_effort, None);
+        set_translation_selection(&conn, "codex", "existing-model", Some("xhigh"), "after")
+            .expect("save");
+        assert_eq!(
+            get_translation_selection(&conn)
+                .expect("read")
+                .expect("saved")
+                .reasoning_effort,
+            Some("xhigh".into())
+        );
+        set_translation_selection(&conn, "codex", "existing-model", None, "default")
+            .expect("reset");
+        assert_eq!(
+            get_translation_selection(&conn)
+                .expect("read")
+                .expect("saved")
+                .reasoning_effort,
+            None
+        );
     }
 
     #[test]
@@ -207,5 +282,36 @@ mod tests {
         create_custom(&conn, &sample("p1")).expect("create");
         assert!(delete_custom(&conn, "p1").expect("delete"));
         assert!(get_secret(&conn, "p1").is_err());
+    }
+
+    #[test]
+    fn translation_selection_replaces_the_single_row() {
+        let conn = setup();
+        assert!(
+            get_translation_selection(&conn)
+                .expect("read empty")
+                .is_none()
+        );
+        set_translation_selection(
+            &conn,
+            "codex",
+            "gpt-5.6-sol",
+            Some("high"),
+            "2026-10-13T00:00:00Z",
+        )
+        .expect("save");
+        set_translation_selection(
+            &conn,
+            "opencode",
+            "anthropic/claude-sonnet-4-5",
+            None,
+            "2026-10-13T01:00:00Z",
+        )
+        .expect("overwrite");
+        let selection = get_translation_selection(&conn)
+            .expect("read")
+            .expect("selection saved");
+        assert_eq!(selection.agent, "opencode");
+        assert_eq!(selection.model, "anthropic/claude-sonnet-4-5");
     }
 }

@@ -61,6 +61,7 @@ pub fn export_epub(data_dir: &Path, request: ExportRequest) -> Result<ExportOutc
             &request.project_id,
             translated_title.clone(),
             Some(language),
+            None,
         )?;
     }
 

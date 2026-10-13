@@ -176,7 +176,12 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                 "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "strong" | "em" | "u" | "s" | "a"
             ) && is_block
             {
-                return Err(invalid());
+                return Err(AppError::new(
+                    "invalid_translation",
+                    format!(
+                        "A <{tag}> block cannot be inside <{parent}>. Place it outside the paragraph or inline element."
+                    ),
+                ));
             }
             if matches!(parent, "ul" | "ol") && tag != "li" {
                 return Err(invalid());

@@ -2,6 +2,7 @@
 //! both Tauri plumbing and JSX concerns.
 
 pub mod ai;
+pub mod ai_translate;
 pub mod export;
 pub mod import;
 pub mod projects;

@@ -1,9 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AiProviderList,
+  AiTranslationStart,
   CliCheckResult,
   CustomProviderSummary,
   CustomTestResult,
+  TranslationModelList,
+  TranslationSelection,
 } from "../../types/ai";
 import { toCommandError } from "./errors";
 
@@ -56,6 +59,70 @@ export async function deleteAiCustomProvider(id: string): Promise<void> {
 export async function testAiCustomProvider(id: string): Promise<CustomTestResult> {
   try {
     return await invoke<CustomTestResult>("test_ai_custom_provider", { id });
+  } catch (error) {
+    throw toCommandError(error);
+  }
+}
+
+export async function listTranslationModels(
+  agent: string,
+): Promise<TranslationModelList> {
+  try {
+    return await invoke<TranslationModelList>("list_translation_models", { agent });
+  } catch (error) {
+    throw toCommandError(error);
+  }
+}
+
+export async function getTranslationSelection(): Promise<TranslationSelection | null> {
+  try {
+    return await invoke<TranslationSelection | null>("get_translation_selection");
+  } catch (error) {
+    throw toCommandError(error);
+  }
+}
+
+export async function setTranslationSelection(
+  agent: string,
+  model: string,
+  reasoningEffort: string | null,
+): Promise<TranslationSelection> {
+  try {
+    return await invoke<TranslationSelection>("set_translation_selection", {
+      agent,
+      model,
+      reasoningEffort,
+    });
+  } catch (error) {
+    throw toCommandError(error);
+  }
+}
+
+export async function startAiTranslation(input: {
+  chapterId: string;
+  agent: string;
+  model: string;
+  consent: boolean;
+  previousOutput?: string;
+  reasoningEffort?: string | null;
+}): Promise<AiTranslationStart> {
+  try {
+    return await invoke<AiTranslationStart>("start_ai_translation", {
+      chapterId: input.chapterId,
+      agent: input.agent,
+      model: input.model,
+      consent: input.consent,
+      previousOutput: input.previousOutput ?? null,
+      reasoningEffort: input.reasoningEffort ?? null,
+    });
+  } catch (error) {
+    throw toCommandError(error);
+  }
+}
+
+export async function cancelAiTranslation(jobId: string): Promise<void> {
+  try {
+    await invoke("cancel_ai_translation", { jobId });
   } catch (error) {
     throw toCommandError(error);
   }

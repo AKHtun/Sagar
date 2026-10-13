@@ -127,11 +127,27 @@ pub fn get_last_chapter(data_dir: &Path, project_id: &str) -> Result<Option<Stri
     translations::get_last_chapter(&conn, project_id)
 }
 
+fn validate_language_tag(raw: &str) -> Result<String, AppError> {
+    let language = raw.trim().to_string();
+    if language.is_empty()
+        || !language
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err(AppError::new(
+            "invalid_language",
+            "Enter a language tag such as “my” or “en-US”.",
+        ));
+    }
+    Ok(language)
+}
+
 pub fn update_project_metadata(
     data_dir: &Path,
     project_id: &str,
     translated_title: Option<String>,
     target_language: Option<String>,
+    source_language: Option<String>,
 ) -> Result<(), AppError> {
     let conn = open_db(data_dir)?;
     if !projects::project_exists(&conn, project_id)? {
@@ -152,21 +168,28 @@ pub fn update_project_metadata(
         )?;
     }
     if let Some(language) = target_language {
-        let language = language.trim().to_string();
-        if language.is_empty()
-            || !language
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-')
-        {
-            return Err(AppError::new(
-                "invalid_language",
-                "Enter a language tag such as “my” or “en-US”.",
-            ));
-        }
+        let language = validate_language_tag(&language)?;
         conn.execute(
             "UPDATE projects SET target_language = ?1 WHERE id = ?2",
             rusqlite::params![language, project_id],
         )?;
+    }
+    if let Some(language) = source_language {
+        // An empty source tag clears back to unknown; anything else must be a
+        // valid tag. Source is informational only and never rewrites book text.
+        let trimmed = language.trim();
+        if trimmed.is_empty() {
+            conn.execute(
+                "UPDATE projects SET source_language = NULL WHERE id = ?1",
+                rusqlite::params![project_id],
+            )?;
+        } else {
+            let language = validate_language_tag(trimmed)?;
+            conn.execute(
+                "UPDATE projects SET source_language = ?1 WHERE id = ?2",
+                rusqlite::params![language, project_id],
+            )?;
+        }
     }
     conn.execute(
         "UPDATE projects SET updated_at = ?1 WHERE id = ?2",
@@ -217,4 +240,54 @@ pub fn save_chapter_document(
 ) -> Result<SaveResult, AppError> {
     let conn = open_db(data_dir)?;
     storage::documents::save(&conn, chapter_id, html, status, revision)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_project() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_db(dir.path()).expect("open db");
+        conn.execute(
+            "INSERT INTO projects
+                (id, source_sha256, source_snapshot_path, title, created_at, updated_at)
+             VALUES ('p1', 'abc', 'projects/p1/source.epub', 'T',
+                     '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .expect("seed project");
+        dir
+    }
+
+    #[test]
+    fn source_language_updates_validate_and_clear() {
+        let dir = setup_project();
+        // EPUB metadata is often missing; the source tag starts unknown.
+        let project = crate::services::projects::get_project(dir.path(), "p1").expect("project");
+        assert_eq!(project.source_language, None);
+
+        update_project_metadata(dir.path(), "p1", None, None, Some("en".into())).expect("set");
+        let project = crate::services::projects::get_project(dir.path(), "p1").expect("project");
+        assert_eq!(project.source_language.as_deref(), Some("en"));
+
+        let error = update_project_metadata(dir.path(), "p1", None, None, Some("en US!".into()))
+            .expect_err("invalid source tag rejected");
+        assert_eq!(error.code, "invalid_language");
+
+        update_project_metadata(dir.path(), "p1", None, None, Some("  ".into())).expect("clear");
+        let project = crate::services::projects::get_project(dir.path(), "p1").expect("project");
+        assert_eq!(project.source_language, None);
+
+        // Target validation is unchanged and None leaves values alone.
+        let error = update_project_metadata(dir.path(), "p1", None, Some("my MM!".into()), None)
+            .expect_err("invalid target tag rejected");
+        assert_eq!(error.code, "invalid_language");
+        let project = crate::services::projects::get_project(dir.path(), "p1").expect("project");
+        assert_eq!(project.target_language, "my");
+
+        let error = update_project_metadata(dir.path(), "ghost", None, None, Some("en".into()))
+            .expect_err("unknown project rejected");
+        assert_eq!(error.code, "project_not_found");
+    }
 }

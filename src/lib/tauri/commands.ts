@@ -163,12 +163,14 @@ export async function updateProjectMetadata(
   projectId: string,
   translatedTitle: string | null,
   targetLanguage: string | null,
+  sourceLanguage: string | null = null,
 ): Promise<void> {
   try {
     await invoke("update_project_metadata", {
       projectId,
       translatedTitle,
       targetLanguage,
+      sourceLanguage,
     });
   } catch (error) {
     throw toCommandError(error);

@@ -115,6 +115,21 @@ const MIGRATIONS: &[(i64, &str)] = &[
             updated_at  TEXT NOT NULL
         );",
     ),
+    // Active translation agent + model choice for future translation work.
+    // Single row (id = 1); selecting never starts translation.
+    (
+        5,
+        "CREATE TABLE ai_translation_selection (
+            id          INTEGER PRIMARY KEY CHECK (id = 1),
+            agent       TEXT NOT NULL,
+            model       TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );",
+    ),
+    (
+        6,
+        "ALTER TABLE ai_translation_selection ADD COLUMN reasoning_effort TEXT;",
+    ),
 ];
 
 /// Highest defined schema version. Currently asserted on by tests; production

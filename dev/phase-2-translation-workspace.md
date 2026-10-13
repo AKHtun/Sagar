@@ -145,3 +145,32 @@ with source immutability. Browser checks cover slash filtering, keyboard
 navigation, all requested insertions, Escape, table controls, HTML switching,
 chapter persistence and the minimum-window layout. Native cross-platform IME,
 screen-reader behavior and full EPUBCheck remain open.
+
+### Translation direction correction — 2026-10-13
+
+The workspace footer now states the translation direction in readable form
+(e.g. “English (en) → Myanmar (my)”) instead of only the target tag, and it
+opens a Translation languages dialog. Source language comes from EPUB metadata
+at import and was previously uneditable; both tags are now correctable per
+project with the existing tag validation (blank source clears back to
+unknown). Changing languages only relabels the project and future exports —
+book text is never rewritten. Covered by a service-level round-trip test.
+
+### Empty chapter caret correction — 2026-10-13
+
+The empty chapter hint is positioned over the paragraph instead of floating
+in the text flow. Clicking it places the caret at the paragraph start; the
+hint remains while focused and disappears when content is typed. The hint is
+CSS-only and never enters the saved document. Frontend lint/build passed;
+native caret/focus and Myanmar IME verification remain open.
+
+### AI result display correction — 2026-10-13
+
+The mounted Rich editor now synchronizes external chapter-draft updates such
+as an AI proposal immediately, through the same Rust validation and loss-aware
+round-trip check used when switching from HTML. Unsupported content opens the
+HTML view with an explanation instead of silently discarding formatting.
+Equivalent content from normal editor typing is not reloaded, preserving the
+caret and undo history; stale async validation cannot overwrite newer text.
+Frontend lint/build passed. Native AI completion/insert verification remains
+open, along with the existing cross-platform checks.

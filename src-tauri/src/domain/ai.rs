@@ -113,3 +113,62 @@ pub struct CustomTestResult {
     /// Short human-readable outcome; never echoes the key or URL.
     pub message: String,
 }
+
+/// One selectable translation model. `detail` is a short human hint, never a
+/// filesystem path or secret.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationModel {
+    pub id: String,
+    pub label: String,
+    pub detail: Option<String>,
+    pub reasoning_efforts: Option<Vec<String>>,
+}
+
+/// Models offered for one agent. `source` is `live` (queried from the tool or
+/// endpoint just now) or `catalog` (built-in known list / saved fallback).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationModelList {
+    pub agent: String,
+    pub source: String,
+    pub models: Vec<TranslationModel>,
+    /// Short human-readable note about where the list came from.
+    pub message: String,
+}
+
+/// The persisted translation choice for future translation work. Selecting a
+/// model never starts translation and never sends book content anywhere.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationSelection {
+    pub reasoning_effort: Option<String>,
+    pub agent: String,
+    pub model: String,
+    pub updated_at: String,
+}
+
+/// Handle for a running CLI translation job.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiTranslationStart {
+    pub job_id: String,
+}
+
+/// Terminal or progress event for a translation job. The saved draft is never
+/// modified by the backend; the frontend inserts `proposal_html` only on user
+/// confirmation.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiTranslationEvent {
+    pub job_id: String,
+    pub chapter_id: String,
+    /// `started` | `stream` | `done` | `failed` | `cancelled`.
+    pub kind: String,
+    pub proposal_html: Option<String>,
+    /// Running full-so-far stdout for `stream` events; book-derived text
+    /// shown locally only, never logged or telemetered.
+    pub partial_text: Option<String>,
+    /// Short human-readable outcome; never contains book text or secrets.
+    pub message: String,
+}

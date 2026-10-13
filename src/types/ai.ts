@@ -36,3 +36,38 @@ export type CustomTestResult = {
   modelCount: number | null;
   message: string;
 };
+
+export type TranslationModel = {
+  id: string;
+  label: string;
+  detail: string | null;
+  reasoningEfforts: string[] | null;
+};
+
+export type TranslationModelList = {
+  agent: string;
+  source: "live" | "catalog";
+  models: TranslationModel[];
+  message: string;
+};
+
+export type TranslationSelection = {
+  reasoningEffort: string | null;
+  agent: string;
+  model: string;
+  updatedAt: string;
+};
+
+export type AiTranslationStart = {
+  jobId: string;
+};
+
+export type AiTranslationEvent = {
+  jobId: string;
+  chapterId: string;
+  kind: "started" | "stream" | "done" | "failed" | "cancelled";
+  proposalHtml: string | null;
+  /** Running full-so-far output for `stream` events. */
+  partialText: string | null;
+  message: string;
+};

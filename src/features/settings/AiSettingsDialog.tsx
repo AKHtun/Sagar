@@ -14,6 +14,7 @@ import type {
   CustomProviderSummary,
   CustomTestResult,
 } from "../../types/ai";
+import { TranslationModelSection } from "./TranslationModelSection";
 
 type AiSettingsDialogProps = {
   onClose: () => void;
@@ -53,6 +54,7 @@ export function AiSettingsDialog({ onClose }: AiSettingsDialogProps) {
   const [testResults, setTestResults] = useState<Record<string, CustomTestResult>>({});
   const [form, setForm] = useState<CustomFormState>(emptyForm);
   const [formOpen, setFormOpen] = useState(false);
+  const [tab, setTab] = useState<"providers" | "translation">("providers");
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [busyDelete, setBusyDelete] = useState(false);
@@ -269,6 +271,44 @@ export function AiSettingsDialog({ onClose }: AiSettingsDialogProps) {
           provider&apos;s model list.
         </StatusNotice>
 
+        <div
+          className="tabs"
+          role="tablist"
+          aria-label="AI settings sections"
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+              return;
+            }
+            event.preventDefault();
+            setTab((current) => (current === "providers" ? "translation" : "providers"));
+          }}
+        >
+          <button
+            type="button"
+            role="tab"
+            id="ai-tab-providers"
+            aria-selected={tab === "providers"}
+            aria-controls="ai-panel-providers"
+            tabIndex={tab === "providers" ? 0 : -1}
+            className="tab"
+            onClick={() => setTab("providers")}
+          >
+            Providers
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="ai-tab-translation"
+            aria-selected={tab === "translation"}
+            aria-controls="ai-panel-translation"
+            tabIndex={tab === "translation" ? 0 : -1}
+            className="tab"
+            onClick={() => setTab("translation")}
+          >
+            Translation Model
+          </button>
+        </div>
+
         {loadError ? (
           <StatusNotice kind="error" onRetry={loadProviders}>
             {loadError}
@@ -280,239 +320,274 @@ export function AiSettingsDialog({ onClose }: AiSettingsDialogProps) {
 
         {providers ? (
           <>
-            <section aria-labelledby="ai-cli-heading">
-              <h3 className="panel__heading" id="ai-cli-heading">
-                Coding assistants
-              </h3>
-              <p className="dialog__muted">
-                Detected from tools installed on this computer. Select Check to verify a
-                tool responds.
-              </p>
-              <ul className="project-list">
-                {providers.cli.map((provider) => {
-                  const result = checkResults[provider.id];
-                  const isChecking = checking[provider.id] ?? false;
-                  return (
-                    <li key={provider.id} className="project-item">
-                      <div className="project-row">
-                        <span className="project-row__main">
-                          <span className="project-row__title">{provider.label}</span>
-                          <span className="project-row__meta">
-                            Looks for <code>{provider.binaries.join(", ")}</code> on PATH
-                            {result?.version ? ` · ${result.version}` : null}
-                            {result && !result.connected ? ` · ${result.message}` : null}
-                          </span>
-                        </span>
-                        <span className="project-row__progress">
-                          <span
-                            className={`chapter-export-status chapter-export-status--${result?.connected ? "reviewed" : provider.available ? "draft" : "original"}`}
-                          >
-                            {result?.connected
-                              ? "Connected"
-                              : provider.available
-                                ? "Available"
-                                : "Not found"}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={isChecking}
-                          onClick={() => void handleCheck(provider.id)}
-                        >
-                          {isChecking ? "Checking…" : "Check"}
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-
-            <section aria-labelledby="ai-custom-heading">
-              <h3 className="panel__heading" id="ai-custom-heading">
-                Custom providers
-              </h3>
-              <p className="dialog__muted">
-                OpenAI-compatible endpoints: a base URL, an API key and a model. Test
-                requests only the model list.
-              </p>
-              {providers.custom.length === 0 ? (
-                <p className="dialog__muted">No custom providers yet.</p>
-              ) : (
+            <div
+              role="tabpanel"
+              id="ai-panel-providers"
+              aria-labelledby="ai-tab-providers"
+              hidden={tab !== "providers"}
+            >
+              <section aria-labelledby="ai-cli-heading">
+                <h3 className="panel__heading" id="ai-cli-heading">
+                  Coding assistants
+                </h3>
+                <p className="dialog__muted">
+                  Detected from tools installed on this computer. Select Check to verify a
+                  tool responds.
+                </p>
                 <ul className="project-list">
-                  {providers.custom.map((provider) => {
-                    const result = testResults[provider.id];
-                    const isTesting = testing[provider.id] ?? false;
+                  {providers.cli.map((provider) => {
+                    const result = checkResults[provider.id];
+                    const isChecking = checking[provider.id] ?? false;
                     return (
                       <li key={provider.id} className="project-item">
                         <div className="project-row">
                           <span className="project-row__main">
-                            <span className="project-row__title">{provider.name}</span>
+                            <span className="project-row__title">{provider.label}</span>
                             <span className="project-row__meta">
-                              {provider.baseUrl} · {provider.model} ·{" "}
-                              {provider.hasApiKey ? "key saved" : "no key"}
-                              {result ? ` · ${result.message}` : null}
+                              Looks for <code>{provider.binaries.join(", ")}</code> on
+                              PATH
+                              {result?.version ? ` · ${result.version}` : null}
+                              {result && !result.connected
+                                ? ` · ${result.message}`
+                                : null}
                             </span>
                           </span>
                           <span className="project-row__progress">
                             <span
-                              className={`chapter-export-status chapter-export-status--${result?.ok ? "reviewed" : "original"}`}
+                              className={`chapter-export-status chapter-export-status--${result?.connected ? "reviewed" : provider.available ? "draft" : "original"}`}
                             >
-                              {result ? (result.ok ? "Connected" : "Failed") : "Saved"}
+                              {result?.connected
+                                ? "Connected"
+                                : provider.available
+                                  ? "Available"
+                                  : "Not found"}
                             </span>
                           </span>
-                        </div>
-                        <div className="button-row">
                           <button
                             type="button"
                             className="btn"
-                            disabled={isTesting}
-                            onClick={() => void handleTest(provider.id)}
+                            disabled={isChecking}
+                            onClick={() => void handleCheck(provider.id)}
                           >
-                            {isTesting ? "Testing…" : "Test"}
+                            {isChecking ? "Checking…" : "Check"}
                           </button>
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => openEditForm(provider)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className={
-                              confirmDelete === provider.id ? "btn btn--danger" : "btn"
-                            }
-                            disabled={busyDelete}
-                            onClick={() => void handleDelete(provider.id)}
-                          >
-                            {confirmDelete === provider.id ? "Confirm delete" : "Delete"}
-                          </button>
-                          {confirmDelete === provider.id ? (
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => setConfirmDelete(null)}
-                            >
-                              Cancel
-                            </button>
-                          ) : null}
                         </div>
                       </li>
                     );
                   })}
                 </ul>
-              )}
-              {!formOpen ? (
-                <div className="button-row">
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    onClick={openAddForm}
-                  >
-                    Add custom provider
-                  </button>
-                </div>
-              ) : null}
-            </section>
-
-            {formOpen ? (
-              <section aria-label={form.editingId ? "Edit provider" : "Add provider"}>
-                <div className="form-grid">
-                  <label className="form-field">
-                    <span>Name</span>
-                    <input
-                      type="text"
-                      value={form.name}
-                      maxLength={64}
-                      onChange={(event) =>
-                        setForm((current) => ({ ...current, name: event.target.value }))
-                      }
-                      aria-invalid={form.fieldErrors.name !== undefined}
-                    />
-                    {form.fieldErrors.name ? (
-                      <span className="form-field__error">{form.fieldErrors.name}</span>
-                    ) : null}
-                  </label>
-                  <label className="form-field">
-                    <span>Model</span>
-                    <input
-                      type="text"
-                      value={form.model}
-                      maxLength={128}
-                      placeholder="gpt-4o-mini"
-                      onChange={(event) =>
-                        setForm((current) => ({ ...current, model: event.target.value }))
-                      }
-                      aria-invalid={form.fieldErrors.model !== undefined}
-                    />
-                    {form.fieldErrors.model ? (
-                      <span className="form-field__error">{form.fieldErrors.model}</span>
-                    ) : null}
-                  </label>
-                </div>
-                <label className="form-field">
-                  <span>Base URL</span>
-                  <input
-                    type="url"
-                    value={form.baseUrl}
-                    placeholder="https://api.example.com/v1"
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, baseUrl: event.target.value }))
-                    }
-                    aria-invalid={form.fieldErrors.baseUrl !== undefined}
-                  />
-                  {form.fieldErrors.baseUrl ? (
-                    <span className="form-field__error">{form.fieldErrors.baseUrl}</span>
-                  ) : null}
-                </label>
-                <label className="form-field">
-                  <span>
-                    API key{form.editingId ? " (leave blank to keep the saved key)" : ""}
-                  </span>
-                  <input
-                    type="password"
-                    value={form.apiKey}
-                    autoComplete="off"
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, apiKey: event.target.value }))
-                    }
-                    aria-invalid={form.fieldErrors.apiKey !== undefined}
-                  />
-                  {form.fieldErrors.apiKey ? (
-                    <span className="form-field__error">{form.fieldErrors.apiKey}</span>
-                  ) : null}
-                </label>
-                <div className="button-row dialog__actions">
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={form.saving}
-                    onClick={() => {
-                      setForm(emptyForm);
-                      setFormOpen(false);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    disabled={form.saving}
-                    onClick={() => void handleSaveForm()}
-                  >
-                    {form.saving
-                      ? "Saving…"
-                      : form.editingId
-                        ? "Save changes"
-                        : "Add provider"}
-                  </button>
-                </div>
               </section>
-            ) : null}
 
-            {actionError ? <StatusNotice kind="error">{actionError}</StatusNotice> : null}
+              <section aria-labelledby="ai-custom-heading">
+                <h3 className="panel__heading" id="ai-custom-heading">
+                  Custom providers
+                </h3>
+                <p className="dialog__muted">
+                  OpenAI-compatible endpoints: a base URL, an API key and a model. Test
+                  requests only the model list.
+                </p>
+                {providers.custom.length === 0 ? (
+                  <p className="dialog__muted">No custom providers yet.</p>
+                ) : (
+                  <ul className="project-list">
+                    {providers.custom.map((provider) => {
+                      const result = testResults[provider.id];
+                      const isTesting = testing[provider.id] ?? false;
+                      return (
+                        <li key={provider.id} className="project-item">
+                          <div className="project-row">
+                            <span className="project-row__main">
+                              <span className="project-row__title">{provider.name}</span>
+                              <span className="project-row__meta">
+                                {provider.baseUrl} · {provider.model} ·{" "}
+                                {provider.hasApiKey ? "key saved" : "no key"}
+                                {result ? ` · ${result.message}` : null}
+                              </span>
+                            </span>
+                            <span className="project-row__progress">
+                              <span
+                                className={`chapter-export-status chapter-export-status--${result?.ok ? "reviewed" : "original"}`}
+                              >
+                                {result ? (result.ok ? "Connected" : "Failed") : "Saved"}
+                              </span>
+                            </span>
+                          </div>
+                          <div className="button-row">
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={isTesting}
+                              onClick={() => void handleTest(provider.id)}
+                            >
+                              {isTesting ? "Testing…" : "Test"}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => openEditForm(provider)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className={
+                                confirmDelete === provider.id ? "btn btn--danger" : "btn"
+                              }
+                              disabled={busyDelete}
+                              onClick={() => void handleDelete(provider.id)}
+                            >
+                              {confirmDelete === provider.id
+                                ? "Confirm delete"
+                                : "Delete"}
+                            </button>
+                            {confirmDelete === provider.id ? (
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => setConfirmDelete(null)}
+                              >
+                                Cancel
+                              </button>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                {!formOpen ? (
+                  <div className="button-row">
+                    <button
+                      type="button"
+                      className="btn btn--primary"
+                      onClick={openAddForm}
+                    >
+                      Add custom provider
+                    </button>
+                  </div>
+                ) : null}
+              </section>
+
+              {formOpen ? (
+                <section aria-label={form.editingId ? "Edit provider" : "Add provider"}>
+                  <div className="form-grid">
+                    <label className="form-field">
+                      <span>Name</span>
+                      <input
+                        type="text"
+                        value={form.name}
+                        maxLength={64}
+                        onChange={(event) =>
+                          setForm((current) => ({ ...current, name: event.target.value }))
+                        }
+                        aria-invalid={form.fieldErrors.name !== undefined}
+                      />
+                      {form.fieldErrors.name ? (
+                        <span className="form-field__error">{form.fieldErrors.name}</span>
+                      ) : null}
+                    </label>
+                    <label className="form-field">
+                      <span>Model</span>
+                      <input
+                        type="text"
+                        value={form.model}
+                        maxLength={128}
+                        placeholder="gpt-4o-mini"
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            model: event.target.value,
+                          }))
+                        }
+                        aria-invalid={form.fieldErrors.model !== undefined}
+                      />
+                      {form.fieldErrors.model ? (
+                        <span className="form-field__error">
+                          {form.fieldErrors.model}
+                        </span>
+                      ) : null}
+                    </label>
+                  </div>
+                  <label className="form-field">
+                    <span>Base URL</span>
+                    <input
+                      type="url"
+                      value={form.baseUrl}
+                      placeholder="https://api.example.com/v1"
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          baseUrl: event.target.value,
+                        }))
+                      }
+                      aria-invalid={form.fieldErrors.baseUrl !== undefined}
+                    />
+                    {form.fieldErrors.baseUrl ? (
+                      <span className="form-field__error">
+                        {form.fieldErrors.baseUrl}
+                      </span>
+                    ) : null}
+                  </label>
+                  <label className="form-field">
+                    <span>
+                      API key
+                      {form.editingId ? " (leave blank to keep the saved key)" : ""}
+                    </span>
+                    <input
+                      type="password"
+                      value={form.apiKey}
+                      autoComplete="off"
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, apiKey: event.target.value }))
+                      }
+                      aria-invalid={form.fieldErrors.apiKey !== undefined}
+                    />
+                    {form.fieldErrors.apiKey ? (
+                      <span className="form-field__error">{form.fieldErrors.apiKey}</span>
+                    ) : null}
+                  </label>
+                  <div className="button-row dialog__actions">
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={form.saving}
+                      onClick={() => {
+                        setForm(emptyForm);
+                        setFormOpen(false);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--primary"
+                      disabled={form.saving}
+                      onClick={() => void handleSaveForm()}
+                    >
+                      {form.saving
+                        ? "Saving…"
+                        : form.editingId
+                          ? "Save changes"
+                          : "Add provider"}
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+
+              {actionError ? (
+                <StatusNotice kind="error">{actionError}</StatusNotice>
+              ) : null}
+            </div>
+            <div
+              role="tabpanel"
+              id="ai-panel-translation"
+              aria-labelledby="ai-tab-translation"
+              hidden={tab !== "translation"}
+            >
+              {tab === "translation" ? (
+                <TranslationModelSection cli={providers.cli} custom={providers.custom} />
+              ) : null}
+            </div>
           </>
         ) : null}
       </div>

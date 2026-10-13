@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Splitter } from "../../components/Splitter";
 import { StatusNotice } from "../../components/StatusNotice";
+import { formatDirection } from "../../lib/languages";
 import {
   loadSidebarWidth,
   loadSourceWidth,
@@ -21,6 +22,7 @@ import { ExportDialog } from "../export/ExportDialog";
 import { SourcePane } from "../reader/SourcePane";
 import { TargetPane } from "../translator/TargetPane";
 import { useChapterEditor } from "../translator/useChapterEditor";
+import { LanguageDialog } from "./LanguageDialog";
 
 type ProjectState =
   | { status: "loading" }
@@ -64,6 +66,7 @@ export function WorkspaceFrame({
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportOutcome, setExportOutcome] = useState<ExportOutcome | null>(null);
+  const [langOpen, setLangOpen] = useState(false);
   const readingRef = useRef<HTMLDivElement>(null);
   const loadSequence = useRef(0);
   const contentRef = useRef<ChapterContent | null>(null);
@@ -375,6 +378,7 @@ export function WorkspaceFrame({
             onChange={persistSource}
           />
           <TargetPane
+            projectId={projectId}
             content={content}
             loading={contentState.status === "loading"}
             error={contentState.status === "error" ? contentState.message : null}
@@ -404,8 +408,29 @@ export function WorkspaceFrame({
         ) : (
           <span>No chapter selected</span>
         )}
-        {project ? <span>Target language: {project.targetLanguage}</span> : null}
+        {project ? (
+          <button
+            type="button"
+            className="workspace__lang"
+            onClick={() => setLangOpen(true)}
+            title="Show and change the translation languages"
+          >
+            {formatDirection(project.sourceLanguage, project.targetLanguage)}
+          </button>
+        ) : null}
       </footer>
+
+      {langOpen && project ? (
+        <LanguageDialog
+          project={project}
+          onClose={() => setLangOpen(false)}
+          onSaved={(updated) =>
+            setProjectState((current) =>
+              current.status === "ready" ? { ...current, project: updated } : current,
+            )
+          }
+        />
+      ) : null}
 
       {exportOpen && project ? (
         <ExportDialog
