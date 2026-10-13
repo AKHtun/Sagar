@@ -12,13 +12,15 @@
   "app": {
     "windows": [
       {
-        "title": "sagar",
-        "width": 800,
-        "height": 600
+        "title": "EPUB Translation Studio",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 640
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' epubres: http://epubres.localhost data:; font-src 'self' epubres: http://epubres.localhost; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420; object-src 'none'; base-uri 'self'; form-action 'none'"
     }
   },
   "bundle": {

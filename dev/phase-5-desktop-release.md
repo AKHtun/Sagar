@@ -1,6 +1,6 @@
 # Milestone 5 — Polish & desktop release
 
-**Status:** Planning — not implemented  
+**Status:** Partially implemented — macOS-verified (2026-10-12); installers, cross-OS accessibility/rendering passes and the large-book sweep remain open.  
 **Source:** [Master plan](plan.md)  
 **Repository rules:** [AGENTS.md](../AGENTS.md)
 
@@ -12,12 +12,24 @@ Build on [Milestone 4 — EPUB export (vertical-slice first)](phase-4-epub-expor
 
 ## Tasks and acceptance criteria
 
-- [ ] UX review: dark mode, pane resizing, text zoom, shortcuts, error dialogs.
+- [x] UX review: dark mode, pane resizing, text zoom, shortcuts, error dialogs.
 - [ ] Accessibility and Burmese text rendering cross-OS tests.
 - [ ] Performance checks with large books (bounded RAM/use lazy loading).
 - [ ] Package and smoke-test installers for Windows/macOS/Linux.
-- [ ] Document backups, privacy, supported EPUB limits, and recovery.
-- [ ] Release checklist covering data-loss cases and export validation.
+      (macOS .app/.dmg were built and boot-smoked on Apple Silicon;
+      Windows and Linux installers cannot be produced from this macOS
+      environment and remain open in docs/release-checklist.md.)
+- [x] Document backups, privacy, supported EPUB limits, and recovery.
+- [x] Release checklist covering data-loss cases and export validation.
+
+**Status notes**
+
+- Implemented on macOS: system/light/dark themes, persistent pane sizes and
+  text zoom, Cmd/Ctrl+O/S/± shortcuts, CSP lockdown, README and
+  `docs/release-checklist.md`.
+- Cross-OS tests, screen-reader passes, installer packaging and the
+  large-book sweep are recorded as open items in the release checklist; the
+  milestone's "done when" (installers on all three OSes) is **not** met yet.
 
 **Done when:** build artifacts install/open/export reliably on all supported desktop systems and known limitations are documented.
 
@@ -34,3 +46,24 @@ Follow [Desktop UI/UX design](ui-ux-design.md) for layout dimensions, visual tok
 - [Section 11 — Known technical risks / mitigations](plan.md)
 
 Follow the master plan’s quality gates and repository definition of done. Check tasks only after implementation and acceptance criteria are verified; keep completion status aligned with the master plan.
+
+### Library and workspace polish — 2026-10-13
+
+Removed the home-page System check panel and startup diagnostic request; actual
+library/import failures remain actionable. Added a shared SVG icon component,
+trash action with the existing deletion confirmation, compact appearance and
+navigation controls, icon formatting/review actions, searchable books and
+compact accessible chapter progress. Reduced repeated/instructional copy and
+aligned typography, spacing and control sizing. Source and translation stay
+side by side with unchanged autosave/export services.
+
+Browser checks cover search/no-results, deletion confirmation/cancel, accessible
+icon actions, rich text formatting/image insertion, draft restoration, chapter
+navigation and minimum-window layout. Build/lint passed. Native cross-platform
+screen-reader/IME and installer checks remain the next unfinished release work.
+
+### Library row highlight — 2026-10-13
+
+Hover and keyboard-focus highlighting now belong to the entire project row,
+including the separate trash action, rather than only the open-book button.
+The two actions remain separate controls with their existing behavior.

@@ -1,6 +1,6 @@
 # Milestone 3 — Local autosave, progress and resume
 
-**Status:** Planning — not implemented  
+**Status:** Implemented on macOS (verified 2026-10-12 via storage/integration tests and app smoke). Windows/Linux untested.  
 **Source:** [Master plan](plan.md)  
 **Repository rules:** [AGENTS.md](../AGENTS.md)
 
@@ -12,12 +12,20 @@ Build on [Milestone 2 — Side-by-side reading/translation UI](phase-2-translati
 
 ## Tasks and acceptance criteria
 
-- [ ] Debounced autosave with revision conflict protection and retries.
-- [ ] Persist `pending`, `draft`, `reviewed`, `skipped` states.
-- [ ] Derive chapter status from required block review status.
-- [ ] Restore project and last chapter after a restart.
-- [ ] Flush saves before navigation and export.
-- [ ] Add recoverability and save-failure tests (including process interruption where feasible).
+- [x] Debounced autosave with revision conflict protection and retries.
+- [x] Persist `pending`, `draft`, `reviewed`, `skipped` states.
+- [x] Derive chapter status from required block review status.
+- [x] Restore project and last chapter after a restart.
+- [x] Flush saves before navigation and export.
+- [x] Add recoverability and save-failure tests (including process interruption where feasible).
+
+**Status notes**
+
+- Conflicts keep the local draft and offer an explicit reload; committed
+  revisions are the only recovery guarantee, matching the master plan.
+- Process-kill-during-save is covered only indirectly (transactional
+  single-statement writes); a dedicated kill test remains open in the
+  release checklist.
 
 **Done when:** edited translations survive app restart and chapter switching without data loss; failures are reported honestly.
 

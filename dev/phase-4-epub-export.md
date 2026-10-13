@@ -1,6 +1,6 @@
 # Milestone 4 — EPUB export (vertical-slice first)
 
-**Status:** Planning — not implemented  
+**Status:** Implemented on macOS (verified 2026-10-12 via export round-trip integration tests). EPUBCheck not run (no Java in this environment); Windows/Linux untested.  
 **Source:** [Master plan](plan.md)  
 **Repository rules:** [AGENTS.md](../AGENTS.md)
 
@@ -12,16 +12,16 @@ Build on [Milestone 3 — Local autosave, progress and resume](phase-3-autosave-
 
 ## Tasks and acceptance criteria
 
-- [ ] Implement a 1-chapter translated EPUB round trip on an intentionally simple fixture.
-- [ ] Patch translated XHTML fragments into source resource tree without flattening assets.
-- [ ] Repackage EPUB with correct OCF entry ordering/compression.
-- [ ] Update title, language and navigation labels without breaking hrefs.
-- [ ] Add native Save dialog, explicit draft mode and unfinished-content review.
-- [ ] Validate output ZIP, XHTML parsing, manifest targets and links.
-- [ ] Reimport the exported file and compare chapter/resource counts and spine order.
-- [ ] Add regression fixtures for formatting, internal links, images and footnotes.
+- [x] Implement a 1-chapter translated EPUB round trip on an intentionally simple fixture.
+- [x] Patch translated XHTML fragments into source resource tree without flattening assets.
+- [x] Repackage EPUB with correct OCF entry ordering/compression.
+- [x] Update title, language and navigation labels without breaking hrefs.
+- [x] Add native Save dialog, explicit draft mode and unfinished-content review.
+- [x] Validate output ZIP, XHTML parsing, manifest targets and links.
+- [x] Reimport the exported file and compare chapter/resource counts and spine order.
+- [x] Add regression fixtures for formatting, internal links, images and footnotes.
 
-**Done when:** a fully manually translated fixture exports, passes the project's integrity checks, reopens in a reading app, and retains its structural assets. EPUBCheck should also pass on supported compliant fixtures in CI/dev test environments.
+**Done when:** a fully manually translated fixture exports, passes the project's integrity checks, reopens in a reading app, and retains its structural assets. — Met in the automated round-trip test (re-import acts as the reader smoke test); EPUBCheck remains an open dev-environment step recorded in docs/release-checklist.md.
 
 ## Desktop UI/UX requirements
 
@@ -36,3 +36,19 @@ Follow [Desktop UI/UX design](ui-ux-design.md) for layout dimensions, visual tok
 - [Section 10 — Quality gates / test matrix](plan.md)
 
 Follow the master plan’s quality gates and repository definition of done. Check tasks only after implementation and acceptance criteria are verified; keep completion status aligned with the master plan.
+
+### Export review layout correction — 2026-10-13
+
+Export uses a bounded dialog with fixed header, title/language settings,
+summary, acknowledgement and actions. Only the chapter review region scrolls;
+its table headings stay visible. Rows use readable status labels and state
+whether draft export will include a saved translation or original content.
+Disabled actions have a neutral background; the active export action uses the
+accent with contrasting text. Keyboard focus stays in the modal and the
+chapter list is keyboard-scrollable.
+
+Draft exports include reviewed translations **and** saved unreviewed drafts.
+Empty or intentionally skipped chapters retain original content. This is
+explicit in the dialog and covered by an export regression test. Browser
+layout checks use 758 chapters at 1280 × 800 and 960 × 640; native Windows/Linux
+verification remains open.

@@ -1,0 +1,283 @@
+//! Safe preview rendering: converts stored source fragments into sanitized
+//! HTML for the read-only pane, rewriting resource references to the
+//! app-owned `epubres://` protocol so book content can never touch the
+//! network or invoke privileged APIs.
+
+use super::resolve_href;
+
+/// Attribute names (case-insensitive) never rendered in preview.
+fn is_event_attribute(name: &str) -> bool {
+    name.len() > 1 && name.to_ascii_lowercase().starts_with("on")
+}
+
+/// Rewrites a fragment for preview. `resource_prefix` is the `epubres://`
+/// URL prefix including the project id, without a trailing slash.
+pub fn sanitize_fragment(
+    fragment: &str,
+    element_name: &str,
+    base_resource: &str,
+    resource_prefix: &str,
+) -> String {
+    // The stored fragment is inner content; wrap it with the declarations it
+    // is known to reference. Unknown prefixes fall back to escaped text.
+    let wrapped = format!(
+        "<w xmlns=\"http://www.w3.org/1999/xhtml\" \
+         xmlns:epub=\"http://www.idpf.org/2007/ops\" \
+         xmlns:xlink=\"http://www.w3.org/1999/xlink\">{fragment}</w>"
+    );
+    let Ok(doc) = roxmltree::Document::parse(&wrapped) else {
+        return escape_html_text(fragment);
+    };
+    let root = doc.root_element();
+    let mut out = String::with_capacity(fragment.len());
+    for child in root.children() {
+        if child.is_element() {
+            serialize_safe(
+                child,
+                &mut out,
+                base_resource,
+                resource_prefix,
+                Some(element_name),
+            );
+        } else if child.is_text()
+            && let Some(text) = child.text()
+        {
+            out.push_str(&escape_html_text(text));
+        }
+    }
+    out
+}
+
+fn serialize_safe(
+    element: roxmltree::Node<'_, '_>,
+    out: &mut String,
+    base_resource: &str,
+    resource_prefix: &str,
+    block_element: Option<&str>,
+) {
+    let tag = element.tag_name().name().to_ascii_lowercase();
+    let tag = if tag == "image"
+        && element.tag_name().namespace() == Some("http://www.w3.org/1999/xhtml")
+    {
+        "img".to_string()
+    } else {
+        tag
+    };
+    if !matches!(
+        tag.as_str(),
+        "body"
+            | "div"
+            | "section"
+            | "article"
+            | "main"
+            | "header"
+            | "footer"
+            | "aside"
+            | "figure"
+            | "figcaption"
+            | "p"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "ul"
+            | "ol"
+            | "li"
+            | "blockquote"
+            | "strong"
+            | "em"
+            | "b"
+            | "i"
+            | "u"
+            | "s"
+            | "span"
+            | "a"
+            | "img"
+            | "br"
+            | "hr"
+            | "sup"
+            | "sub"
+            | "ruby"
+            | "rt"
+            | "rp"
+            | "table"
+            | "thead"
+            | "tbody"
+            | "tr"
+            | "td"
+            | "th"
+            | "pre"
+            | "code"
+    ) {
+        return;
+    }
+    out.push('<');
+    out.push_str(&tag);
+    for attr in element.attributes() {
+        let name = attr.name().to_ascii_lowercase();
+        if is_event_attribute(&name)
+            || !matches!(
+                name.as_str(),
+                "src" | "href" | "alt" | "title" | "id" | "lang" | "dir" | "colspan" | "rowspan"
+            )
+        {
+            continue;
+        }
+        let value = attr.value();
+        let (attr_out_name, rewritten) = if (name == "src" && tag == "img")
+            || (name == "xlink:href" && tag == "img")
+            || (name == "href" && tag == "a")
+        {
+            // Keep URI fragments (in-chapter anchors) when resolving.
+            let (path_part, fragment_part) = match value.split_once('#') {
+                Some((path, fragment)) => (path, Some(fragment)),
+                None => (value, None),
+            };
+            let mut rewritten = rewrite_url(path_part, base_resource, resource_prefix);
+            if let Some(fragment) = fragment_part {
+                rewritten.push('#');
+                rewritten.push_str(fragment);
+            }
+            (name.as_str(), Some(rewritten))
+        } else if name == "style" {
+            // Inline styles could hide content or position overlays; drop them
+            // in preview rather than build a CSS allowlist for the MVP.
+            continue;
+        } else {
+            (name.as_str(), None)
+        };
+        out.push(' ');
+        out.push_str(attr_out_name);
+        out.push_str("=\"");
+        out.push_str(&escape_html_text(
+            &rewritten.unwrap_or_else(|| value.to_string()),
+        ));
+        out.push('"');
+    }
+    if tag == "a" {
+        out.push_str(" target=\"_blank\" rel=\"noopener noreferrer\"");
+    }
+    if block_element == Some(tag.as_str()) {
+        out.push_str(&format!(
+            " data-block-element=\"{}\"",
+            escape_html_text(&tag)
+        ));
+    }
+    const VOID: [&str; 4] = ["img", "br", "hr", "source"];
+    if VOID.contains(&tag.as_str()) {
+        out.push_str("/>");
+        return;
+    }
+    let has_children = element
+        .children()
+        .any(|c| c.is_element() || c.text().is_some_and(|t| !t.is_empty()));
+    if has_children {
+        out.push('>');
+        for child in element.children() {
+            if child.is_element() {
+                serialize_safe(child, out, base_resource, resource_prefix, None);
+            } else if child.is_text()
+                && let Some(text) = child.text()
+            {
+                out.push_str(&escape_html_text(text));
+            }
+        }
+        out.push_str("</");
+        out.push_str(&tag);
+        out.push('>');
+    } else {
+        out.push_str("></");
+        out.push_str(&tag);
+        out.push('>');
+    }
+}
+
+/// Rewrites a URL for preview: relative paths point at the snapshot via
+/// `epubres://`; external URLs are kept inert (never auto-fetched); unsafe
+/// schemes are stripped.
+fn rewrite_url(value: &str, base_resource: &str, resource_prefix: &str) -> String {
+    let trimmed = value.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("javascript:")
+        || lower.starts_with("data:")
+        || lower.starts_with("vbscript:")
+    {
+        return String::new();
+    }
+    if trimmed.starts_with('#') {
+        // In-chapter anchor.
+        return trimmed.to_string();
+    }
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return String::new();
+    }
+    if trimmed.contains(':') || trimmed.starts_with("//") {
+        return String::new();
+    }
+    format!("{resource_prefix}/{}", resolve_href(base_resource, trimmed))
+}
+
+pub fn escape_html_text(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sanitize(fragment: &str) -> String {
+        sanitize_fragment(fragment, "p", "OEBPS/c1.xhtml", "epubres://pid")
+    }
+
+    #[test]
+    fn keeps_plain_text_and_inline_markup() {
+        let html = sanitize("See <em>this</em> &amp; that");
+        assert_eq!(html, "See <em>this</em> &amp; that");
+    }
+
+    #[test]
+    fn rewrites_relative_images_and_links_to_epubres() {
+        let html = sanitize(
+            "<a href=\"c2.xhtml#n1\">note</a> and <img src=\"../images/a.png\" alt=\"A\"/>",
+        );
+        assert!(
+            html.contains("href=\"epubres://pid/OEBPS/c2.xhtml#n1\""),
+            "{html}"
+        );
+        assert!(
+            html.contains("src=\"epubres://pid/images/a.png\""),
+            "{html}"
+        );
+        assert!(html.contains("alt=\"A\""));
+    }
+
+    #[test]
+    fn strips_event_handlers_and_script_schemes() {
+        let html = sanitize(
+            "<a href=\"javascript:alert(1)\" onclick=\"evil()\">x</a><img src=\"a.png\" onerror=\"evil()\"/>",
+        );
+        assert!(!html.contains("onclick"), "{html}");
+        assert!(!html.contains("onerror"), "{html}");
+        assert!(html.contains("href=\"\""), "{html}");
+    }
+
+    #[test]
+    fn strips_external_urls_to_prevent_network_fetches() {
+        let html = sanitize("<a href=\"https://example.com/page\">site</a>");
+        assert!(html.contains("href=\"\""), "{html}");
+        assert!(!sanitize("<img src=\"https://example.com/a.png\"/>").contains("https://"));
+        assert!(!sanitize("<script>evil()</script><iframe src=\"a.xhtml\"/>").contains("evil"));
+    }
+
+    #[test]
+    fn falls_back_to_escaped_text_for_unknown_prefixes() {
+        let html = sanitize("<x:weird>text</x:weird>");
+        assert!(!html.contains("<x:weird>"), "{html}");
+        assert!(html.contains("text"), "{html}");
+    }
+}

@@ -1,0 +1,125 @@
+/*
+ * Shared design tokens — Milestone 0 foundation.
+ * Initial targets from dev/ui-ux-design.md §2; validate contrast
+ * and readability in the real WebViews before treating as final.
+ */
+:root {
+  /* Spacing scale (px) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Typography */
+  --font-ui:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Myanmar-capable fallbacks for book/editor content */
+  --font-book:
+    Charter, Georgia, "Times New Roman", serif, Padauk, "Myanmar Text",
+    "Noto Sans Myanmar", sans-serif;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --leading-book: 1.75;
+
+  /* Surfaces and text */
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-surface-hover: #eef1f5;
+  --color-surface-selected: #e1ebf7;
+  --color-text: #1c2430;
+  --color-text-muted: #5a6572;
+  --color-border: #d5dae1;
+
+  /* Accent and status */
+  --color-accent: #2b6cb0;
+  --color-accent-hover: #255a91;
+  --color-accent-text: #ffffff;
+  --color-focus: #2b6cb0;
+  --color-success: #1e7d46;
+  --color-success-bg: #e8f5ee;
+  --color-success-border: #b7dfc8;
+  --color-warning: #8a5a00;
+  --color-warning-bg: #fdf3e0;
+  --color-warning-border: #ecd6a8;
+  --color-error: #b3261e;
+  --color-error-bg: #fbeae9;
+  --color-error-border: #f0c1be;
+  --color-info: #2b4a75;
+  --color-info-bg: #eaf1f9;
+  --color-info-border: #c6d8ec;
+
+  /* Shape and depth */
+  --radius-control: 6px;
+  --radius-dialog: 8px;
+  --border-subtle: 1px solid var(--color-border);
+  --control-height: 32px;
+  --shadow-overlay: 0 4px 16px rgb(0 0 0 / 0.12);
+}
+
+/* Dark appearance (design: same tokens, dark values; never invert book art). */
+[data-theme="dark"] {
+  --color-bg: #14181d;
+  --color-surface: #1c2229;
+  --color-surface-hover: #252d36;
+  --color-surface-selected: #294059;
+  --color-text: #e8ecf1;
+  --color-text-muted: #9aa7b5;
+  --color-border: #37424e;
+
+  --color-accent: #5b9bd8;
+  --color-accent-hover: #74abdf;
+  --color-accent-text: #0d1319;
+  --color-focus: #7cb3e8;
+  --color-success: #5ecb8b;
+  --color-success-bg: #17301f;
+  --color-success-border: #2c5e3d;
+  --color-warning: #e3b34e;
+  --color-warning-bg: #33290f;
+  --color-warning-border: #6e5722;
+  --color-error: #ef7a72;
+  --color-error-bg: #3a1d1b;
+  --color-error-border: #7a403c;
+  --color-info: #9ec1e8;
+  --color-info-bg: #1a2735;
+  --color-info-border: #35526e;
+
+  --shadow-overlay: 0 4px 16px rgb(0 0 0 / 0.5);
+}
+
+/* "system" resolves through the OS preference. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --color-bg: #14181d;
+    --color-surface: #1c2229;
+    --color-surface-hover: #252d36;
+    --color-surface-selected: #294059;
+    --color-text: #e8ecf1;
+    --color-text-muted: #9aa7b5;
+    --color-border: #37424e;
+
+    --color-accent: #5b9bd8;
+    --color-accent-hover: #74abdf;
+    --color-accent-text: #0d1319;
+    --color-focus: #7cb3e8;
+    --color-success: #5ecb8b;
+    --color-success-bg: #17301f;
+    --color-success-border: #2c5e3d;
+    --color-warning: #e3b34e;
+    --color-warning-bg: #33290f;
+    --color-warning-border: #6e5722;
+    --color-error: #ef7a72;
+    --color-error-bg: #3a1d1b;
+    --color-error-border: #7a403c;
+    --color-info: #9ec1e8;
+    --color-info-bg: #1a2735;
+    --color-info-border: #35526e;
+
+    --shadow-overlay: 0 4px 16px rgb(0 0 0 / 0.5);
+  }
+}

@@ -63,9 +63,9 @@ Keep the toolbar, pane headings and bottom status bar stable while content scrol
 
 ## 4. Project Library and import
 
-Use a clear heading, a primary **Open EPUB** action and a compact recent-project list. A row shows a small cover thumbnail or neutral placeholder, title, author, language direction, reviewed progress and last edited time. Titles take priority over metadata; show the full title in an accessible detail view when truncation is necessary. Label progress as “24 of 60 blocks reviewed,” not simply “40% translated.”
+Use a clear heading, a primary **Import EPUB** action and a searchable, compact book list. A row shows a small cover thumbnail or neutral placeholder, title, author, language direction, reviewed progress and last edited time. Titles take priority over metadata; show the full title in an accessible detail view when truncation is necessary. Use a compact reviewed/total chapter count and progress bar, with the complete metric in its accessible label and tooltip.
 
-For an empty library, explain the three-step workflow: open a DRM-free EPUB, translate chapters, export a separate EPUB. Provide one Open EPUB action; keep unsupported-format information concise and accessible nearby. Avoid account setup or online onboarding.
+For an empty library, show a book icon, “Add your first book” and a single short import hint. Keep one Import EPUB action. Avoid account setup or online onboarding.
 
 After native file selection, show import stages such as “Checking book,” “Reading chapters” and “Creating project.” Use indeterminate progress unless measurable totals are available. Offer cancellation only when the service supports safe cancellation. Cancelling the picker returns to the previous screen without an error notification.
 
@@ -169,3 +169,13 @@ These additional UI checks supplement the master plan’s acceptance criteria; a
 - [ ] Keyboard-only use covers import, chapter selection, editing, review, export and dialog cancellation.
 - [ ] Focus, accessible names, contrast and available screen readers are checked in both themes on supported OSes where possible.
 - [ ] Screenshots and manual findings record the actual OS, window size and limitations; no untested platform is marked verified.
+
+### Visual polish revision — 2026-10-13
+
+The home page shows books and import/search actions without system diagnostics,
+version/schema information or a workflow tutorial. Common actions use one local
+SVG icon set: trash, appearance, sidebar, previous/next, review, keep-original,
+formatting, images and export. Icon-only buttons have accessible labels,
+tooltips and keyboard focus. Major actions retain short text beside their icon.
+Library metadata is reduced to author/language, chapter progress and edited date.
+Source content no longer has a redundant uppercase caption.

@@ -1,6 +1,6 @@
 # Plan.md — EPUB Translation Studio
 
-**Status:** Planning / no application features are claimed implemented yet  
+**Status:** Milestones 0–4 implemented and verified on macOS (import → translate → autosave → export). Milestone 5 is partially done: polish/docs verified on macOS; installers and cross-OS checks remain open (see docs/release-checklist.md).  
 **Target:** Windows, macOS and Linux  
 **Phase 1:** Manual side-by-side EPUB translation and EPUB export  
 **Chosen scaffold:** Tauri 2 + React + TypeScript + **Bun**  
@@ -74,6 +74,7 @@ Detailed visual and interaction requirements: [Desktop UI/UX design](ui-ux-desig
 - Sidebar: chapters, status (`not_started`, `in_progress`, `completed`), progress.
 - Resizable left/right panes. Comfortable Myanmar font and line-height; independent scrolling initially. Block-linked scrolling later, after editor stability.
 - Original pane renders protected/read-only content, including images, headings and links.
+- Target pane presents a chapter document with restricted rich text, a shared formatting toolbar, and local/current-chapter image insertion. Original pane offers rendered Reader and read-only HTML modes.
 - Target pane edits supported content blocks. Users can copy original text into target, save, undo, and mark blocks reviewed.
 - Search inside the selected chapter (post-core milestone if necessary).
 - Never claim an empty block is complete merely because its chapter was visited.
@@ -321,14 +322,18 @@ User clicks Export
 
 ## 9. Implementation roadmap
 
-Checkboxes are intentionally **unchecked** because no feature implementation has been verified.
+Checkboxes are checked only after the functionality exists and its acceptance criteria are verified.
 
 ### Phase files
 
 The files below break down the existing roadmap without changing its scope or completion status. Numbered phase files follow Milestones 0–5 within product Phase 1; compatibility and AI remain deferred tracks.
 
-- [Milestone 0 — Bootstrap & architecture foundation](phase-0-bootstrap.md)
-- [Milestone 1 — EPUB import and chapter listing](phase-1-epub-import.md)
+- [x] [Milestone 0 — Bootstrap & architecture foundation](phase-0-bootstrap.md)
+- [x] [Milestone 1 — EPUB import and chapter listing](phase-1-epub-import.md)
+- [x] [Milestone 2 — Side-by-side reading/translation UI](phase-2-translation-workspace.md) (independent chapter rich text documents and image insertion; native IME checks pending)
+- [x] [Milestone 3 — Local autosave, progress and resume](phase-3-autosave-and-resume.md)
+- [x] [Milestone 4 — EPUB export (vertical-slice first)](phase-4-epub-export.md) (EPUBCheck pending)
+- [ ] [Milestone 5 — Polish & desktop release](phase-5-desktop-release.md) (macOS polish done; installers/cross-OS open)
 - [Milestone 2 — Side-by-side reading/translation UI](phase-2-translation-workspace.md)
 - [Milestone 3 — Local autosave, progress and resume](phase-3-autosave-and-resume.md)
 - [Milestone 4 — EPUB export (vertical-slice first)](phase-4-epub-export.md)
@@ -338,73 +343,74 @@ The files below break down the existing roadmap without changing its scope or co
 
 ### Milestone 0 — Bootstrap & architecture foundation
 
-- [ ] Verify generated Tauri 2 + React + TS project runs with **Bun** on the current development OS.
-- [ ] Remove demo UI; create minimal app shell and navigation.
-- [ ] Add strict TS checks, format/lint conventions and relevant scripts.
-- [ ] Add Rust `domain`, `services`, `epub`, `storage` structure as functionality is introduced.
-- [ ] Implement typed Tauri command bridge and reusable error reporting.
-- [ ] Add SQLite schema/migration initialization with an automated persistence test.
-- [ ] Add native dialog plugin and narrowly scoped capabilities for import/export; avoid broad filesystem permissions.
+- [x] Verify generated Tauri 2 + React + TS project runs with **Bun** on the current development OS.
+- [x] Remove demo UI; create minimal app shell and navigation.
+- [x] Add strict TS checks, format/lint conventions and relevant scripts.
+- [x] Add Rust `domain`, `services`, `epub`, `storage` structure as functionality is introduced.
+- [x] Implement typed Tauri command bridge and reusable error reporting.
+- [x] Add SQLite schema/migration initialization with an automated persistence test.
+- [x] Add native dialog plugin and narrowly scoped capabilities for import/export; avoid broad filesystem permissions.
 
 **Done when:** `bun tauri dev` launches, the frontend invokes a typed Rust test command, and a local SQLite migration test passes.
 
 ### Milestone 1 — EPUB import and chapter listing
 
-- [ ] Implement archive and untrusted-input safety limits.
-- [ ] Parse container.xml + OPF manifest/spine/metadata for EPUB 3.
-- [ ] Parse EPUB navigation and resolve ordered chapter titles/anchors.
-- [ ] Copy immutable source snapshot, hash it, and create project rows.
-- [ ] Build stable editable block map for supported XHTML elements.
-- [ ] Surface unsupported EPUB feature warnings instead of failing silently.
-- [ ] Show imported project in library and chapter sidebar.
-- [ ] Add fixtures: simple multi-chapter, nested paths, images, links, missing OPF, malformed ZIP.
+- [x] Implement archive and untrusted-input safety limits.
+- [x] Parse container.xml + OPF manifest/spine/metadata for EPUB 3.
+- [x] Parse EPUB navigation and resolve ordered chapter titles/anchors.
+- [x] Copy immutable source snapshot, hash it, and create project rows.
+- [x] Build stable editable block map for supported XHTML elements.
+- [x] Surface unsupported EPUB feature warnings instead of failing silently.
+- [x] Show imported project in library and chapter sidebar.
+- [x] Add fixtures: simple multi-chapter, nested paths, images, links, missing OPF, malformed ZIP.
 
 **Done when:** importing a fixture shows correct title, author, source language, cover if present, and spine-ordered chapters. Imported original is not modified.
 
 ### Milestone 2 — Side-by-side reading/translation UI
 
-- [ ] Design resizable 3-panel workspace (chapters, source, target).
-- [ ] Render source chapter safely with images and applicable book CSS.
-- [ ] Display target editor bound to stable source-block IDs.
+- [x] Design resizable 3-panel workspace (chapters, source, target).
+- [x] Render source chapter safely with images and applicable book CSS.
+- [x] Display target editor bound to stable source-block IDs.
 - [ ] Support basic editing: Unicode text, paragraphs/headings, emphasis and inline links where safely mapped.
-- [ ] Add keyboard navigation, selection/focus, and clear save/error state.
+- [x] Add keyboard navigation, selection/focus, and clear save/error state.
 - [ ] Test Myanmar Unicode line wrapping, copy/paste and multi-line content.
-- [ ] Validate EPUB.js/preview adapter compatibility with Tauri WebViews.
+- [x] Validate EPUB.js/preview adapter compatibility with Tauri WebViews.
 
 **Done when:** user can read one imported chapter and edit corresponding target blocks without altering source or breaking referenced images/links.
 
 ### Milestone 3 — Local autosave, progress and resume
 
-- [ ] Debounced autosave with revision conflict protection and retries.
-- [ ] Persist `pending`, `draft`, `reviewed`, `skipped` states.
-- [ ] Derive chapter status from required block review status.
-- [ ] Restore project and last chapter after a restart.
-- [ ] Flush saves before navigation and export.
-- [ ] Add recoverability and save-failure tests (including process interruption where feasible).
+- [x] Debounced autosave with revision conflict protection and retries.
+- [x] Persist `pending`, `draft`, `reviewed`, `skipped` states.
+- [x] Derive chapter status from required block review status.
+- [x] Restore project and last chapter after a restart.
+- [x] Flush saves before navigation and export.
+- [x] Add recoverability and save-failure tests (including process interruption where feasible).
 
 **Done when:** edited translations survive app restart and chapter switching without data loss; failures are reported honestly.
 
 ### Milestone 4 — EPUB export (vertical-slice first)
 
-- [ ] Implement a 1-chapter translated EPUB round trip on an intentionally simple fixture.
-- [ ] Patch translated XHTML fragments into source resource tree without flattening assets.
-- [ ] Repackage EPUB with correct OCF entry ordering/compression.
-- [ ] Update title, language and navigation labels without breaking hrefs.
-- [ ] Add native Save dialog, explicit draft mode and unfinished-content review.
-- [ ] Validate output ZIP, XHTML parsing, manifest targets and links.
-- [ ] Reimport the exported file and compare chapter/resource counts and spine order.
-- [ ] Add regression fixtures for formatting, internal links, images and footnotes.
+- [x] Implement a 1-chapter translated EPUB round trip on an intentionally simple fixture.
+- [x] Patch translated XHTML fragments into source resource tree without flattening assets.
+- [x] Repackage EPUB with correct OCF entry ordering/compression.
+- [x] Update title, language and navigation labels without breaking hrefs.
+- [x] Add native Save dialog, explicit draft mode and unfinished-content review.
+- [x] Validate output ZIP, XHTML parsing, manifest targets and links.
+- [x] Reimport the exported file and compare chapter/resource counts and spine order.
+- [x] Add regression fixtures for formatting, internal links, images and footnotes.
 
 **Done when:** a fully manually translated fixture exports, passes the project's integrity checks, reopens in a reading app, and retains its structural assets. EPUBCheck should also pass on supported compliant fixtures in CI/dev test environments.
 
 ### Milestone 5 — Polish & desktop release
 
-- [ ] UX review: dark mode, pane resizing, text zoom, shortcuts, error dialogs.
+- [x] UX review: dark mode, pane resizing, text zoom, shortcuts, error dialogs.
 - [ ] Accessibility and Burmese text rendering cross-OS tests.
 - [ ] Performance checks with large books (bounded RAM/use lazy loading).
 - [ ] Package and smoke-test installers for Windows/macOS/Linux.
-- [ ] Document backups, privacy, supported EPUB limits, and recovery.
-- [ ] Release checklist covering data-loss cases and export validation.
+      (macOS .app/.dmg built and smoke-tested; Windows/Linux pending.)
+- [x] Document backups, privacy, supported EPUB limits, and recovery.
+- [x] Release checklist covering data-loss cases and export validation.
 
 **Done when:** build artifacts install/open/export reliably on all supported desktop systems and known limitations are documented.
 
@@ -491,3 +497,29 @@ cd src-tauri && cargo fmt --check && cargo test
 - EPUB overview / package, spine and navigation: https://www.w3.org/TR/epub-overview-34/
 - EPUB specification: https://www.w3.org/publishing/epub/
 - EPUBCheck validator: https://github.com/w3c/epubcheck
+
+### Workspace revision — 2026-10-13
+
+Milestone 2 follow-up replaces plain text fields with restricted Tiptap passage editors presented as a document, adds Reader/HTML source views and image insertion with EPUB manifest packaging. See [Milestone 2](phase-2-translation-workspace.md) for verified behavior and limitations. Native Myanmar IME/copy-paste and Windows/Linux remain unchecked; no release milestones were advanced.
+
+### Chapter authoring correction — 2026-10-13
+
+The user's clarified workflow supersedes the block-aligned editor/merge-split
+restriction in this plan: each chapter has one independent, initially empty
+rich text document. Paragraph selection is not required. Chapter IDs own saved
+drafts, review and export; immutable source blocks remain for import and legacy
+recovery. Export replaces the corresponding XHTML body with the authored
+document. See Milestone 2 for preservation limits and verification.
+
+Translation HTML authoring is now explicitly requested: the target pane has
+an editable HTML body view sharing chapter autosave with Rich text, with
+validation and a loss-aware check before converting back. This supersedes
+the earlier HTML-authoring exclusion for the supported chapter schema; the
+source HTML view stays read-only.
+
+### Writer shortcuts — 2026-10-13
+
+The editor has a `/` block menu for Text, H1–H3, Table and Image, with keyboard
+filtering/selection and pointer selection at the caret. Basic authored tables
+are now an explicitly requested feature, using the existing chapter save and
+EPUB export services. See Milestone 2 for validation and remaining native checks.

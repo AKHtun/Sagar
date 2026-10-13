@@ -1,6 +1,6 @@
 # Milestone 0 — Bootstrap & architecture foundation
 
-**Status:** Planning — not implemented  
+**Status:** Implemented — verified on macOS (darwin arm64) on 2026-10-12; Windows/Linux untested  
 **Source:** [Master plan](plan.md)  
 **Repository rules:** [AGENTS.md](../AGENTS.md)
 
@@ -12,13 +12,13 @@ Start here; use the existing scaffold.
 
 ## Tasks and acceptance criteria
 
-- [ ] Verify generated Tauri 2 + React + TS project runs with **Bun** on the current development OS.
-- [ ] Remove demo UI; create minimal app shell and navigation.
-- [ ] Add strict TS checks, format/lint conventions and relevant scripts.
-- [ ] Add Rust `domain`, `services`, `epub`, `storage` structure as functionality is introduced.
-- [ ] Implement typed Tauri command bridge and reusable error reporting.
-- [ ] Add SQLite schema/migration initialization with an automated persistence test.
-- [ ] Add native dialog plugin and narrowly scoped capabilities for import/export; avoid broad filesystem permissions.
+- [x] Verify generated Tauri 2 + React + TS project runs with **Bun** on the current development OS.
+- [x] Remove demo UI; create minimal app shell and navigation.
+- [x] Add strict TS checks, format/lint conventions and relevant scripts.
+- [x] Add Rust `domain`, `services`, `epub`, `storage` structure as functionality is introduced.
+- [x] Implement typed Tauri command bridge and reusable error reporting.
+- [x] Add SQLite schema/migration initialization with an automated persistence test.
+- [x] Add native dialog plugin and narrowly scoped capabilities for import/export; avoid broad filesystem permissions.
 
 **Done when:** `bun tauri dev` launches, the frontend invokes a typed Rust test command, and a local SQLite migration test passes.
 
