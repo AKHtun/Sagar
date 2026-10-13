@@ -3,8 +3,10 @@ An offline-first desktop app for manually translating DRM-free EPUB books,
 side by side, without losing the original formatting. Read the original
 chapter on the left, write the translation on the right, review chapters, and export a separate translated EPUB.
 
+![](./icon.png)
+
 Built with Tauri 2, React, TypeScript and Rust; SQLite stores project data
-locally. **No**** ****account,**** ****no**** ****network:**** ****book**** ****content**** ****never**** ****leaves**** ****the**** ****machine.**
+locally. **No** **account,** **no** **network:** **book** **content** **never** **leaves** **the** **machine.**
 
 ## Development (Bun + Rust)
 
@@ -17,7 +19,7 @@ cargo fmt --check && cargo test
 cargo clippy --all-targets -- -D warnings
 ```
 
-Requires the **Tauri**** ****2**** ****prerequisites** for your OS (see
+Requires the **Tauri** **2** **prerequisites** for your OS (see
 [https://v2.tauri.app/start/prerequisites/](https://v2.tauri.app/start/prerequisites/) ).
 
 ## How it works
@@ -29,7 +31,7 @@ immutable snapshot into app-owned storage, and detects translatable blocks
 1. **Translate** — chapters are listed in reading order. Each chapter shows
 the original (read-only) next to an editable translation. Chapter documents autosave
 with revision protection; you can mark chapters **reviewed** or choose
-**keep**** ****original**. Text structures the editor cannot translate safely
+**keep** **original**. Text structures the editor cannot translate safely
 (tables, preformatted text, MathML…) are preserved unchanged and listed as
 import notes.
 1. **Export** — a review dialog shows exactly what is translated. A
