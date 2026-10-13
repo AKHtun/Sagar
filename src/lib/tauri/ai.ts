@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AiHtmlFixStart,
   AiProviderList,
   AiTranslationStart,
   CliCheckResult,
@@ -125,6 +126,29 @@ export async function startAiTranslation(input: {
 export async function cancelAiTranslation(jobId: string): Promise<void> {
   try {
     await invoke("cancel_ai_translation", { jobId });
+  } catch (error) {
+    throw toCommandError(error);
+  }
+}
+
+/** Starts an HTML-fix run over the user's current draft HTML. */
+export async function startAiHtmlFix(input: {
+  chapterId: string;
+  html: string;
+  agent: string;
+  model: string;
+  consent: boolean;
+  reasoningEffort?: string | null;
+}): Promise<AiHtmlFixStart> {
+  try {
+    return await invoke<AiHtmlFixStart>("start_ai_html_fix", {
+      chapterId: input.chapterId,
+      html: input.html,
+      agent: input.agent,
+      model: input.model,
+      consent: input.consent,
+      reasoningEffort: input.reasoningEffort ?? null,
+    });
   } catch (error) {
     throw toCommandError(error);
   }

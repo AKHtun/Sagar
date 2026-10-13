@@ -172,3 +172,29 @@ pub struct AiTranslationEvent {
     /// Short human-readable outcome; never contains book text or secrets.
     pub message: String,
 }
+
+/// Handle for a running HTML-fix job. The input is the user's current draft
+/// HTML (not the stored source); the backend never modifies the saved draft.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiHtmlFixStart {
+    pub job_id: String,
+}
+
+/// Terminal or progress event for an HTML-fix job. The saved draft is never
+/// modified by the backend; the frontend fills `fixed_html` into the editor
+/// only on user confirmation.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiHtmlFixEvent {
+    pub job_id: String,
+    pub chapter_id: String,
+    /// `started` | `stream` | `done` | `failed` | `cancelled`.
+    pub kind: String,
+    pub fixed_html: Option<String>,
+    /// Running full-so-far stdout for `stream` events; book-derived text
+    /// shown locally only, never logged or telemetered.
+    pub partial_text: Option<String>,
+    /// Short human-readable outcome; never contains book text or secrets.
+    pub message: String,
+}

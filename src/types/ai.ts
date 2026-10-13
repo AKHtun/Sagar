@@ -71,3 +71,17 @@ export type AiTranslationEvent = {
   partialText: string | null;
   message: string;
 };
+
+export type AiHtmlFixStart = {
+  jobId: string;
+};
+
+export type AiHtmlFixEvent = {
+  jobId: string;
+  chapterId: string;
+  kind: "started" | "stream" | "done" | "failed" | "cancelled";
+  fixedHtml: string | null;
+  /** Running full-so-far output for `stream` events. */
+  partialText: string | null;
+  message: string;
+};

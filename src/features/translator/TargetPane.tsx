@@ -5,6 +5,7 @@ import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
 import { validateChapterHtml } from "../../lib/tauri/commands";
 import type { ChapterContent } from "../../types/chapter";
+import { AiFixHtmlDialog } from "./AiFixHtmlDialog";
 import { AiGenerateDialog } from "./AiGenerateDialog";
 import { ChapterEditor } from "./ChapterEditor";
 import { comparableDocument, hasContent } from "./richText";
@@ -32,6 +33,7 @@ export function TargetPane({
   const [imageError, setImageError] = useState<string | null>(null);
   const [imagePicker, setImagePicker] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [fixConfirmOpen, setFixConfirmOpen] = useState(false);
   const [formattingOpen, setFormattingOpen] = useState(false);
   const [view, setView] = useState<"rich" | "html">("rich");
   const [viewError, setViewError] = useState<string | null>(null);
@@ -58,6 +60,7 @@ export function TargetPane({
     setView("rich");
     setViewError(null);
     setAiOpen(false);
+    setFixConfirmOpen(false);
     setFormattingOpen(false);
   }, [content?.chapterId]);
   const canEdit =
@@ -490,7 +493,25 @@ export function TargetPane({
                   autosave. Use XHTML tags such as &lt;p&gt;, &lt;h2&gt;, &lt;strong&gt;,
                   &lt;ul&gt; and &lt;br/&gt;.
                 </p>
-                {viewError ? <StatusNotice kind="error">{viewError}</StatusNotice> : null}
+                {viewError ? (
+                  <StatusNotice
+                    kind="error"
+                    action={
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label="Fix with AI"
+                        title="Fix with AI"
+                        disabled={!editor.draft || editor.draft.conflict}
+                        onClick={() => setFixConfirmOpen(true)}
+                      >
+                        <Icon name="sparkles" />
+                      </button>
+                    }
+                  >
+                    {viewError}
+                  </StatusNotice>
+                ) : null}
                 <textarea
                   className="html-editor"
                   aria-label="Translation HTML code"
@@ -521,6 +542,19 @@ export function TargetPane({
           <StatusNotice kind="info">No chapter selected.</StatusNotice>
         ) : null}
       </div>
+      {fixConfirmOpen && content ? (
+        <AiFixHtmlDialog
+          chapterId={content.chapterId}
+          html={editor.draft?.html ?? content.document.html ?? ""}
+          onApply={(fixedHtml) => {
+            setFixConfirmOpen(false);
+            setViewError(null);
+            editor.setHtml(fixedHtml);
+            setView("rich");
+          }}
+          onClose={() => setFixConfirmOpen(false)}
+        />
+      ) : null}
       {aiOpen && content ? (
         <AiGenerateDialog
           projectId={projectId}

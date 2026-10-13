@@ -157,6 +157,7 @@ pub fn run() {
             commands::get_translation_selection,
             commands::set_translation_selection,
             commands::start_ai_translation,
+            commands::start_ai_html_fix,
             commands::cancel_ai_translation,
         ])
         .run(tauri::generate_context!())

@@ -7,9 +7,9 @@ mod chapter;
 mod project;
 
 pub use ai::{
-    AiProviderList, AiTranslationEvent, AiTranslationStart, CliCheckResult, CliProviderId,
-    CliProviderStatus, CustomProviderSummary, CustomTestResult, TranslationModel,
-    TranslationModelList, TranslationSelection,
+    AiHtmlFixEvent, AiHtmlFixStart, AiProviderList, AiTranslationEvent, AiTranslationStart,
+    CliCheckResult, CliProviderId, CliProviderStatus, CustomProviderSummary, CustomTestResult,
+    TranslationModel, TranslationModelList, TranslationSelection,
 };
 pub use chapter::{
     BlockView, ChapterContent, ChapterDocument, ChapterImage, ChapterReview, ExportOutcome,

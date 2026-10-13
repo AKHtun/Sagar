@@ -109,6 +109,44 @@ pub fn build_book_translation_prompt(
     format!("{guidance}{base}")
 }
 
+/// Builds the HTML-fix prompt from the user's current draft HTML. The fix
+/// restructures markup into the restricted rich-text schema without
+/// translating: every human-readable character must stay identical.
+pub fn build_html_fix_prompt(html: &str) -> String {
+    format!(
+        "Repair this chapter's HTML so it fits a restricted rich-text schema.\n\
+         \n\
+         The text below is the user's current translation draft. Do NOT translate\n\
+         or reword it: keep every human-readable character exactly as-is, in the\n\
+         same language and order.\n\
+         \n\
+         Rules:\n\
+         - Use only these elements: p, h1, h2, h3, h4, h5, h6, ul, ol, li,\n\
+           blockquote, table, thead, tbody, tfoot, tr, td, th, strong, em, u, s,\n\
+           img, br, hr and a. Unwrap or convert any other element (div, span,\n\
+           section, article, font, etc.) without dropping its text.\n\
+         - Keep every img src/alt and every a href; keep id, class, style,\n\
+           title, lang, dir, colspan, rowspan and start attributes where valid.\n\
+         - Never nest block elements (p, h1-h6, ul, ol, blockquote, table)\n\
+           inside p; move trailing hr elements outside their paragraph.\n\
+         - Output only the fixed HTML fragment: no explanations, no\n\
+           commentary, no code fences, and no <html>, <head> or <body> wrapper.\n\
+         \n\
+         HTML to repair:\n\
+         {html}",
+        html = html,
+    )
+}
+
+pub struct StartHtmlFixInput {
+    pub chapter_id: String,
+    pub html: String,
+    pub agent: String,
+    pub model: String,
+    pub consent: bool,
+    pub reasoning_effort: Option<String>,
+}
+
 /// Resume only complete top-level elements whose structure matches the source.
 /// The incomplete tail is regenerated; never insert unvalidated partial output.
 fn continuation_parts(original: &str, previous: &str) -> Result<(String, String), AppError> {
@@ -833,6 +871,164 @@ where
     Ok(AiTranslationStart { job_id })
 }
 
+/// Starts an HTML-fix run over the user's current draft HTML after
+/// synchronous preflight (consent, agent, model, tool presence). Only
+/// execution is asynchronous; progress arrives through `emit`. The saved
+/// draft is never modified here.
+pub fn start_ai_html_fix<F>(
+    data_dir: &Path,
+    input: StartHtmlFixInput,
+    emit: F,
+) -> Result<crate::domain::AiHtmlFixStart, AppError>
+where
+    F: Fn(crate::domain::AiHtmlFixEvent) + Send + 'static,
+{
+    use crate::domain::AiHtmlFixEvent;
+
+    if !input.consent {
+        return Err(AppError::new(
+            "consent_required",
+            "Confirm that the draft text may be sent to the repair tool.",
+        ));
+    }
+    let agent = ai_settings::TranslationAgent::parse(&input.agent).ok_or_else(|| {
+        AppError::new(
+            "invalid_agent",
+            "Choose Codex, OpenCode, Claude Code or a saved custom provider.",
+        )
+    })?;
+    let cli_id = match &agent {
+        ai_settings::TranslationAgent::Cli(id) => *id,
+        ai_settings::TranslationAgent::Custom(_) => {
+            return Err(AppError::new(
+                "agent_unsupported",
+                "Custom API repair is not supported yet; pick Codex, OpenCode or Claude Code.",
+            ));
+        }
+    };
+    let model = ai_settings::validate_model(&input.model)
+        .map_err(|_| AppError::new("invalid_model", "Choose a model before repairing the HTML."))?;
+    let effort = ai_settings::validate_reasoning_effort(
+        data_dir,
+        &input.agent,
+        &model,
+        input.reasoning_effort.as_deref(),
+    )?;
+    let html = input.html.trim().to_string();
+    if html.is_empty() {
+        return Err(AppError::new(
+            "nothing_repairable",
+            "There is no draft HTML to repair.",
+        ));
+    }
+    if html.chars().count() > MAX_SOURCE_CHARS {
+        return Err(AppError::new(
+            "chapter_too_long",
+            "This chapter is too long for a single repair.",
+        ));
+    }
+    let binary = ai_settings::find_cli_binary(cli_id).ok_or_else(|| {
+        AppError::new(
+            "provider_not_available",
+            "The repair tool was not found on PATH.",
+        )
+    })?;
+
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let job = std::sync::Arc::new(ActiveJob {
+        cancel: AtomicBool::new(false),
+    });
+    lock_jobs()?.insert(job_id.clone(), std::sync::Arc::clone(&job));
+    let thread_job_id = job_id.clone();
+
+    let prompt = build_html_fix_prompt(&html);
+    let args = agent_args(cli_id, &model, &prompt, effort.as_deref());
+    let chapter_id = input.chapter_id.trim().to_string();
+    std::thread::spawn(move || {
+        let finish = |kind: &str,
+                      fixed_html: Option<String>,
+                      partial_text: Option<String>,
+                      message: String| {
+            emit(AiHtmlFixEvent {
+                job_id: thread_job_id.clone(),
+                chapter_id: chapter_id.clone(),
+                kind: kind.to_string(),
+                fixed_html,
+                partial_text,
+                message,
+            });
+            if kind != "started"
+                && kind != "stream"
+                && let Ok(mut jobs) = JOBS.lock()
+            {
+                jobs.remove(&thread_job_id);
+            }
+        };
+        finish(
+            "started",
+            None,
+            None,
+            "The repair tool started.".to_string(),
+        );
+        let work_dir = match create_work_dir(&thread_job_id) {
+            Ok(dir) => dir,
+            Err(error) => {
+                finish("failed", None, None, error.message);
+                return;
+            }
+        };
+        let mut streamed: Vec<u8> = Vec::new();
+        finish("stream", None, Some(String::new()), String::new());
+        let mut last_emit = Instant::now()
+            .checked_sub(STREAM_EMIT_INTERVAL)
+            .unwrap_or_else(Instant::now);
+        let outcome = execute_streaming(
+            &binary,
+            &args,
+            &work_dir,
+            &job.cancel,
+            TRANSLATION_TIMEOUT,
+            |chunk| {
+                streamed.extend_from_slice(chunk);
+                if last_emit.elapsed() >= STREAM_EMIT_INTERVAL {
+                    last_emit = Instant::now();
+                    emit(AiHtmlFixEvent {
+                        job_id: thread_job_id.clone(),
+                        chapter_id: chapter_id.clone(),
+                        kind: "stream".to_string(),
+                        fixed_html: None,
+                        partial_text: Some(String::from_utf8_lossy(&streamed).to_string()),
+                        message: String::new(),
+                    });
+                }
+            },
+        )
+        .and_then(|result| ensure_success(&result).map(|_| result))
+        .and_then(|result| {
+            let decoded = String::from_utf8_lossy(&result.stdout);
+            let stripped = strip_code_fences(&decoded);
+            validate_proposal(stripped.as_bytes())
+        });
+        let _ = std::fs::remove_dir_all(&work_dir);
+        match outcome {
+            Err(error) if error.code == "translation_cancelled" => {
+                finish("cancelled", None, None, error.message);
+            }
+            Err(error) => {
+                finish(
+                    "failed",
+                    None,
+                    Some(String::from_utf8_lossy(&streamed).to_string()),
+                    error.message,
+                );
+            }
+            Ok(fixed) => finish("done", Some(fixed), None, "Repair ready.".to_string()),
+        }
+    });
+
+    Ok(crate::domain::AiHtmlFixStart { job_id })
+}
+
 /// Requests cancellation of a running job. The worker observes the flag
 /// within one poll interval, kills the child, and emits the terminal event.
 pub fn cancel_ai_translation(job_id: &str) -> Result<(), AppError> {
@@ -874,6 +1070,15 @@ mod tests {
         assert!(
             crate::services::book_settings::validate_instructions(&"x".repeat(20_001)).is_err()
         );
+    }
+
+    #[test]
+    fn html_fix_prompt_preserves_text_without_translating() {
+        let prompt = build_html_fix_prompt("<div><p>မင်္ဂလာပါ</p></div>");
+        assert!(prompt.contains("မင်္ဂလာပါ"));
+        assert!(prompt.contains("Do NOT translate"));
+        assert!(prompt.contains("p, h1"));
+        assert!(prompt.contains("Output only the fixed HTML fragment"));
     }
 
     #[test]

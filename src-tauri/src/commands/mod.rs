@@ -365,6 +365,40 @@ pub async fn cancel_ai_translation(job_id: String) -> Result<(), AppError> {
     services::ai_translate::cancel_ai_translation(&job_id)
 }
 
+/// AI HTML repair. The run sends the user's current draft HTML to the chosen
+/// local CLI after explicit consent; the saved draft is never modified — the
+/// frontend fills the fixed HTML only on confirmation.
+#[tauri::command]
+pub async fn start_ai_html_fix(
+    app: AppHandle,
+    chapter_id: String,
+    html: String,
+    agent: String,
+    model: String,
+    consent: bool,
+    reasoning_effort: Option<String>,
+) -> Result<crate::domain::AiHtmlFixStart, AppError> {
+    let data_dir = app_data_dir(&app)?;
+    let emitter = app.clone();
+    run_blocking(move || {
+        services::ai_translate::start_ai_html_fix(
+            &data_dir,
+            services::ai_translate::StartHtmlFixInput {
+                chapter_id,
+                html,
+                agent,
+                model,
+                consent,
+                reasoning_effort,
+            },
+            move |event: crate::domain::AiHtmlFixEvent| {
+                let _ = emitter.emit("ai-html-fix-event", event);
+            },
+        )
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn get_book_settings(
     app: AppHandle,

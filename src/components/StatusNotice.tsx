@@ -15,6 +15,8 @@ type StatusNoticeProps = {
   /** Only rendered for errors; keep failure feedback actionable. */
   onRetry?: () => void;
   retryLabel?: string;
+  /** Optional extra action (e.g. an AI fix button) beside Retry. */
+  action?: ReactNode;
 };
 
 /**
@@ -26,6 +28,7 @@ export function StatusNotice({
   children,
   onRetry,
   retryLabel = "Retry",
+  action,
 }: StatusNoticeProps) {
   return (
     <div
@@ -35,10 +38,15 @@ export function StatusNotice({
       <span className="notice__kind">{KIND_LABEL[kind]}</span>
       <div className="notice__body">
         <span>{children}</span>
-        {kind === "error" && onRetry ? (
-          <button type="button" className="btn" onClick={onRetry}>
-            {retryLabel}
-          </button>
+        {kind === "error" && (onRetry || action) ? (
+          <div className="notice__actions">
+            {action}
+            {onRetry ? (
+              <button type="button" className="btn" onClick={onRetry}>
+                {retryLabel}
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>

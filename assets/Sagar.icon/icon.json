@@ -1,0 +1,112 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "extended-gray:1.00000,1.00000",
+      "extended-gray:1.00000,1.00000"
+    ]
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "Ellipse 2.png",
+          "name" : "Ellipse 2",
+          "position" : {
+            "scale" : 0.86,
+            "translation-in-points" : [
+              0,
+              172
+            ]
+          }
+        },
+        {
+          "glass" : false,
+          "image-name" : "Ellipse-5.png",
+          "name" : "Ellipse-5",
+          "position" : {
+            "scale" : 0.86,
+            "translation-in-points" : [
+              0,
+              172
+            ]
+          }
+        },
+        {
+          "glass" : false,
+          "image-name" : "Ellipse-4.png",
+          "name" : "Ellipse-4",
+          "position" : {
+            "scale" : 0.86,
+            "translation-in-points" : [
+              0,
+              172
+            ]
+          }
+        },
+        {
+          "glass" : false,
+          "image-name" : "Ellipse-3.png",
+          "name" : "Ellipse-3",
+          "position" : {
+            "scale" : 0.86,
+            "translation-in-points" : [
+              0,
+              172
+            ]
+          }
+        },
+        {
+          "glass" : false,
+          "image-name" : "Ellipse-2.png",
+          "name" : "Ellipse-2",
+          "position" : {
+            "scale" : 0.86,
+            "translation-in-points" : [
+              0,
+              172
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "Ellipse.png",
+          "name" : "Ellipse",
+          "position" : {
+            "scale" : 0.86,
+            "translation-in-points" : [
+              0,
+              20
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
