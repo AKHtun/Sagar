@@ -162,6 +162,7 @@ pub async fn export_epub(
     mode: String,
     title: Option<String>,
     language: Option<String>,
+    include_original: Option<bool>,
 ) -> Result<ExportOutcome, AppError> {
     let data_dir = app_data_dir(&app)?;
     run_blocking(move || {
@@ -173,6 +174,7 @@ pub async fn export_epub(
                 mode,
                 title,
                 language,
+                include_original: include_original.unwrap_or(true),
             },
         )
     })

@@ -52,3 +52,15 @@ Empty or intentionally skipped chapters retain original content. This is
 explicit in the dialog and covered by an export regression test. Browser
 layout checks use 758 chapters at 1280 × 800 and 960 × 640; native Windows/Linux
 verification remains open.
+
+### Translated-only draft option — 2026-10-13
+
+Draft export offers “Include original content for untranslated chapters”
+(checked by default, preserving the behavior above). When unchecked, chapters
+without any saved translation — pending and “Keep original” alike — are
+omitted from the output book (spine, manifest and EPUB 3 TOC entries removed,
+files excluded) so the draft contains only finished (reviewed + draft)
+chapters. Within included chapters, untranslated blocks still retain original
+text. Completed exports always include every chapter. An empty filtered draft
+is rejected (`nothing_to_export`); omission is reported via an
+`excluded_untranslated` warning. Covered by round-trip regression tests.

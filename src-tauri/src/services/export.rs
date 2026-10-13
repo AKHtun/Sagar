@@ -20,6 +20,9 @@ pub struct ExportRequest {
     pub mode: String,
     pub title: Option<String>,
     pub language: Option<String>,
+    /// Draft-only: when false, chapters without any saved translation are
+    /// omitted from the output instead of falling back to original content.
+    pub include_original: bool,
 }
 
 pub fn export_epub(data_dir: &Path, request: ExportRequest) -> Result<ExportOutcome, AppError> {
@@ -110,6 +113,13 @@ pub fn export_epub(data_dir: &Path, request: ExportRequest) -> Result<ExportOutc
     }
 
     let project_id = request.project_id.clone();
+    // Completed exports always include every chapter; the translated-only
+    // filter is a draft-mode option.
+    let include_original = if request.mode == "completed" {
+        true
+    } else {
+        request.include_original
+    };
     let outcome = export::run_export(export::ExportInput {
         snapshot_path: snapshot_canonical.clone(),
         destination: destination.clone(),
@@ -122,6 +132,7 @@ pub fn export_epub(data_dir: &Path, request: ExportRequest) -> Result<ExportOutc
             )?
         },
         chapters,
+        include_original,
         load_blocks: Box::new(move |chapter_id: &str| {
             if let Some(document) = storage::documents::authored(&conn, chapter_id)? {
                 return Ok(vec![translations::BlockForExport {

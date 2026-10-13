@@ -189,6 +189,7 @@ export async function exportEpub(
   mode: "completed" | "draft",
   title: string | null,
   language: string | null,
+  includeOriginal = true,
 ): Promise<ExportOutcome> {
   try {
     return await invoke<ExportOutcome>("export_epub", {
@@ -197,6 +198,7 @@ export async function exportEpub(
       mode,
       title,
       language,
+      includeOriginal,
     });
   } catch (error) {
     throw toCommandError(error);

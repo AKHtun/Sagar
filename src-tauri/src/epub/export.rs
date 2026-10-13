@@ -3,7 +3,7 @@
 //! resources. The snapshot is never modified; the output is written to a
 //! temporary file and validated before it replaces the destination.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::Path;
 
@@ -21,9 +21,12 @@ pub const MIMETYPE: &str = "application/epub+zip";
 
 /// Builds the output archive from `snapshot_path` with the given patched
 /// resources (ZIP-root path → bytes) and writes it to `destination`.
+/// Entries in `excluded` are omitted entirely so untranslated original
+/// content never leaks into a translated-only draft.
 fn write_archive(
     snapshot_path: &Path,
     patched: &HashMap<String, Vec<u8>>,
+    excluded: &HashSet<String>,
     destination: &Path,
 ) -> Result<(), AppError> {
     let mut source = SafeArchive::open(snapshot_path, &ArchiveLimits::default())?;
@@ -48,6 +51,9 @@ fn write_archive(
     for index in 0..total {
         let (name, bytes) = source.read_by_index(index)?;
         if name == "mimetype" {
+            continue;
+        }
+        if excluded.contains(&name) {
             continue;
         }
         let contents = patched.get(&name).map(Vec::as_slice).unwrap_or(&bytes);
@@ -215,6 +221,10 @@ pub struct ExportInput {
     pub chapters: Vec<(String, String)>,
     /// Load blocks per chapter from storage.
     pub load_blocks: BlocksLoader,
+    /// When false, draft chapters without any saved translation are omitted
+    /// from the output book instead of falling back to original content.
+    /// Defaults to true (preserve current draft behavior) when unset.
+    pub include_original: bool,
 }
 
 pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
@@ -236,9 +246,17 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
     let mut blocks_translated = 0usize;
     let mut nav_labels: HashMap<String, String> = HashMap::new();
     let mut added_images: HashMap<String, (String, Vec<u8>)> = HashMap::new();
+    let mut excluded: HashSet<String> = HashSet::new();
+    let mut included_count = 0usize;
 
     for (chapter_id, resource_href) in &input.chapters {
         let mut blocks = (input.load_blocks)(chapter_id)?;
+        let has_translation = blocks.iter().any(|b| b.target_fragment.is_some());
+        if !input.include_original && !has_translation {
+            excluded.insert(resource_href.clone());
+            continue;
+        }
+        included_count += 1;
         for block in &mut blocks {
             if let Some(fragment) = &block.target_fragment {
                 block.target_fragment = Some(package_images(
@@ -286,17 +304,43 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
         patched.insert(resource_href.clone(), bytes);
     }
 
-    if !nav_labels.is_empty()
-        && let Some(nav_path) = &nav_path
-    {
+    if !excluded.is_empty() && included_count == 0 {
+        return Err(AppError::new(
+            "nothing_to_export",
+            "No translated chapters to export. Translate at least one chapter \
+             or enable original content for untranslated chapters.",
+        ));
+    }
+
+    // Drop a legacy NCX (EPUB 2 fallback) when filtering, since EPUB 3
+    // readers use the nav document. Keeping NCX entries that point at
+    // omitted files would leave dangling references.
+    let mut ncx_dropped: Option<String> = None;
+    if !excluded.is_empty() {
+        let ncx_href = parsed_opf
+            .manifest
+            .values()
+            .find(|item| item.media_type == "application/x-dtbncx+xml")
+            .map(|item| item.href.clone());
+        if let Some(href) = ncx_href {
+            ncx_dropped = Some(href.clone());
+            excluded.insert(href);
+        }
+    }
+
+    if let Some(nav_path) = &nav_path {
         let bytes = patched
             .remove(nav_path)
             .map(Ok)
             .unwrap_or_else(|| snapshot.read_entry(nav_path))?;
-        patched.insert(
-            nav_path.clone(),
-            patch::patch_anchor_labels(&bytes, &nav_labels),
-        );
+        let mut nav_out = bytes;
+        if !excluded.is_empty() {
+            nav_out = strip_nav_entries(&nav_out, nav_path, &excluded);
+        }
+        if !nav_labels.is_empty() {
+            nav_out = patch::patch_anchor_labels(&nav_out, &nav_labels);
+        }
+        patched.insert(nav_path.clone(), nav_out);
     }
 
     // Package metadata: title and language.
@@ -312,6 +356,32 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
     let (bytes, _) =
         patch::replace_metadata_value(&opf_out, "dc", "language", &input.target_language);
     opf_out = bytes;
+    if !excluded.is_empty() {
+        let excluded_ids = opf_ids_for_hrefs(&parsed_opf, &excluded);
+        opf_out = strip_opf_entries(&opf_out, &excluded_ids)?;
+        warnings.push(ImportWarning {
+            code: "excluded_untranslated".into(),
+            message: format!(
+                "{} untranslated chapter{} omitted (translated-only draft).",
+                excluded.len() - usize::from(ncx_dropped.is_some()),
+                if excluded.len() - usize::from(ncx_dropped.is_some()) == 1 {
+                    ""
+                } else {
+                    "s"
+                },
+            ),
+            location: None,
+        });
+        if ncx_dropped.is_some() {
+            warnings.push(ImportWarning {
+                code: "ncx_removed_for_filtered_export".into(),
+                message: "The legacy table of contents (NCX) was removed for this \
+                          translated-only draft; the EPUB 3 navigation is kept."
+                    .into(),
+                location: None,
+            });
+        }
+    }
     if !added_images.is_empty() {
         let text = std::str::from_utf8(&opf_out)
             .map_err(|_| AppError::new("export_failed", "Invalid package encoding."))?;
@@ -344,7 +414,12 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
     }
     patched.insert(opf_path.clone(), opf_out);
 
-    write_archive(&input.snapshot_path, &patched, &input.destination)?;
+    write_archive(
+        &input.snapshot_path,
+        &patched,
+        &excluded,
+        &input.destination,
+    )?;
 
     let validation_warnings = validate_output(&input.destination)?;
     warnings.extend(validation_warnings);
@@ -352,10 +427,229 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
     Ok(ExportOutcome {
         output_path: input.destination.to_string_lossy().to_string(),
         mode: String::new(),
-        chapters_exported: input.chapters.len(),
+        chapters_exported: included_count,
         blocks_translated,
         warnings,
     })
+}
+
+/// Maps excluded ZIP-root resource hrefs to their OPF manifest ids.
+fn opf_ids_for_hrefs(parsed: &opf::ParsedOpf, excluded: &HashSet<String>) -> HashSet<String> {
+    parsed
+        .manifest
+        .values()
+        .filter(|item| excluded.contains(&item.href))
+        .map(|item| item.id.clone())
+        .collect()
+}
+
+/// Removes `<item>` / `<itemref>` elements for excluded manifest ids via
+/// byte-span splicing, preserving everything else byte-for-byte.
+fn strip_opf_entries(bytes: &[u8], excluded_ids: &HashSet<String>) -> Result<Vec<u8>, AppError> {
+    if excluded_ids.is_empty() {
+        return Ok(bytes.to_vec());
+    }
+    use quick_xml::events::Event;
+    let mut reader = quick_xml::Reader::from_reader(bytes);
+    let mut buffer = Vec::new();
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    let mut depth: usize = 0;
+    let mut pending: Option<(usize, usize, String)> = None;
+    loop {
+        let pos_before = reader.buffer_position() as usize;
+        let event = match reader.read_event_into(&mut buffer) {
+            Ok(e) => e,
+            Err(_) => {
+                return Err(AppError::new(
+                    "export_failed",
+                    "The package document could not be updated safely.",
+                ));
+            }
+        };
+        let pos_after = reader.buffer_position() as usize;
+        match event {
+            Event::Start(ref start) => {
+                let local: String = start.local_name().as_ref().to_ascii_lowercase();
+                let is_target = local == "item" || local == "itemref";
+                let excluded_match = if is_target && pending.is_none() {
+                    let attr_name = if local == "item" { "id" } else { "idref" };
+                    start
+                        .try_get_attribute(attr_name)
+                        .ok()
+                        .flatten()
+                        .map(|a| a.value.as_ref().to_owned())
+                        .map(|v| excluded_ids.contains(&v))
+                        .unwrap_or(false)
+                } else {
+                    false
+                };
+                if excluded_match {
+                    pending = Some((pos_before, depth, local));
+                }
+                depth += 1;
+            }
+            Event::Empty(ref empty) => {
+                let local: String = empty.local_name().as_ref().to_ascii_lowercase();
+                if (local == "item" || local == "itemref") && pending.is_none() {
+                    let attr_name = if local == "item" { "id" } else { "idref" };
+                    let is_excluded = empty
+                        .try_get_attribute(attr_name)
+                        .ok()
+                        .flatten()
+                        .map(|a| a.value.as_ref().to_owned())
+                        .map(|v| excluded_ids.contains(&v))
+                        .unwrap_or(false);
+                    if is_excluded {
+                        spans.push((pos_before, pos_after));
+                    }
+                }
+            }
+            Event::End(ref end) => {
+                depth = depth.saturating_sub(1);
+                if let Some((start_pos, start_depth, ref tag)) = pending {
+                    let end_local: String = end.local_name().as_ref().to_ascii_lowercase();
+                    if depth == start_depth && end_local == *tag {
+                        spans.push((start_pos, pos_after));
+                        pending = None;
+                    }
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buffer.clear();
+    }
+    // A dangling start without an end means malformed OPF; fail loudly
+    // rather than exporting a corrupt package.
+    if pending.is_some() {
+        return Err(AppError::new(
+            "export_failed",
+            "The package document could not be updated safely.",
+        ));
+    }
+    let mut out = bytes.to_vec();
+    spans.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
+    for (start, end) in spans {
+        if end > start && end <= out.len() {
+            out.splice(start..end, []);
+        }
+    }
+    Ok(out)
+}
+
+struct NavLiFrame {
+    start: usize,
+    direct_excluded: Option<bool>,
+    has_included: bool,
+}
+
+fn nav_href_is_excluded(href: &str, nav_path: &str, excluded: &HashSet<String>) -> bool {
+    let resolved = crate::epub::resolve_href(nav_path, href);
+    excluded.contains(&resolved)
+}
+
+fn decode_href_entities(value: &str) -> String {
+    let text = value.to_string();
+    text.replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
+/// Removes `<li>` table-of-contents entries whose anchors all resolve to
+/// excluded chapter resources. Entries with mixed included/excluded
+/// descendants are kept so translated nested sections are never dropped.
+fn strip_nav_entries(bytes: &[u8], nav_path: &str, excluded: &HashSet<String>) -> Vec<u8> {
+    if excluded.is_empty() {
+        return bytes.to_vec();
+    }
+    use quick_xml::events::Event;
+    let mut reader = quick_xml::Reader::from_reader(bytes);
+    let mut buffer = Vec::new();
+    let mut stack: Vec<NavLiFrame> = Vec::new();
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    loop {
+        let pos_before = reader.buffer_position() as usize;
+        let event = match reader.read_event_into(&mut buffer) {
+            Ok(e) => e,
+            Err(_) => return bytes.to_vec(),
+        };
+        let pos_after = reader.buffer_position() as usize;
+        match event {
+            Event::Start(ref start) => {
+                let local: String = start.local_name().as_ref().to_ascii_lowercase();
+                if local == "li" {
+                    stack.push(NavLiFrame {
+                        start: pos_before,
+                        direct_excluded: None,
+                        has_included: false,
+                    });
+                } else if local == "a"
+                    && let Some(href) = start
+                        .try_get_attribute("href")
+                        .ok()
+                        .flatten()
+                        .map(|a| decode_href_entities(a.value.as_ref()))
+                {
+                    let is_excluded = nav_href_is_excluded(&href, nav_path, excluded);
+                    if let Some(frame) = stack.last_mut() {
+                        if frame.direct_excluded.is_none() {
+                            frame.direct_excluded = Some(is_excluded);
+                        }
+                        if !is_excluded {
+                            for open in stack.iter_mut() {
+                                open.has_included = true;
+                            }
+                        }
+                    }
+                }
+            }
+            Event::Empty(ref empty) => {
+                let local: String = empty.local_name().as_ref().to_ascii_lowercase();
+                if local == "a"
+                    && let Some(href) = empty
+                        .try_get_attribute("href")
+                        .ok()
+                        .flatten()
+                        .map(|a| decode_href_entities(a.value.as_ref()))
+                {
+                    let is_excluded = nav_href_is_excluded(&href, nav_path, excluded);
+                    if let Some(frame) = stack.last_mut() {
+                        if frame.direct_excluded.is_none() {
+                            frame.direct_excluded = Some(is_excluded);
+                        }
+                        if !is_excluded {
+                            for open in stack.iter_mut() {
+                                open.has_included = true;
+                            }
+                        }
+                    }
+                }
+            }
+            Event::End(ref end) => {
+                let local: String = end.local_name().as_ref().to_ascii_lowercase();
+                if local == "li"
+                    && let Some(frame) = stack.pop()
+                    && frame.direct_excluded == Some(true)
+                    && !frame.has_included
+                {
+                    spans.push((frame.start, pos_after));
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buffer.clear();
+    }
+    let mut out = bytes.to_vec();
+    spans.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
+    for (start, end) in spans {
+        if end > start && end <= out.len() {
+            out.splice(start..end, []);
+        }
+    }
+    out
 }
 
 fn relative_resource(base: &str, target: &str) -> String {

@@ -33,6 +33,7 @@ export function ExportDialog({
   const [language, setLanguage] = useState(project.targetLanguage);
   const [languageError, setLanguageError] = useState<string | null>(null);
   const [draftAck, setDraftAck] = useState(false);
+  const [includeOriginal, setIncludeOriginal] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -112,6 +113,9 @@ export function ExportDialog({
     language.trim().length > 0 &&
     [...language.trim()].every((c) => /[A-Za-z0-9-]/.test(c));
 
+  const translatedChapters =
+    review?.chapters.filter((c) => c.reviewed || c.draft).length ?? 0;
+
   async function runExport(mode: "completed" | "draft") {
     if (!review) {
       return;
@@ -121,6 +125,12 @@ export function ExportDialog({
       return;
     }
     if (mode === "draft" && !draftAck) {
+      return;
+    }
+    if (mode === "draft" && !includeOriginal && translatedChapters === 0) {
+      setExportError(
+        "No translated chapters to export. Translate at least one chapter or enable original content.",
+      );
       return;
     }
     setExportError(null);
@@ -140,6 +150,7 @@ export function ExportDialog({
         mode,
         title.trim() === "" ? null : title.trim(),
         language.trim(),
+        mode === "draft" ? includeOriginal : true,
       );
       onOutcome(outcome);
     } catch (error) {
@@ -211,9 +222,30 @@ export function ExportDialog({
 
               <p className="export-dialog__explanation">
                 Draft export includes{" "}
-                <strong>reviewed translations and saved drafts</strong>. Empty chapters
-                and chapters marked “Keep original” retain the original content.
+                <strong>reviewed translations and saved drafts</strong>.{" "}
+                {includeOriginal ? (
+                  <>
+                    Empty chapters and chapters marked “Keep original” retain the original
+                    content.
+                  </>
+                ) : (
+                  <>
+                    Empty chapters and chapters marked “Keep original” are{" "}
+                    <strong>omitted</strong> — the draft contains only translated
+                    chapters.
+                  </>
+                )}
               </p>
+              {!review.complete ? (
+                <label className="export-ack">
+                  <input
+                    type="checkbox"
+                    checked={includeOriginal}
+                    onChange={(event) => setIncludeOriginal(event.target.checked)}
+                  />
+                  <span>Include original content for untranslated chapters.</span>
+                </label>
+              ) : null}
               <div className="export-summary">
                 <span className="export-chip export-chip--success">
                   {review.reviewedTotal} reviewed
@@ -266,7 +298,9 @@ export function ExportDialog({
                         <td>
                           {chapter.reviewed || chapter.draft
                             ? "Saved translation"
-                            : "Original content"}
+                            : includeOriginal
+                              ? "Original content"
+                              : "Omitted"}
                         </td>
                       </tr>
                     ))}
@@ -311,8 +345,18 @@ export function ExportDialog({
                 <button
                   type="button"
                   className={`btn${!review.complete ? " btn--primary" : ""}`}
-                  disabled={review.complete || !draftAck || exporting}
+                  disabled={
+                    review.complete ||
+                    !draftAck ||
+                    exporting ||
+                    (!includeOriginal && translatedChapters === 0)
+                  }
                   onClick={() => void runExport("draft")}
+                  title={
+                    !includeOriginal && translatedChapters === 0
+                      ? "Translate at least one chapter or enable original content"
+                      : undefined
+                  }
                 >
                   Export draft…
                 </button>

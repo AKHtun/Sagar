@@ -194,6 +194,7 @@ fn translated_fixture_exports_and_reimports_with_assets_intact() {
             mode: "draft".into(),
             title: Some("မြစ်ဇာတ်ကြောင်း".into()),
             language: Some("my".into()),
+            include_original: true,
         },
     )
     .expect("export succeeds");
@@ -334,6 +335,7 @@ fn completed_export_is_blocked_while_required_blocks_are_pending() {
             mode: "completed".into(),
             title: None,
             language: None,
+            include_original: true,
         },
     )
     .expect_err("completed export must be blocked");
@@ -369,6 +371,7 @@ fn export_never_overwrites_its_own_snapshot() {
             mode: "draft".into(),
             title: None,
             language: None,
+            include_original: true,
         },
     )
     .expect_err("snapshot overwrite rejected");
@@ -494,6 +497,7 @@ fn rich_translation_images_survive_save_export_and_reopen() {
             mode: "draft".into(),
             title: None,
             language: None,
+            include_original: true,
         },
     )
     .expect("export");
@@ -656,6 +660,7 @@ fn empty_image_chapter_accepts_free_document_and_exports_it() {
             mode: "completed".into(),
             title: None,
             language: None,
+            include_original: true,
         },
     )
     .expect("export");
@@ -750,6 +755,7 @@ fn draft_export_includes_reviewed_and_unreviewed_chapter_documents() {
             mode: "draft".into(),
             title: None,
             language: None,
+            include_original: true,
         },
     )
     .expect("draft export");
@@ -817,6 +823,7 @@ fn authored_tables_save_reload_export_and_reopen() {
             mode: "draft".into(),
             title: None,
             language: None,
+            include_original: true,
         },
     )
     .expect("export");
@@ -831,4 +838,122 @@ fn authored_tables_save_reload_export_and_reopen() {
     assert!(output.contains(html));
     epub::inspect(&destination).expect("reopen");
     assert_eq!(std::fs::read(source).expect("source after"), original);
+}
+
+#[test]
+fn draft_export_without_originals_omits_untranslated_chapters() {
+    let dir = tempdir();
+    let data_dir = tempdir();
+    let files = rich_book_files();
+    let refs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "source.epub", &refs);
+    let book = import_rich_book(&data_dir, &source);
+    services::workspace::save_chapter_document(
+        &data_dir,
+        &book.chapter_ids[0],
+        Some("<h1>Translated intro</h1><p>Translated body</p>".into()),
+        "reviewed",
+        0,
+    )
+    .expect("translate first chapter");
+    // Second chapter stays pending; a skipped chapter must also be omitted.
+    // (Skipped is covered by the pending path: no saved translation.)
+
+    let destination = dir.join("translated-only.epub");
+    let outcome = services::export::export_epub(
+        &data_dir,
+        ExportRequest {
+            project_id: book.project_id.clone(),
+            destination: destination.clone(),
+            mode: "draft".into(),
+            title: None,
+            language: None,
+            include_original: false,
+        },
+    )
+    .expect("filtered draft export");
+    assert_eq!(outcome.chapters_exported, 1);
+    assert!(
+        outcome
+            .warnings
+            .iter()
+            .any(|w| w.code == "excluded_untranslated"),
+        "warnings report omission: {:?}",
+        outcome.warnings
+    );
+    epub::export::validate_output(&destination).expect("filtered output valid");
+
+    let file = std::fs::File::open(&destination).expect("output");
+    let mut zip = zip::ZipArchive::new(file).expect("zip");
+    assert!(
+        zip.by_name("OEBPS/ch2.xhtml").is_err(),
+        "untranslated chapter file must be omitted"
+    );
+    let mut ch1 = String::new();
+    zip.by_name("OEBPS/ch1.xhtml")
+        .expect("translated chapter kept")
+        .read_to_string(&mut ch1)
+        .expect("read");
+    assert!(ch1.contains("Translated body"), "{ch1}");
+
+    let mut opf = String::new();
+    zip.by_name("OEBPS/content.opf")
+        .expect("opf")
+        .read_to_string(&mut opf)
+        .expect("read opf");
+    assert!(opf.contains("ch1.xhtml"), "{opf}");
+    assert!(
+        !opf.contains("ch2.xhtml"),
+        "OPF must not reference omitted file: {opf}"
+    );
+
+    let mut nav = String::new();
+    zip.by_name("OEBPS/nav.xhtml")
+        .expect("nav")
+        .read_to_string(&mut nav)
+        .expect("read nav");
+    assert!(
+        !nav.contains(">Ten</a>"),
+        "TOC omits untranslated entry: {nav}"
+    );
+
+    // Reimporting the filtered draft yields only the translated chapter.
+    let reimported =
+        services::import::import_epub(&data_dir, &destination, true).expect("reimport");
+    let hrefs: Vec<&str> = reimported
+        .chapters
+        .iter()
+        .map(|c| c.resource_href.as_str())
+        .collect();
+    assert_eq!(hrefs, vec!["OEBPS/ch1.xhtml"]);
+}
+
+#[test]
+fn draft_export_without_originals_requires_a_translation() {
+    let dir = tempdir();
+    let data_dir = tempdir();
+    let files = rich_book_files();
+    let refs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "source.epub", &refs);
+    let book = import_rich_book(&data_dir, &source);
+
+    let error: AppError = services::export::export_epub(
+        &data_dir,
+        ExportRequest {
+            project_id: book.project_id,
+            destination: dir.join("empty.epub"),
+            mode: "draft".into(),
+            title: None,
+            language: None,
+            include_original: false,
+        },
+    )
+    .expect_err("empty filtered export must fail");
+    assert_eq!(error.code, "nothing_to_export");
 }
