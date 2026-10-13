@@ -144,6 +144,8 @@ pub fn run() {
             commands::validate_chapter_html,
             commands::get_last_chapter,
             commands::update_project_metadata,
+            commands::get_book_settings,
+            commands::save_book_settings,
             commands::review_export,
             commands::export_epub,
             commands::list_ai_providers,

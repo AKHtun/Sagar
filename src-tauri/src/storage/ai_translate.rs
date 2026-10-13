@@ -14,6 +14,7 @@ pub struct TranslationSource {
     pub resource_href: String,
     pub source_language: Option<String>,
     pub target_language: String,
+    pub instructions: String,
     /// Non-blank source paragraphs in reading order (emptiness check only;
     /// the HTML body travels as translation source).
     pub paragraphs: Vec<String>,
@@ -25,18 +26,19 @@ pub fn translation_source(
     conn: &Connection,
     chapter_id: &str,
 ) -> Result<TranslationSource, AppError> {
-    let (project_id, resource_href, source_language, target_language): (
+    let (project_id, resource_href, source_language, target_language, instructions): (
         String,
         String,
         Option<String>,
         String,
+        String,
     ) = conn
         .query_row(
-            "SELECT ch.project_id, ch.resource_href, p.source_language, p.target_language
+            "SELECT ch.project_id, ch.resource_href, p.source_language, p.target_language, p.translation_instructions
              FROM chapters ch JOIN projects p ON p.id = ch.project_id
              WHERE ch.id = ?1",
             rusqlite::params![chapter_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
         )
         .map_err(|_| {
             AppError::new(
@@ -61,6 +63,7 @@ pub fn translation_source(
         resource_href,
         source_language,
         target_language,
+        instructions,
         paragraphs,
     })
 }

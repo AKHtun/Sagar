@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
 import {
   checkAiCli,
@@ -14,9 +15,11 @@ import type {
   CustomProviderSummary,
   CustomTestResult,
 } from "../../types/ai";
+import { type AppearancePreferences, AppearanceSettings } from "./AppearanceSettings";
 import { TranslationModelSection } from "./TranslationModelSection";
 
 type AiSettingsDialogProps = {
+  appearance: AppearancePreferences;
   onClose: () => void;
 };
 
@@ -45,7 +48,7 @@ const emptyForm: CustomFormState = {
  * Codex / OpenCode / Claude Code plus user-added OpenAI-compatible
  * endpoints. Nothing here sends book text anywhere.
  */
-export function AiSettingsDialog({ onClose }: AiSettingsDialogProps) {
+export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps) {
   const [providers, setProviders] = useState<AiProviderList | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [checking, setChecking] = useState<Record<string, boolean>>({});
@@ -54,7 +57,9 @@ export function AiSettingsDialog({ onClose }: AiSettingsDialogProps) {
   const [testResults, setTestResults] = useState<Record<string, CustomTestResult>>({});
   const [form, setForm] = useState<CustomFormState>(emptyForm);
   const [formOpen, setFormOpen] = useState(false);
-  const [tab, setTab] = useState<"providers" | "translation">("providers");
+  const [tab, setTab] = useState<"appearance" | "providers" | "translation">(
+    "appearance",
+  );
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [busyDelete, setBusyDelete] = useState(false);
@@ -258,31 +263,56 @@ export function AiSettingsDialog({ onClose }: AiSettingsDialogProps) {
       >
         <div className="panel__header">
           <h2 className="panel__heading" id="ai-settings-title">
-            AI settings
+            Settings
           </h2>
-          <button type="button" className="btn" onClick={onClose}>
-            Close
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Close settings"
+            title="Close"
+            onClick={onClose}
+          >
+            <Icon name="close" />
           </button>
         </div>
 
-        <StatusNotice kind="info">
-          API keys stay on this computer in the app database and are never shown again.
-          Settings never send book text; a connection test only requests the
-          provider&apos;s model list.
-        </StatusNotice>
+        {tab !== "appearance" ? (
+          <StatusNotice kind="info">
+            API keys stay on this computer in the app database and are never shown again.
+            Settings never send book text; a connection test only requests the
+            provider&apos;s model list.
+          </StatusNotice>
+        ) : null}
 
         <div
           className="tabs"
           role="tablist"
-          aria-label="AI settings sections"
+          aria-label="Settings sections"
           onKeyDown={(event) => {
             if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
               return;
             }
             event.preventDefault();
-            setTab((current) => (current === "providers" ? "translation" : "providers"));
+            const tabs = ["appearance", "providers", "translation"] as const;
+            const direction = event.key === "ArrowRight" ? 1 : -1;
+            const next =
+              tabs[(tabs.indexOf(tab) + direction + tabs.length) % tabs.length];
+            setTab(next);
+            document.getElementById(`ai-tab-${next}`)?.focus();
           }}
         >
+          <button
+            type="button"
+            role="tab"
+            id="ai-tab-appearance"
+            aria-selected={tab === "appearance"}
+            aria-controls="ai-panel-appearance"
+            tabIndex={tab === "appearance" ? 0 : -1}
+            className="tab"
+            onClick={() => setTab("appearance")}
+          >
+            Appearance
+          </button>
           <button
             type="button"
             role="tab"
@@ -309,12 +339,21 @@ export function AiSettingsDialog({ onClose }: AiSettingsDialogProps) {
           </button>
         </div>
 
-        {loadError ? (
+        <div
+          role="tabpanel"
+          id="ai-panel-appearance"
+          aria-labelledby="ai-tab-appearance"
+          hidden={tab !== "appearance"}
+        >
+          <AppearanceSettings {...appearance} />
+        </div>
+
+        {tab !== "appearance" && loadError ? (
           <StatusNotice kind="error" onRetry={loadProviders}>
             {loadError}
           </StatusNotice>
         ) : null}
-        {!loadError && !providers ? (
+        {tab !== "appearance" && !loadError && !providers ? (
           <StatusNotice kind="loading">Loading AI providers…</StatusNotice>
         ) : null}
 

@@ -130,6 +130,13 @@ const MIGRATIONS: &[(i64, &str)] = &[
         6,
         "ALTER TABLE ai_translation_selection ADD COLUMN reasoning_effort TEXT;",
     ),
+    (
+        7,
+        "ALTER TABLE projects ADD COLUMN export_author TEXT;
+         ALTER TABLE projects ADD COLUMN export_publisher TEXT;
+         ALTER TABLE projects ADD COLUMN export_description TEXT;
+         ALTER TABLE projects ADD COLUMN translation_instructions TEXT NOT NULL DEFAULT '';",
+    ),
 ];
 
 /// Highest defined schema version. Currently asserted on by tests; production
@@ -175,5 +182,37 @@ mod tests {
             );
             previous = *version;
         }
+    }
+}
+
+#[cfg(test)]
+mod book_settings_migration_tests {
+    use super::*;
+    #[test]
+    fn v7_preserves_existing_metadata_and_translation_documents() {
+        let conn = Connection::open_in_memory().expect("db");
+        conn.execute_batch(
+            "CREATE TABLE projects(id TEXT PRIMARY KEY,title TEXT,translated_title TEXT);
+          INSERT INTO projects VALUES('p','Original','Translated');
+          CREATE TABLE chapter_documents(chapter_id TEXT,html TEXT,revision INTEGER);
+          INSERT INTO chapter_documents VALUES('c','<p>Saved draft</p>',4);
+          PRAGMA user_version=6;",
+        )
+        .expect("v6");
+        apply(&conn).expect("migrate");
+        apply(&conn).expect("idempotent");
+        let (title, instructions): (String, String) = conn
+            .query_row(
+                "SELECT translated_title,translation_instructions FROM projects",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("project");
+        assert_eq!(title, "Translated");
+        assert_eq!(instructions, "");
+        let revision: i64 = conn
+            .query_row("SELECT revision FROM chapter_documents", [], |r| r.get(0))
+            .expect("draft");
+        assert_eq!(revision, 4);
     }
 }

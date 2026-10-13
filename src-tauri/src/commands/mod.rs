@@ -335,6 +335,7 @@ pub async fn start_ai_translation(
     model: String,
     consent: bool,
     previous_output: Option<String>,
+    current_instructions: Option<String>,
     reasoning_effort: Option<String>,
 ) -> Result<AiTranslationStart, AppError> {
     let data_dir = app_data_dir(&app)?;
@@ -348,6 +349,7 @@ pub async fn start_ai_translation(
                 model,
                 consent,
                 previous_output,
+                current_instructions,
                 reasoning_effort,
             },
             move |event: AiTranslationEvent| {
@@ -361,4 +363,22 @@ pub async fn start_ai_translation(
 #[tauri::command]
 pub async fn cancel_ai_translation(job_id: String) -> Result<(), AppError> {
     services::ai_translate::cancel_ai_translation(&job_id)
+}
+
+#[tauri::command]
+pub async fn get_book_settings(
+    app: AppHandle,
+    project_id: String,
+) -> Result<services::book_settings::BookSettings, AppError> {
+    let data_dir = app_data_dir(&app)?;
+    run_blocking(move || services::book_settings::get(&data_dir, &project_id)).await
+}
+#[tauri::command]
+pub async fn save_book_settings(
+    app: AppHandle,
+    project_id: String,
+    settings: services::book_settings::BookSettings,
+) -> Result<(), AppError> {
+    let data_dir = app_data_dir(&app)?;
+    run_blocking(move || services::book_settings::save(&data_dir, &project_id, settings)).await
 }

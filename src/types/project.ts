@@ -40,3 +40,13 @@ export type CoverImage = {
   mediaType: string;
   base64: string;
 };
+
+export type BookSettings = {
+  title: string;
+  author: string;
+  publisher: string;
+  description: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  instructions: string;
+};

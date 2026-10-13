@@ -32,6 +32,7 @@ export function TargetPane({
   const [imageError, setImageError] = useState<string | null>(null);
   const [imagePicker, setImagePicker] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [formattingOpen, setFormattingOpen] = useState(false);
   const [view, setView] = useState<"rich" | "html">("rich");
   const [viewError, setViewError] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
@@ -57,6 +58,7 @@ export function TargetPane({
     setView("rich");
     setViewError(null);
     setAiOpen(false);
+    setFormattingOpen(false);
   }, [content?.chapterId]);
   const canEdit =
     view === "rich" &&
@@ -124,17 +126,26 @@ export function TargetPane({
         <h2 className="pane__heading" id="target-pane-heading">
           Translation
         </h2>
-        <fieldset className="view-switch" aria-label="Translation view">
+        <fieldset
+          className="view-switch view-switch--icons"
+          aria-label="Translation view"
+        >
           <button
             type="button"
+            className="icon-button"
+            aria-label="Rich text view"
+            title="Rich text view"
             aria-pressed={view === "rich"}
             disabled={switching || !editor.draft || editor.draft.conflict}
             onClick={() => void showRichText()}
           >
-            Rich text
+            <Icon name="richText" />
           </button>
           <button
             type="button"
+            className="icon-button"
+            aria-label="HTML view"
+            title="HTML view"
             aria-pressed={view === "html"}
             disabled={switching || !editor.draft}
             onClick={() => {
@@ -143,18 +154,33 @@ export function TargetPane({
               setViewError(null);
             }}
           >
-            HTML
+            <Icon name="code" />
           </button>
         </fieldset>
         <button
           type="button"
-          className="btn"
+          className="icon-button"
           disabled={!editor.draft || editor.draft.conflict}
+          aria-label="Generate an AI translation proposal"
           title="Generate an AI translation proposal"
           onClick={() => setAiOpen(true)}
         >
-          AI
+          <Icon name="sparkles" />
         </button>
+        {view === "rich" ? (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Formatting tools"
+            title="Formatting tools"
+            aria-expanded={formattingOpen}
+            aria-controls="translation-formatting"
+            disabled={!editor.draft || editor.draft.conflict}
+            onClick={() => setFormattingOpen((open) => !open)}
+          >
+            <Icon name="format" />
+          </button>
+        ) : null}
         <div className="chapter-review-actions">
           <button
             type="button"
@@ -190,7 +216,13 @@ export function TargetPane({
           </button>
         </div>
       </div>
-      <div className="editor-toolbar" role="toolbar" aria-label="Translation formatting">
+      <div
+        id="translation-formatting"
+        className="editor-toolbar"
+        role="toolbar"
+        aria-label="Translation formatting"
+        hidden={!formattingOpen || view !== "rich"}
+      >
         {(
           [
             ["Bold", "bold", "B"],
@@ -215,7 +247,6 @@ export function TargetPane({
         <span className="editor-toolbar__divider" />
         <button
           type="button"
-          className="editor-toolbar__heading"
           aria-label="Paragraph"
           title="Paragraph (Cmd/Ctrl + Alt + 0)"
           aria-pressed={canEdit && activeEditor.isActive("paragraph")}
@@ -223,7 +254,7 @@ export function TargetPane({
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => activeEditor?.chain().focus().setParagraph().run()}
         >
-          Paragraph
+          <Icon name="paragraph" size={17} />
         </button>
         {([1, 2, 3] as const).map((level) => (
           <button

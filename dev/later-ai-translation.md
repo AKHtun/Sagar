@@ -166,3 +166,31 @@ Shared disabled buttons now use an opaque neutral background with muted text
 and a visible border. This fixes Generate's gray-on-faded-blue label before
 consent is checked, using the existing light/dark theme tokens. Consent and
 disabled behavior are unchanged. Native visual verification remains open.
+
+### Per-book metadata and translation instructions — 2026-10-13
+
+Each workspace now has Book Settings beside the book title: export title,
+primary author, publisher, description, source/target language and book-wide
+AI guidance for consistent names, terminology and style. Migration 7 stores
+metadata overrides and instructions separately from the immutable snapshot.
+Validation precedes a transactional save; existing titles/drafts survive the
+migration. Optional blank metadata retains the source value.
+
+The AI proposal dialog shows saved book guidance and accepts an optional
+current-run instruction. Rust reads book instructions by the chapter's project,
+combines both sets with the standard translation/preservation prompt, and
+limits each guidance field to 20,000 characters. Current-run naming/style
+conflicts take precedence over book-wide guidance; preservation checks remain
+mandatory. Changing run guidance clears retained partial output before Retry.
+Instructions are sent only with an explicitly consented Generate/Retry and
+are never written to the exported EPUB.
+
+Export now applies saved metadata even when no new title is supplied in the
+export request. Namespace-aware DC edits update only the primary creator,
+retain IDs/refinements and additional creators, and add missing optional fields
+with escaped Unicode/XML text. Integration tests reopen the resulting EPUB,
+check all edited metadata, isolate guidance between two projects, reject
+partial invalid saves, and confirm byte-identical source/snapshot preservation.
+Frontend lint/build, cargo formatting and all 116 Rust tests passed. Native
+Book Settings/AI interactions and cross-platform verification remain open;
+full EPUBCheck conformance was not performed.

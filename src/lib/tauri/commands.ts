@@ -232,3 +232,23 @@ export async function validateChapterHtml(html: string): Promise<string> {
     throw toCommandError(error);
   }
 }
+
+export async function getBookSettings(
+  projectId: string,
+): Promise<import("../../types/project").BookSettings> {
+  try {
+    return await invoke("get_book_settings", { projectId });
+  } catch (error) {
+    throw toCommandError(error);
+  }
+}
+export async function saveBookSettings(
+  projectId: string,
+  settings: import("../../types/project").BookSettings,
+): Promise<void> {
+  try {
+    await invoke("save_book_settings", { projectId, settings });
+  } catch (error) {
+    throw toCommandError(error);
+  }
+}

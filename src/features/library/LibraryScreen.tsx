@@ -11,6 +11,8 @@ import {
 import { CommandError } from "../../lib/tauri/errors";
 import type { ImportWarning, ProjectSummary } from "../../types/project";
 import { AiSettingsDialog } from "../settings/AiSettingsDialog";
+import type { AppearancePreferences } from "../settings/AppearanceSettings";
+import { BookSettingsDialog } from "../workspace/BookSettingsDialog";
 
 type LibraryState =
   | { status: "loading" }
@@ -24,10 +26,11 @@ type DuplicatePrompt = {
 };
 
 type LibraryScreenProps = {
+  appearance: AppearancePreferences;
   onOpenProject: (projectId: string, importWarnings: ImportWarning[]) => void;
 };
 
-export function LibraryScreen({ onOpenProject }: LibraryScreenProps) {
+export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps) {
   const [library, setLibrary] = useState<LibraryState>({ status: "loading" });
   const [query, setQuery] = useState("");
   const [importingName, setImportingName] = useState<string | null>(null);
@@ -38,6 +41,7 @@ export function LibraryScreen({ onOpenProject }: LibraryScreenProps) {
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeNotice, setRemoveNotice] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bookSettings, setBookSettings] = useState<ProjectSummary | null>(null);
 
   const refreshProjects = useCallback(() => {
     setLibrary({ status: "loading" });
@@ -119,8 +123,8 @@ export function LibraryScreen({ onOpenProject }: LibraryScreenProps) {
           <button
             type="button"
             className="icon-button"
-            aria-label="AI settings"
-            title="AI settings"
+            aria-label="Settings"
+            title="Settings"
             onClick={() => setSettingsOpen(true)}
           >
             <Icon name="settings" />
@@ -216,6 +220,7 @@ export function LibraryScreen({ onOpenProject }: LibraryScreenProps) {
                   project={project}
                   onOpen={onOpenProject}
                   onRequestRemove={setRemoving}
+                  onSettings={setBookSettings}
                 />
               </li>
             ))}
@@ -230,7 +235,31 @@ export function LibraryScreen({ onOpenProject }: LibraryScreenProps) {
 
       {removeNotice ? <StatusNotice kind="info">{removeNotice}</StatusNotice> : null}
 
-      {settingsOpen ? <AiSettingsDialog onClose={() => setSettingsOpen(false)} /> : null}
+      {bookSettings ? (
+        <BookSettingsDialog
+          project={bookSettings}
+          onClose={() => setBookSettings(null)}
+          onSaved={(updated) =>
+            setLibrary((current) =>
+              current.status === "ready"
+                ? {
+                    ...current,
+                    projects: current.projects.map((project) =>
+                      project.id === updated.id ? updated : project,
+                    ),
+                  }
+                : current,
+            )
+          }
+        />
+      ) : null}
+
+      {settingsOpen ? (
+        <AiSettingsDialog
+          appearance={appearance}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
 
       {removing ? (
         <ConfirmRemoveDialog
@@ -334,10 +363,12 @@ function ProjectRow({
   project,
   onOpen,
   onRequestRemove,
+  onSettings,
 }: {
   project: ProjectSummary;
   onOpen: (projectId: string, warnings: ImportWarning[]) => void;
   onRequestRemove: (project: ProjectSummary) => void;
+  onSettings: (project: ProjectSummary) => void;
 }) {
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
 
@@ -403,6 +434,15 @@ function ProjectRow({
         >
           {formatDate(project.updatedAt)}
         </span>
+      </button>
+      <button
+        type="button"
+        className="icon-button"
+        aria-label={`Book settings for ${project.title}`}
+        title="Book metadata and AI instructions"
+        onClick={() => onSettings(project)}
+      >
+        <Icon name="settings" size={18} />
       </button>
       <button
         type="button"

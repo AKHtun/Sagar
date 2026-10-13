@@ -121,10 +121,22 @@ pub fn export_epub(data_dir: &Path, request: ExportRequest) -> Result<ExportOutc
     } else {
         request.include_original
     };
+    let saved_metadata: (Option<String>, Option<String>, Option<String>, Option<String>) = conn.query_row(
+        "SELECT translated_title, export_author, export_publisher, export_description FROM projects WHERE id=?1",
+        [&project_id], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)))?;
+    let metadata = [
+        ("creator", saved_metadata.1),
+        ("publisher", saved_metadata.2),
+        ("description", saved_metadata.3),
+    ]
+    .into_iter()
+    .filter_map(|(name, value)| value.map(|v| (name.to_string(), v)))
+    .collect();
     let outcome = export::run_export(export::ExportInput {
         snapshot_path: snapshot_canonical.clone(),
         destination: destination.clone(),
-        translated_title,
+        translated_title: saved_metadata.0,
+        metadata,
         target_language: {
             conn.query_row(
                 "SELECT target_language FROM projects WHERE id = ?1",

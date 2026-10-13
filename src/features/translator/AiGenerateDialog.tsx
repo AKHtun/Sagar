@@ -9,7 +9,7 @@ import {
   listAiProviders,
   startAiTranslation,
 } from "../../lib/tauri/ai";
-import { getProject } from "../../lib/tauri/commands";
+import { getBookSettings, getProject } from "../../lib/tauri/commands";
 import { CommandError } from "../../lib/tauri/errors";
 import type {
   AiProviderList,
@@ -51,6 +51,8 @@ export function AiGenerateDialog({
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
+  const [bookInstructions, setBookInstructions] = useState("");
+  const [currentInstructions, setCurrentInstructions] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [proposal, setProposal] = useState<string | null>(null);
   const [streamed, setStreamed] = useState("");
@@ -101,7 +103,7 @@ export function AiGenerateDialog({
       if (event.key === "Tab") {
         const controls = Array.from(
           dialogRef.current?.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), input:not(:disabled), [tabindex="0"]',
+            'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
           ) ?? [],
         );
         const first = controls[0];
@@ -125,12 +127,18 @@ export function AiGenerateDialog({
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listAiProviders(), getTranslationSelection(), getProject(projectId)])
-      .then(([list, saved, current]) => {
+    Promise.all([
+      listAiProviders(),
+      getTranslationSelection(),
+      getProject(projectId),
+      getBookSettings(projectId),
+    ])
+      .then(([list, saved, current, book]) => {
         if (cancelled) return;
         setProviders(list);
         setSelection(saved);
         setProject(current);
+        setBookInstructions(book.instructions);
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -256,6 +264,7 @@ export function AiGenerateDialog({
         model: selection.model,
         consent: true,
         previousOutput,
+        currentInstructions,
         reasoningEffort: selection.reasoningEffort,
       });
       starting.current = false;
@@ -275,7 +284,7 @@ export function AiGenerateDialog({
         error instanceof CommandError ? error.message : "The proposal could not start.",
       );
     }
-  }, [chapterId, consent, selection, streamed]);
+  }, [chapterId, consent, selection, streamed, currentInstructions]);
 
   const handleCancel = useCallback(() => {
     if (!jobId.current) {
@@ -372,6 +381,29 @@ export function AiGenerateDialog({
 
             {phase === "idle" || phase === "failed" ? (
               <>
+                {bookInstructions ? (
+                  <details>
+                    <summary>Book instructions</summary>
+                    <p className="book-instructions">{bookInstructions}</p>
+                  </details>
+                ) : null}
+                <label className="form-field">
+                  <span>Instructions for this run (optional)</span>
+                  <textarea
+                    rows={3}
+                    maxLength={20000}
+                    value={currentInstructions}
+                    onChange={(event) => {
+                      setCurrentInstructions(event.target.value);
+                      setStreamed("");
+                    }}
+                    placeholder="Additional guidance for this chapter…"
+                  />
+                </label>
+                <p className="dialog__muted">
+                  Book instructions and this run's instructions are sent together.
+                  Changing these instructions restarts translation on Retry.
+                </p>
                 <label className="export-ack">
                   <input
                     type="checkbox"

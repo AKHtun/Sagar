@@ -1,4 +1,10 @@
 const paths = {
+  chevronDown: "M6 9l6 6 6-6",
+  paragraph: "M13 4h7M13 4v16M18 4v16M13 4H9a4 4 0 0 0 0 8h4",
+  richText: "M5 3h10l4 4v14H5V3Zm10 0v4h4M8 11h8M8 15h8M8 18h5",
+  sparkles:
+    "M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3ZM20 3v4M18 5h4",
+  format: "M4 5h12M10 5v14M6 19h8M17 13l4 8M19 17h4",
   book: "M4 4h6a3 3 0 0 1 2 1 3 3 0 0 1 2-1h6v15h-6a3 3 0 0 0-2 1 3 3 0 0 0-2-1H4V4Zm8 1v15",
   trash: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7",
   plus: "M12 5v14M5 12h14",

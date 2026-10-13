@@ -127,7 +127,7 @@ pub fn get_last_chapter(data_dir: &Path, project_id: &str) -> Result<Option<Stri
     translations::get_last_chapter(&conn, project_id)
 }
 
-fn validate_language_tag(raw: &str) -> Result<String, AppError> {
+pub(crate) fn validate_language_tag(raw: &str) -> Result<String, AppError> {
     let language = raw.trim().to_string();
     if language.is_empty()
         || !language

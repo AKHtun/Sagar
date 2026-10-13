@@ -31,11 +31,14 @@ export default function App() {
     root.style.setProperty("--text-book", `${zoom}px`);
   }, [theme, zoom]);
 
-  const cycleTheme = useCallback(() => {
-    const order: ThemePreference[] = ["system", "light", "dark"];
-    const next = order[(order.indexOf(loadTheme()) + 1) % order.length];
+  const updateTheme = useCallback((next: ThemePreference) => {
     setTheme(next);
     saveTheme(next);
+  }, []);
+  const updateTextSize = useCallback((size: number) => {
+    const next = Math.min(28, Math.max(14, size));
+    setZoom(next);
+    saveTextZoom(next);
   }, []);
 
   const zoomIn = useCallback(() => {
@@ -88,44 +91,21 @@ export default function App() {
   }
   return (
     <div className="app-with-controls">
-      <div className="app-controls" role="toolbar" aria-label="Appearance">
+      <div className="app-controls">
         <div className="app-brand">
           <span>
             <Icon name="book" size={21} />
           </span>{" "}
           Sagar <span className="app-brand__descriptor">Translation studio</span>
         </div>
-        <button
-          type="button"
-          className="icon-button"
-          onClick={cycleTheme}
-          aria-label={`Appearance: ${theme}`}
-          title={`Appearance: ${theme}. Click to change.`}
-        >
-          <Icon
-            name={theme === "system" ? "monitor" : theme === "light" ? "sun" : "moon"}
-          />
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          onClick={zoomIn}
-          aria-label="Increase text size"
-          title="Increase text size (Cmd/Ctrl +)"
-        >
-          <Icon name="plus" />
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          onClick={zoomOut}
-          aria-label="Decrease text size"
-          title="Decrease text size (Cmd/Ctrl −)"
-        >
-          <Icon name="minus" />
-        </button>
       </div>
       <LibraryScreen
+        appearance={{
+          theme,
+          textSize: zoom,
+          onThemeChange: updateTheme,
+          onTextSizeChange: updateTextSize,
+        }}
         onOpenProject={(projectId, importWarnings) =>
           setOpenProject({ projectId, importWarnings })
         }

@@ -216,6 +216,7 @@ pub struct ExportInput {
     pub snapshot_path: std::path::PathBuf,
     pub destination: std::path::PathBuf,
     pub translated_title: Option<String>,
+    pub metadata: Vec<(String, String)>,
     pub target_language: String,
     /// (chapter_id, resource_href) in spine order with per-block patches.
     pub chapters: Vec<(String, String)>,
@@ -350,12 +351,12 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
         .unwrap_or_else(|| snapshot.read_entry(&opf_path))?;
     let mut opf_out = opf_source;
     if let Some(title) = &input.translated_title {
-        let (bytes, _) = patch::replace_metadata_value(&opf_out, "dc", "title", title);
-        opf_out = bytes;
+        opf_out = patch::upsert_dc_metadata(&opf_out, "title", title)?;
     }
-    let (bytes, _) =
-        patch::replace_metadata_value(&opf_out, "dc", "language", &input.target_language);
-    opf_out = bytes;
+    opf_out = patch::upsert_dc_metadata(&opf_out, "language", &input.target_language)?;
+    for (name, value) in &input.metadata {
+        opf_out = patch::upsert_dc_metadata(&opf_out, name, value)?;
+    }
     if !excluded.is_empty() {
         let excluded_ids = opf_ids_for_hrefs(&parsed_opf, &excluded);
         opf_out = strip_opf_entries(&opf_out, &excluded_ids)?;

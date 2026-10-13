@@ -356,7 +356,7 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
           disabled={saving || loading || draft.trim() === ""}
           onClick={() => void handleSave()}
         >
-          {saving ? "Saving…" : "Save translation model"}
+          {saving ? "Saving…" : "Save"}
         </button>
       </div>
     </section>

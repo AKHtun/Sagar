@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "sagar",
+  "productName": "Sagar",
   "version": "0.1.0",
   "identifier": "app.myanmars.sagar",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "EPUB Translation Studio",
+        "title": "Sagar",
         "width": 1280,
         "height": 800,
         "minWidth": 960,

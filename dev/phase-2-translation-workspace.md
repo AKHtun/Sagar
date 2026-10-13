@@ -174,3 +174,71 @@ Equivalent content from normal editor typing is not reloaded, preserving the
 caret and undo history; stale async validation cannot overwrite newer text.
 Frontend lint/build passed. Native AI completion/insert verification remains
 open, along with the existing cross-platform checks.
+
+### Workspace toolbar simplification — 2026-10-13
+
+The book title, chapter picker/sidebar toggle, previous/next navigation,
+save state and Export now share one workspace header. Original/Translation
+view controls remain in the pane headers. The duplicate source chapter-title
+row is removed, and formatting is hidden until the user opens Format (also
+hidden in HTML view). Keyboard formatting shortcuts and the slash menu remain
+available. On narrow windows the chapter picker remains available while
+previous/next icons are hidden to avoid crowding. Frontend lint/build passed;
+native visual and keyboard verification remains open.
+
+### Pane controls as icons — 2026-10-13
+
+Reader/Rich text and HTML, AI proposal and Format now use consistent 34px
+square icon controls, matching the review actions. Tooltips and accessible
+labels identify each action; selected views and expanded formatting retain
+highlighted states. Both pane headers share this sizing. Frontend lint/build
+passed; native visual verification remains open.
+
+The Paragraph formatting button now uses a compact pilcrow (¶) icon with its
+existing tooltip, accessible label, active state and keyboard shortcut.
+
+### Appearance preferences in Settings — 2026-10-13
+
+Library Settings now includes an Appearance tab for Follow system / Light /
+Dark and reading text size with an English/Myanmar preview. The unexplained
+appearance and +/− buttons are removed from the library header. Preferences
+still use the existing local keys, apply immediately, and keep Cmd/Ctrl +/−
+shortcuts. Provider and Translation Model tabs remain available. Settings tabs
+support arrow-key navigation with focus tracking. Frontend lint/build passed;
+native theme/size and cross-platform verification remain open.
+
+Library book rows now also expose the same Book Settings dialog through a
+settings icon beside Trash, without entering the workspace. Saving updates
+the library's project data in place and retains search/focus state. Frontend
+lint/build passed; native library-dialog verification remains open.
+
+### App display name — 2026-10-13
+
+Tauri productName, the native window title and HTML title now use “Sagar”.
+The existing app identifier and storage identity remain unchanged. A rebuilt
+and relaunched app is required for the macOS application menu label to update.
+
+### Searchable chapter picker — 2026-10-13
+
+The native chapter select is replaced by a bounded, searchable combobox.
+Search matches reading-order numbers and titles; the current chapter is
+marked. Arrow keys navigate results, Enter selects, Escape closes and restores
+focus, and Tab/outside click dismiss the popup. The popup scrolls to the active
+result and limits list height for large books. Selection continues through the
+existing autosave-flush navigation path. Frontend lint/build passed; native
+keyboard, pointer and light/dark visual checks remain open.
+
+### Sidebar search and progress filters — 2026-10-13
+
+The sidebar searches chapter titles and reading-order numbers, with All,
+Incomplete, Not started, In progress and Completed filters. Filtered chapters
+keep reading order; the active chapter uses its live draft progress. Search
+and filter controls remain above the scrollable list, with a result count and
+Clear filters empty state. Arrow/Home/End keys move focus within visible rows;
+Enter/Space selects through the existing autosave-flush path. A visible row
+remains tabbable even when the active chapter is filtered out. Frontend
+lint/build passed; native sidebar interaction/visual checks remain open.
+
+Workspace Book Settings is now after Export at the right end of the header.
+Export uses the shared square download icon button with its accessible label
+and tooltip, following the user's explicit preference for this toolbar.

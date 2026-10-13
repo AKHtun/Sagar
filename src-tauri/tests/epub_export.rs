@@ -957,3 +957,95 @@ fn draft_export_without_originals_requires_a_translation() {
     .expect_err("empty filtered export must fail");
     assert_eq!(error.code, "nothing_to_export");
 }
+
+#[test]
+fn book_settings_persist_instructions_and_export_metadata_without_changing_source() {
+    let dir = tempdir();
+    let data_dir = tempdir();
+    let files = rich_book_files();
+    let refs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "book-settings.epub", &refs);
+    let original = std::fs::read(&source).expect("source");
+    let book = import_rich_book(&data_dir, &source);
+    let mut settings = services::book_settings::get(&data_dir, &book.project_id).expect("settings");
+    settings.title = "မြန်မာစာ & Stories".into();
+    settings.author = "မောင်မောင် & Co".into();
+    settings.publisher = "Local <Press>".into();
+    settings.description = "စာအုပ် description & details".into();
+    settings.instructions = "Use ဖန်ရှန်း for Fan Xian.".into();
+    services::book_settings::save(&data_dir, &book.project_id, settings.clone()).expect("save");
+    let loaded = services::book_settings::get(&data_dir, &book.project_id).expect("reopen");
+    assert_eq!(loaded.title, settings.title);
+    assert_eq!(loaded.instructions, settings.instructions);
+    let conn = services::workspace::open_db(&data_dir).expect("db");
+    let ai_source =
+        sagar_lib::storage::ai_translate::translation_source(&conn, &book.chapter_ids[0])
+            .expect("AI source");
+    assert_eq!(ai_source.instructions, settings.instructions);
+    let other = services::import::import_epub(&data_dir, &source, true).expect("separate book");
+    assert!(
+        services::book_settings::get(&data_dir, &other.project.id)
+            .expect("other")
+            .instructions
+            .is_empty()
+    );
+    let mut invalid = settings.clone();
+    invalid.target_language = "my MM!".into();
+    invalid.title = "Should not persist".into();
+    assert!(services::book_settings::save(&data_dir, &book.project_id, invalid).is_err());
+    assert_eq!(
+        services::book_settings::get(&data_dir, &book.project_id)
+            .expect("unchanged")
+            .title,
+        settings.title
+    );
+    save_block(&book, 0, 0, "မြန်မာ", "draft");
+    let destination = dir.join("with-metadata.epub");
+    services::export::export_epub(
+        &data_dir,
+        ExportRequest {
+            project_id: book.project_id.clone(),
+            destination: destination.clone(),
+            mode: "draft".into(),
+            title: None,
+            language: None,
+            include_original: true,
+        },
+    )
+    .expect("export saved settings");
+    let mut zip =
+        zip::ZipArchive::new(std::fs::File::open(&destination).expect("output")).expect("zip");
+    let mut opf = String::new();
+    zip.by_name("OEBPS/content.opf")
+        .expect("opf")
+        .read_to_string(&mut opf)
+        .expect("read");
+    let doc = roxmltree::Document::parse(&opf).expect("XML");
+    for (name, expected) in [
+        ("title", settings.title.as_str()),
+        ("creator", settings.author.as_str()),
+        ("publisher", settings.publisher.as_str()),
+        ("description", settings.description.as_str()),
+    ] {
+        assert_eq!(
+            doc.descendants()
+                .find(|n| n.has_tag_name(("http://purl.org/dc/elements/1.1/", name)))
+                .and_then(|n| n.text()),
+            Some(expected)
+        );
+    }
+    assert!(!opf.contains("Use ဖန်ရှန်း"));
+    let reopened = services::import::import_epub(&data_dir, &destination, true).expect("reimport");
+    assert_eq!(reopened.project.title, settings.title);
+    assert_eq!(
+        reopened.project.author.as_deref(),
+        Some(settings.author.as_str())
+    );
+    assert_eq!(std::fs::read(&source).expect("source intact"), original);
+    let snapshot =
+        services::workspace::snapshot_path(&data_dir, &book.project_id).expect("snapshot");
+    assert_eq!(std::fs::read(snapshot).expect("snapshot intact"), original);
+}

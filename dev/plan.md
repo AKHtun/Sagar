@@ -523,3 +523,11 @@ The editor has a `/` block menu for Text, H1–H3, Table and Image, with keyboar
 filtering/selection and pointer selection at the caret. Basic authored tables
 are now an explicitly requested feature, using the existing chapter save and
 EPUB export services. See Milestone 2 for validation and remaining native checks.
+
+### Per-book settings follow-up — 2026-10-13
+
+Explicitly requested book metadata and AI instruction settings are implemented
+as an extension of the export/workspace slice and the authorized AI assist
+work. See [AI follow-ups](later-ai-translation.md) for fields, prompt behavior,
+preservation tests and remaining native/cross-platform checks. Release and
+future AI milestone checkboxes are unchanged.

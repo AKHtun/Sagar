@@ -459,3 +459,102 @@ mod tests {
         assert!(text.contains(">Keep</a>"), "{text}");
     }
 }
+
+/// Edit the first Dublin Core field by namespace, preserving its attributes
+/// and any other creators/refinements. Add a locally namespaced field if absent.
+pub fn upsert_dc_metadata(
+    bytes: &[u8],
+    name: &str,
+    value: &str,
+) -> Result<Vec<u8>, crate::error::AppError> {
+    use quick_xml::events::{BytesEnd, BytesText};
+    let invalid = || {
+        crate::error::AppError::new(
+            "export_metadata_invalid",
+            "The book metadata could not be updated safely.",
+        )
+    };
+    if !["title", "language", "creator", "publisher", "description"].contains(&name) {
+        return Err(invalid());
+    }
+    let text = std::str::from_utf8(bytes).map_err(|_| invalid())?;
+    let doc = roxmltree::Document::parse(text).map_err(|_| invalid())?;
+    let metadata = doc
+        .root_element()
+        .children()
+        .find(|n| n.has_tag_name(("http://www.idpf.org/2007/opf", "metadata")))
+        .ok_or_else(invalid)?;
+    let mut output = bytes.to_vec();
+    if let Some(node) = metadata
+        .children()
+        .find(|n| n.has_tag_name(("http://purl.org/dc/elements/1.1/", name)))
+    {
+        let range = node.range();
+        let mut reader = Reader::from_reader(&bytes[range.clone()]);
+        let mut buffer = Vec::new();
+        let start = match reader.read_event_into(&mut buffer).map_err(|_| invalid())? {
+            Event::Start(start) | Event::Empty(start) => start.into_owned(),
+            _ => return Err(invalid()),
+        };
+        let qname = start.name().as_ref().to_string();
+        let mut writer = quick_xml::Writer::new(Vec::new());
+        writer.write_event(Event::Start(start))?;
+        writer.write_event(Event::Text(BytesText::new(value)))?;
+        writer.write_event(Event::End(BytesEnd::new(qname)))?;
+        output.splice(range, writer.into_inner());
+    } else {
+        let range = metadata.range();
+        let mut reader = Reader::from_reader(&bytes[range.clone()]);
+        let mut buffer = Vec::new();
+        let mut depth = 0usize;
+        let mut insert_at = None;
+        loop {
+            let position = reader.buffer_position() as usize;
+            match reader.read_event_into(&mut buffer).map_err(|_| invalid())? {
+                Event::Start(_) => depth += 1,
+                Event::End(_) => {
+                    depth = depth.checked_sub(1).ok_or_else(invalid)?;
+                    if depth == 0 {
+                        insert_at = Some(range.start + position);
+                        break;
+                    }
+                }
+                Event::Eof => break,
+                _ => {}
+            }
+            buffer.clear();
+        }
+        let insert_at = insert_at.ok_or_else(invalid)?;
+        let element = format!(
+            "<dc:{name} xmlns:dc=\"http://purl.org/dc/elements/1.1/\">{}</dc:{name}>",
+            crate::epub::preview::escape_html_text(value)
+        );
+        output.splice(insert_at..insert_at, element.bytes());
+    }
+    Ok(output)
+}
+
+#[cfg(test)]
+mod book_metadata_tests {
+    use super::*;
+    #[test]
+    fn metadata_uses_namespace_and_preserves_creator_ids_and_other_authors() {
+        let opf = br##"<package xmlns="http://www.idpf.org/2007/opf"><metadata xmlns:d="http://purl.org/dc/elements/1.1/"><d:creator id="author">Old</d:creator><d:creator>Other</d:creator><meta refines="#author" property="role">aut</meta></metadata></package>"##;
+        let patched = upsert_dc_metadata(opf, "creator", "New & Name").expect("patch");
+        let patched = upsert_dc_metadata(&patched, "publisher", "Press <One>").expect("add");
+        let text = std::str::from_utf8(&patched).expect("utf8");
+        let doc = roxmltree::Document::parse(text).expect("XML");
+        let creators: Vec<_> = doc
+            .descendants()
+            .filter(|n| n.has_tag_name(("http://purl.org/dc/elements/1.1/", "creator")))
+            .collect();
+        assert_eq!(creators[0].attribute("id"), Some("author"));
+        assert_eq!(creators[0].text(), Some("New & Name"));
+        assert_eq!(creators[1].text(), Some("Other"));
+        assert!(text.contains("refines=\"#author\""));
+        assert!(doc.descendants().any(|n| {
+            n.has_tag_name(("http://purl.org/dc/elements/1.1/", "publisher"))
+                && n.text() == Some("Press <One>")
+        }));
+    }
+}

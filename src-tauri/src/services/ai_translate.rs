@@ -44,6 +44,7 @@ pub struct StartTranslationInput {
     pub model: String,
     pub consent: bool,
     pub previous_output: Option<String>,
+    pub current_instructions: Option<String>,
     pub reasoning_effort: Option<String>,
 }
 
@@ -90,6 +91,22 @@ pub fn build_translation_prompt(
         target = target_language.trim(),
         html = body_html,
     )
+}
+
+pub fn build_book_translation_prompt(
+    source_language: Option<&str>,
+    target_language: &str,
+    body_html: &str,
+    book: &str,
+    current: &str,
+) -> String {
+    let base = build_translation_prompt(source_language, target_language, body_html);
+    let guidance = format!(
+        "Book-wide translation guidance (names, terminology and style):\n{}\n\nCurrent-run translation guidance:\n{}\n\nApply both sets of guidance to text translation; current-run guidance takes precedence for naming/style conflicts. The structural preservation and output-only rules still apply.\n\n",
+        serde_json::to_string(book).unwrap_or_default(),
+        serde_json::to_string(current).unwrap_or_default()
+    );
+    format!("{guidance}{base}")
 }
 
 /// Resume only complete top-level elements whose structure matches the source.
@@ -665,6 +682,9 @@ where
         &model,
         input.reasoning_effort.as_deref(),
     )?;
+    let current_instructions = crate::services::book_settings::validate_instructions(
+        input.current_instructions.as_deref().unwrap_or(""),
+    )?;
     let conn = crate::services::workspace::open_db(data_dir)?;
     let source = ai_translate::translation_source(&conn, input.chapter_id.trim())?;
     // The original body travels so tables, images, links and attributes can
@@ -707,10 +727,12 @@ where
     lock_jobs()?.insert(job_id.clone(), std::sync::Arc::clone(&job));
     let thread_job_id = job_id.clone();
 
-    let prompt = build_translation_prompt(
+    let prompt = build_book_translation_prompt(
         source.source_language.as_deref(),
         &source.target_language,
         &remaining,
+        &source.instructions,
+        &current_instructions,
     );
     let args = agent_args(cli_id, &model, &prompt, effort.as_deref());
     let chapter_id = input.chapter_id.trim().to_string();
@@ -835,6 +857,24 @@ pub fn cancel_ai_translation(job_id: &str) -> Result<(), AppError> {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicBool;
+
+    #[test]
+    fn prompts_combine_book_and_current_guidance_with_preservation_rules() {
+        let prompt = build_book_translation_prompt(
+            Some("en"),
+            "my",
+            "<p>Fan Xian</p>",
+            "Use ဖန်ရှန်း for Fan Xian.",
+            "Use formal speech in this chapter.",
+        );
+        assert!(prompt.contains("ဖန်ရှန်း"));
+        assert!(prompt.contains("Use formal speech"));
+        assert!(prompt.contains("<p>Fan Xian</p>"));
+        assert!(prompt.contains("Keep every tag"));
+        assert!(
+            crate::services::book_settings::validate_instructions(&"x".repeat(20_001)).is_err()
+        );
+    }
 
     #[test]
     fn completed_proposal_repairs_source_trailing_rule_without_losing_unicode_or_attributes() {

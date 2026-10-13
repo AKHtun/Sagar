@@ -1,4 +1,5 @@
 import { type MouseEvent, useState } from "react";
+import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
 import type { ChapterContent } from "../../types/chapter";
 
@@ -21,24 +22,29 @@ export function SourcePane({
         <h2 className="pane__heading" id="source-pane-heading">
           Original <span className="pane__badge">Read only</span>
         </h2>
-        <fieldset className="view-switch" aria-label="Original view">
+        <fieldset className="view-switch view-switch--icons" aria-label="Original view">
           <button
             type="button"
+            className="icon-button"
+            aria-label="Original reader view"
+            title="Reader view"
             aria-pressed={view === "reader"}
             onClick={() => setView("reader")}
           >
-            Reader
+            <Icon name="book" />
           </button>
           <button
             type="button"
+            className="icon-button"
+            aria-label="Original HTML view"
+            title="HTML view"
             aria-pressed={view === "html"}
             onClick={() => setView("html")}
           >
-            HTML
+            <Icon name="code" />
           </button>
         </fieldset>
       </div>
-      <div className="source-context">{content?.title ?? "Original chapter"}</div>
       <div className="pane__scroll">
         {loading ? <StatusNotice kind="loading">Loading chapter…</StatusNotice> : null}
         {error ? (

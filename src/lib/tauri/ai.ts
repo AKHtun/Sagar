@@ -104,6 +104,7 @@ export async function startAiTranslation(input: {
   model: string;
   consent: boolean;
   previousOutput?: string;
+  currentInstructions?: string;
   reasoningEffort?: string | null;
 }): Promise<AiTranslationStart> {
   try {
@@ -113,6 +114,7 @@ export async function startAiTranslation(input: {
       model: input.model,
       consent: input.consent,
       previousOutput: input.previousOutput ?? null,
+      currentInstructions: input.currentInstructions ?? null,
       reasoningEffort: input.reasoningEffort ?? null,
     });
   } catch (error) {

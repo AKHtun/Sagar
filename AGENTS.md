@@ -130,6 +130,43 @@ Follow existing scaffold conventions if different. Do not create speculative dir
 - Keep commits/changes scoped; don't refactor unrelated code or introduce a web server for an offline desktop app.
 - Add database migrations for schema changes; never silently drop a user's translation database.
 
+### Professional UI/UX and consistency
+
+These rules apply to every new or changed screen. Use the existing Sagar design
+patterns and the latest confirmed user workflow. They do not authorize features
+outside the agreed product scope.
+
+**Layout and hierarchy**
+- Keep reading and writing as the main workspace activity. Use two persistent control rows by default: one book/chapter navigation header, then the pane headers. Show formatting and table tools only when requested or relevant.
+- Group related actions; avoid duplicate chapter titles, stacked toolbars, repeated settings controls, and excessive padding. Keep primary actions visible and put secondary tools within a clearly labeled control.
+- Support the configured minimum window size, pane resizing, and larger text without clipped controls or overlapping content. Keep a usable chapter picker when space is limited.
+- Use consistent alignment, spacing, typography, borders, radii, and control heights from `src/styles/tokens.css` and existing shared styles. Extend a shared pattern instead of adding conflicting CSS overrides for individual screens.
+
+**Controls and icons**
+- Use the shared `Icon` component and `icon-button` pattern for compact toolbar actions. Default pane-header icon buttons are 34 × 34 px with 18 px icons; match sizes within each group. Avoid mixing text buttons with different heights or padding for equivalent toolbar actions.
+- Use recognizable icons for Reader/Rich text, HTML, AI, formatting, paragraph (¶), review, and settings. Keep clear text labels for consequential primary actions such as Save and Export, and for form fields or ambiguous choices.
+- Every icon-only button must have an action-specific accessible name and tooltip. Show selected views with `aria-pressed`, disclosures with `aria-expanded` and `aria-controls`, and a visible active style.
+- Use an X icon in dialog headers, with an accessible Close label. Keep Escape, focus trapping, and focus restoration consistent. If closing cancels work, make that behavior clear in its label or tooltip.
+- Make hover, focus, active, loading, and disabled states distinct. Disabled text must remain readable; do not combine faded backgrounds and low-contrast labels. Target at least 4.5:1 text contrast in both themes, including disabled text.
+
+**Settings and forms**
+- Put theme and reading text size in Settings → Appearance, with meaningful labels and a preview. Preserve existing keyboard shortcuts and saved preferences.
+- Keep global settings separate from Book Settings. Expose the same Book Settings dialog from both the library row beside Trash and the workspace book header.
+- Book Settings owns export metadata and book-wide instructions for explicitly authorized AI features. Explain what is saved, what export uses, and when instructions are sent. Keep current-run instructions separate and explain any effect on Retry.
+- Use consistent field layouts, labels, validation messages, Save/Cancel placement, and observable save state. Preserve entered values after errors. Do not require opening a chapter to edit book-level preferences.
+
+**Editor behavior and feedback**
+- Place empty-editor hints outside text flow: the caret starts at the beginning, the hint remains on focus, and typing removes it. Placeholder text must never enter saved content.
+- External draft updates, including an accepted AI result, must appear immediately in the mounted Rich editor. Do not require switching to HTML and back. Apply the same validation and loss-aware conversion checks to every update path.
+- Do not reload editor content during normal typing or IME composition. Preserve caret, selection, undo history, and Myanmar combining marks. Ignore stale asynchronous results rather than replacing newer edits.
+- Provide concise, actionable loading, empty, save, success, and error feedback. Explain validation failures without hiding the cause; retain recoverable output and input. Retry must clearly indicate whether it continues, revalidates, or restarts.
+- Keep product language consistent: use “Sagar” for the app, “Book Settings” for per-book preferences, and chapter-based progress for the current chapter-authoring workflow. Avoid implementation jargon in user-facing messages.
+
+**UI verification**
+- Before reporting a UI change complete, check affected controls, focus order, keyboard actions, selected/disabled/error states, and light/dark appearance. For editor changes, check empty, typed, and externally updated content plus Myanmar text where possible.
+- Inspect the rendered result at the normal and minimum supported window sizes when a current running build is available. A successful lint/build is not visual or interaction verification; explicitly report unverified native or cross-platform behavior.
+- Keep UI changes scoped. Do not introduce a new styling framework or perform an unrelated redesign to satisfy a small consistency fix.
+
 ### Commands (from repo root)
 
 ```bash
@@ -154,6 +191,8 @@ Run the relevant checks available in the repository; don't claim checks passed i
 - [ ] Unit tests for parsing/logic and integration test or fixture for any EPUB read/write change.
 - [ ] No loss of source content; preserved links and assets remain usable.
 - [ ] Keyboard behavior and Burmese Unicode rendering checked on target OS where possible.
+- [ ] UI follows the shared layout/control patterns above; labels, focus and disabled states remain readable and usable.
+- [ ] Rendered UI/interaction checks reported separately from lint/build; any native or cross-platform limitations are explicit.
 - [ ] TypeScript/Rust checks run and results reported, including limitations.
 - [ ] No AI/network functionality introduced in Phase 1.
 

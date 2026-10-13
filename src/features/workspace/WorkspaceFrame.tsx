@@ -17,11 +17,13 @@ import {
 } from "../../lib/tauri/commands";
 import type { ChapterContent, ExportOutcome } from "../../types/chapter";
 import type { ChapterSummary, ImportWarning, ProjectSummary } from "../../types/project";
+import { ChapterPicker } from "../chapters/ChapterPicker";
 import { ChapterSidebar } from "../chapters/ChapterSidebar";
 import { ExportDialog } from "../export/ExportDialog";
 import { SourcePane } from "../reader/SourcePane";
 import { TargetPane } from "../translator/TargetPane";
 import { useChapterEditor } from "../translator/useChapterEditor";
+import { BookSettingsDialog } from "./BookSettingsDialog";
 import { LanguageDialog } from "./LanguageDialog";
 
 type ProjectState =
@@ -67,6 +69,7 @@ export function WorkspaceFrame({
   const [exportOpen, setExportOpen] = useState(false);
   const [exportOutcome, setExportOutcome] = useState<ExportOutcome | null>(null);
   const [langOpen, setLangOpen] = useState(false);
+  const [bookSettingsOpen, setBookSettingsOpen] = useState(false);
   const readingRef = useRef<HTMLDivElement>(null);
   const loadSequence = useRef(0);
   const contentRef = useRef<ChapterContent | null>(null);
@@ -206,6 +209,64 @@ export function WorkspaceFrame({
         <p className="workspace__book">
           <span className="workspace__book-title">{project?.title ?? "Loading…"}</span>
         </p>
+        <div className="workspace__chapterbar">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Chapters"
+            title="Toggle chapter sidebar"
+            aria-expanded={sidebarVisible}
+            onClick={() => setSidebarVisible(!sidebarVisible)}
+          >
+            <Icon name="sidebar" />
+          </button>
+          <ChapterPicker
+            chapters={chapters}
+            chapterId={activeChapterId}
+            disabled={!chapters.length || contentState.status === "loading"}
+            onSelect={selectChapter}
+          />
+          <div className="workspace__chapter-actions">
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Previous chapter"
+              title="Previous chapter"
+              disabled={
+                !activeChapter ||
+                activeChapter.spineIndex === 0 ||
+                contentState.status === "loading"
+              }
+              onClick={() => {
+                const index = chapters.findIndex(
+                  (chapter) => chapter.id === activeChapterId,
+                );
+                if (chapters[index - 1]) selectChapter(chapters[index - 1].id);
+              }}
+            >
+              <Icon name="left" />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Next chapter"
+              title="Next chapter"
+              disabled={
+                !activeChapter ||
+                activeChapter.spineIndex === chapters.length - 1 ||
+                contentState.status === "loading"
+              }
+              onClick={() => {
+                const index = chapters.findIndex(
+                  (chapter) => chapter.id === activeChapterId,
+                );
+                if (chapters[index + 1]) selectChapter(chapters[index + 1].id);
+              }}
+            >
+              <Icon name="right" />
+            </button>
+          </div>
+        </div>
         <span
           className={`workspace__save workspace__save--${editor.indicator}`}
           role="status"
@@ -215,12 +276,23 @@ export function WorkspaceFrame({
         </span>
         <button
           type="button"
-          className="btn btn--primary"
+          className="icon-button"
           aria-label="Export EPUB"
+          title="Export EPUB"
           disabled={projectState.status !== "ready"}
           onClick={() => setExportOpen(true)}
         >
-          <Icon name="download" size={16} /> Export
+          <Icon name="download" />
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Book settings"
+          title="Book metadata and AI instructions"
+          disabled={!project}
+          onClick={() => setBookSettingsOpen(true)}
+        >
+          <Icon name="settings" />
         </button>
       </header>
 
@@ -263,70 +335,6 @@ export function WorkspaceFrame({
         </section>
       ) : null}
 
-      <div className="workspace__chapterbar">
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Chapters"
-          title="Toggle chapter sidebar"
-          aria-expanded={sidebarVisible}
-          onClick={() => setSidebarVisible(!sidebarVisible)}
-        >
-          <Icon name="sidebar" />
-        </button>
-        <select
-          aria-label="Current chapter"
-          value={activeChapterId ?? ""}
-          disabled={!chapters.length || contentState.status === "loading"}
-          onChange={(event) => selectChapter(event.target.value)}
-        >
-          {chapters.map((chapter) => (
-            <option key={chapter.id} value={chapter.id}>
-              {chapter.spineIndex + 1}. {chapter.title}
-            </option>
-          ))}
-        </select>
-        <div className="workspace__chapter-actions">
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Previous chapter"
-            title="Previous chapter"
-            disabled={
-              !activeChapter ||
-              activeChapter.spineIndex === 0 ||
-              contentState.status === "loading"
-            }
-            onClick={() => {
-              const index = chapters.findIndex(
-                (chapter) => chapter.id === activeChapterId,
-              );
-              if (chapters[index - 1]) selectChapter(chapters[index - 1].id);
-            }}
-          >
-            <Icon name="left" />
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Next chapter"
-            title="Next chapter"
-            disabled={
-              !activeChapter ||
-              activeChapter.spineIndex === chapters.length - 1 ||
-              contentState.status === "loading"
-            }
-            onClick={() => {
-              const index = chapters.findIndex(
-                (chapter) => chapter.id === activeChapterId,
-              );
-              if (chapters[index + 1]) selectChapter(chapters[index + 1].id);
-            }}
-          >
-            <Icon name="right" />
-          </button>
-        </div>
-      </div>
       <div className="workspace__body">
         {sidebarVisible ? (
           <>
@@ -432,6 +440,17 @@ export function WorkspaceFrame({
         />
       ) : null}
 
+      {bookSettingsOpen && project ? (
+        <BookSettingsDialog
+          project={project}
+          onClose={() => setBookSettingsOpen(false)}
+          onSaved={(updated) =>
+            setProjectState((current) =>
+              current.status === "ready" ? { ...current, project: updated } : current,
+            )
+          }
+        />
+      ) : null}
       {exportOpen && project ? (
         <ExportDialog
           project={project}
