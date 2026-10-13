@@ -1,6 +1,7 @@
 //! Application services: use cases orchestrated for the UI, kept free of
 //! both Tauri plumbing and JSX concerns.
 
+pub mod ai;
 pub mod export;
 pub mod import;
 pub mod projects;

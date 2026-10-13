@@ -100,6 +100,21 @@ const MIGRATIONS: &[(i64, &str)] = &[
         0 AS unsupported
     FROM chapters ch LEFT JOIN chapter_documents d ON d.chapter_id=ch.id GROUP BY ch.project_id;",
     ),
+    // AI provider settings (settings-only slice): user-added OpenAI-compatible
+    // endpoints. Secrets stay in app-owned SQLite and are never serialized
+    // back; summaries only report key presence.
+    (
+        4,
+        "CREATE TABLE ai_custom_providers (
+            id          TEXT PRIMARY KEY,
+            name        TEXT NOT NULL,
+            base_url    TEXT NOT NULL,
+            api_key     TEXT NOT NULL,
+            model       TEXT NOT NULL,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );",
+    ),
 ];
 
 /// Highest defined schema version. Currently asserted on by tests; production

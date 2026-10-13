@@ -31,6 +31,7 @@ const paths = {
   columnRemove: "M3 3h11v18H3V3Zm6 0v18M17 12h6",
   table: "M3 3h18v18H3V3Zm0 6h18M3 15h18M9 3v18M15 3v18",
   close: "M6 6l12 12M6 18 18 6",
+  settings: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
 } as const;
 export type IconName = keyof typeof paths;
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {

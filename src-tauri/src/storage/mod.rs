@@ -1,6 +1,7 @@
 //! SQLite project storage, owned exclusively by Rust. The frontend never
 //! issues SQL; it goes through commands → services → this module.
 
+pub mod ai_providers;
 pub mod documents;
 pub mod migrations;
 pub mod projects;

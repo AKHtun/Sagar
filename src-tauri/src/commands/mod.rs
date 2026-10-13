@@ -4,7 +4,8 @@
 use tauri::{AppHandle, Manager};
 
 use crate::domain::{
-    ChapterContent, ChapterSummary, CoverImage, ExportOutcome, ExportReview, ImportResult,
+    AiProviderList, ChapterContent, ChapterSummary, CliCheckResult, CoverImage,
+    CustomProviderSummary, CustomTestResult, ExportOutcome, ExportReview, ImportResult,
     ProjectSummary, SaveResult,
 };
 use crate::error::AppError;
@@ -227,4 +228,57 @@ pub async fn save_chapter_document(
 pub async fn validate_chapter_html(html: String) -> Result<String, AppError> {
     run_blocking(move || crate::epub::rich_text::validate_document(&html).map(|(html, _)| html))
         .await
+}
+
+/// AI provider settings (settings-only slice): no book content is involved.
+#[tauri::command]
+pub async fn list_ai_providers(app: AppHandle) -> Result<AiProviderList, AppError> {
+    let data_dir = app_data_dir(&app)?;
+    run_blocking(move || services::ai::list_ai_providers(&data_dir)).await
+}
+
+#[tauri::command]
+pub async fn check_ai_cli(app: AppHandle, provider_id: String) -> Result<CliCheckResult, AppError> {
+    let data_dir = app_data_dir(&app)?;
+    run_blocking(move || services::ai::check_ai_cli(&data_dir, &provider_id)).await
+}
+
+#[tauri::command]
+pub async fn save_ai_custom_provider(
+    app: AppHandle,
+    id: Option<String>,
+    name: String,
+    base_url: String,
+    api_key: Option<String>,
+    model: String,
+) -> Result<CustomProviderSummary, AppError> {
+    let data_dir = app_data_dir(&app)?;
+    run_blocking(move || {
+        services::ai::save_ai_custom_provider(
+            &data_dir,
+            services::ai::SaveCustomInput {
+                id,
+                name,
+                base_url,
+                api_key,
+                model,
+            },
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_ai_custom_provider(app: AppHandle, id: String) -> Result<(), AppError> {
+    let data_dir = app_data_dir(&app)?;
+    run_blocking(move || services::ai::delete_ai_custom_provider(&data_dir, &id)).await
+}
+
+#[tauri::command]
+pub async fn test_ai_custom_provider(
+    app: AppHandle,
+    id: String,
+) -> Result<CustomTestResult, AppError> {
+    let data_dir = app_data_dir(&app)?;
+    run_blocking(move || services::ai::test_ai_custom_provider(&data_dir, &id)).await
 }

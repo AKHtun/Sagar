@@ -146,6 +146,11 @@ pub fn run() {
             commands::update_project_metadata,
             commands::review_export,
             commands::export_epub,
+            commands::list_ai_providers,
+            commands::check_ai_cli,
+            commands::save_ai_custom_provider,
+            commands::delete_ai_custom_provider,
+            commands::test_ai_custom_provider,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

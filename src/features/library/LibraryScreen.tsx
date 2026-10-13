@@ -10,6 +10,7 @@ import {
 } from "../../lib/tauri/commands";
 import { CommandError } from "../../lib/tauri/errors";
 import type { ImportWarning, ProjectSummary } from "../../types/project";
+import { AiSettingsDialog } from "../settings/AiSettingsDialog";
 
 type LibraryState =
   | { status: "loading" }
@@ -36,6 +37,7 @@ export function LibraryScreen({ onOpenProject }: LibraryScreenProps) {
   const [removing, setRemoving] = useState<ProjectSummary | null>(null);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [removeNotice, setRemoveNotice] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const refreshProjects = useCallback(() => {
     setLibrary({ status: "loading" });
@@ -113,15 +115,26 @@ export function LibraryScreen({ onOpenProject }: LibraryScreenProps) {
               : "Your books"}
           </p>
         </div>
-        <button
-          type="button"
-          className="btn btn--primary"
-          data-open-epub
-          disabled={importingName !== null}
-          onClick={() => void handleOpenEpub()}
-        >
-          <Icon name="plus" /> Import EPUB
-        </button>
+        <div className="button-row">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="AI settings"
+            title="AI settings"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Icon name="settings" />
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            data-open-epub
+            disabled={importingName !== null}
+            onClick={() => void handleOpenEpub()}
+          >
+            <Icon name="plus" /> Import EPUB
+          </button>
+        </div>
       </header>
       {importingName ? (
         <StatusNotice kind="loading">Importing “{importingName}”…</StatusNotice>
@@ -216,6 +229,8 @@ export function LibraryScreen({ onOpenProject }: LibraryScreenProps) {
       </section>
 
       {removeNotice ? <StatusNotice kind="info">{removeNotice}</StatusNotice> : null}
+
+      {settingsOpen ? <AiSettingsDialog onClose={() => setSettingsOpen(false)} /> : null}
 
       {removing ? (
         <ConfirmRemoveDialog
