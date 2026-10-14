@@ -234,6 +234,7 @@ fn continuation_parts(original: &str, previous: &str) -> Result<(String, String)
 /// Flag choices follow each tool's documented non-interactive mode. Codex's
 /// adapter reads the model, effort and prompt from this vector and sends them
 /// through App Server instead of executing these legacy exec arguments.
+/// OpenCode likewise reads model/variant/prompt and uses its HTTP/SSE server.
 pub fn agent_args(
     id: CliProviderId,
     model: &str,
@@ -704,6 +705,9 @@ fn execute_provider_streaming(
 ) -> Result<Vec<u8>, AppError> {
     if id == CliProviderId::Codex {
         return super::codex_stream::run(binary, args, work_dir, cancel, timeout, on_chunk);
+    }
+    if id == CliProviderId::Opencode {
+        return super::opencode_stream::run(binary, args, work_dir, cancel, timeout, on_chunk);
     }
     if id != CliProviderId::Agy {
         let mut stream = ProviderJsonStream::new(id);
@@ -1906,18 +1910,11 @@ mod tests {
         #[test]
         fn structured_providers_deliver_text_before_process_completion() {
             use serde_json::json;
-            let cases = [
-                (
-                    CliProviderId::Opencode,
-                    json!({"type":"text","part":{"id":"a","text":"<p>hello</p>"}}),
-                    json!({"type":"step_finish","part":{"reason":"stop"}}),
-                ),
-                (
-                    CliProviderId::ClaudeCode,
-                    json!({"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"<p>hello</p>"}}}),
-                    json!({"type":"result","subtype":"success","is_error":false,"result":"<p>hello</p>"}),
-                ),
-            ];
+            let cases = [(
+                CliProviderId::ClaudeCode,
+                json!({"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"<p>hello</p>"}}}),
+                json!({"type":"result","subtype":"success","is_error":false,"result":"<p>hello</p>"}),
+            )];
             for (id, text, end) in cases {
                 let stub = stub_script(&format!("echo '{}'\nsleep 0.3\necho '{}'", text, end));
                 let dir = tempfile::tempdir().unwrap();

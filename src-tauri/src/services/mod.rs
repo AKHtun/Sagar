@@ -7,6 +7,7 @@ pub mod book_settings;
 mod codex_stream;
 pub mod export;
 pub mod import;
+mod opencode_stream;
 pub mod projects;
 pub mod workspace;
 

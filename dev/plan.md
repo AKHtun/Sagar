@@ -1,5 +1,60 @@
 # Plan.md — EPUB Translation Studio
 
+### Muse Spark free-model server regression — 2026-10-14
+
+Reproduced the saved opencode/muse-spark-1.3-contributor-free selection with
+synthetic text: the regular CLI succeeded while Sagar's server adapter returned
+APIError / HTTP 403 before any output. Blanket deny permissions removed the
+normal tool definitions and triggered OpenCode's free-tier access gate, matching
+upstream issue #50627. Temporary sessions now require approval (ask), retaining
+the normal schema; any actual permission/question request still aborts without
+approval and cleans up the session/server. Sharing remains disabled and provider,
+model and variant selections are unchanged. No header impersonation or model
+fallback introduced.
+The exact Muse Spark model now succeeds through the Rust SSE adapter: two text
+deltas, first at 2.91s and finished at 2.98s for synthetic short text. This is a
+compatibility/streaming check, not a chapter timing benchmark. Provider errors
+now classify access/authentication/rate-limit/service/output-limit failures
+without echoing raw response bodies, prompts, paths or credentials. Regression
+coverage includes an actual tool-approval request being rejected and cleaned
+up, plus sanitized provider errors. Rust formatting, 132 unit, 20 export and
+18 import tests passed; normally ignored live probe passed explicitly, and the
+performance sweep remains ignored. Frontend lint/build and 18 tests passed;
+existing bundle-size warning remains. Temporary event diagnostics were removed.
+Next unfinished task: rebuild/restart Sagar and retry the actual Muse Spark
+chapter; native UI, chapter timing and Windows/Linux remain unverified. No
+milestone checkboxes changed.
+
+### OpenCode Server text streaming — 2026-10-14
+
+OpenCode translation and HTML repair now use a per-job Rust adapter for
+opencode serve instead of run --format json. The server binds 127.0.0.1 on
+an assigned port with a generated Basic-auth password; clients bypass proxies
+and redirects. Subscribe to SSE before prompt_async, route only the current
+session's assistant text parts/deltas into the existing single text box,
+deduplicate final snapshots, and require completed assistant output before
+validating the proposal. Preserve provider/model and variant selections.
+Server/session cleanup runs on success, cancellation, timeout and errors;
+only this adapter's temporary session is aborted/deleted. Runtime configuration
+disables sharing while preserving inline settings and leaving user files alone;
+managed settings that prevent this are rejected before sending book text.
+Temporary session permissions deny tools. No new JS runtime/dependencies or
+changes to Codex, Claude or agy transports.
+Installed OpenAPI inspection and authenticated synthetic probe verified live
+text deltas using zai-coding-plan/glm-5.3: final probe emitted two deltas, first
+at 4.94s and finished at 4.97s. Earlier probe emitted five deltas. These are
+streaming checks, not chapter speed benchmarks. Rust formatting and 131 unit,
+20 export and 18 import tests passed; both live probes are normally ignored
+and were run explicitly in their respective tasks. Performance sweep ignored.
+Frontend lint/build and all 18 tests passed; existing bundle-size warning remains.
+Initial live-probe setup failed because the full provider catalog exceeded the
+bounded response limit; the probe now takes an explicitly selected installed
+model and the actual translation adapter does not fetch that catalog.
+Next unfinished task: rebuild/restart and verify an actual OpenCode chapter
+and HTML repair with its selected model/variant in the native app. Native
+window/themes/IME and Windows/Linux verification remain open. No checkboxes
+changed.
+
 ### Codex App Server text streaming — 2026-10-14
 
 Supersedes the stderr display approach, which the user confirmed only showed
