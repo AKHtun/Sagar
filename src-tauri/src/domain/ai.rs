@@ -10,6 +10,7 @@ pub enum CliProviderId {
     Codex,
     Opencode,
     ClaudeCode,
+    Agy,
 }
 
 impl CliProviderId {
@@ -18,6 +19,7 @@ impl CliProviderId {
             CliProviderId::Codex => "codex",
             CliProviderId::Opencode => "opencode",
             CliProviderId::ClaudeCode => "claude_code",
+            CliProviderId::Agy => "agy",
         }
     }
 
@@ -26,6 +28,7 @@ impl CliProviderId {
             CliProviderId::Codex => "Codex",
             CliProviderId::Opencode => "OpenCode",
             CliProviderId::ClaudeCode => "Claude Code",
+            CliProviderId::Agy => "Antigravity (agy)",
         }
     }
 
@@ -36,6 +39,7 @@ impl CliProviderId {
             CliProviderId::Codex => &["codex"],
             CliProviderId::Opencode => &["opencode"],
             CliProviderId::ClaudeCode => &["claude"],
+            CliProviderId::Agy => &["agy"],
         }
     }
 
@@ -44,15 +48,17 @@ impl CliProviderId {
             "codex" => Some(CliProviderId::Codex),
             "opencode" => Some(CliProviderId::Opencode),
             "claude_code" => Some(CliProviderId::ClaudeCode),
+            "agy" => Some(CliProviderId::Agy),
             _ => None,
         }
     }
 
-    pub fn all() -> [CliProviderId; 3] {
+    pub fn all() -> [CliProviderId; 4] {
         [
             CliProviderId::Codex,
             CliProviderId::Opencode,
             CliProviderId::ClaudeCode,
+            CliProviderId::Agy,
         ]
     }
 }
@@ -166,7 +172,7 @@ pub struct AiTranslationEvent {
     /// `started` | `stream` | `done` | `failed` | `cancelled`.
     pub kind: String,
     pub proposal_html: Option<String>,
-    /// Running full-so-far stdout for `stream` events; book-derived text
+    /// Full-so-far translated text for `stream` events; text
     /// shown locally only, never logged or telemetered.
     pub partial_text: Option<String>,
     /// Short human-readable outcome; never contains book text or secrets.
@@ -192,7 +198,7 @@ pub struct AiHtmlFixEvent {
     /// `started` | `stream` | `done` | `failed` | `cancelled`.
     pub kind: String,
     pub fixed_html: Option<String>,
-    /// Running full-so-far stdout for `stream` events; book-derived text
+    /// Full-so-far translated text for `stream` events; text
     /// shown locally only, never logged or telemetered.
     pub partial_text: Option<String>,
     /// Short human-readable outcome; never contains book text or secrets.

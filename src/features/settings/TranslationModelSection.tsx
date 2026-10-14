@@ -125,7 +125,9 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
     selectedModel?.reasoningEfforts ??
     (agent === "codex"
       ? ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
-      : []);
+      : agent === "agy"
+        ? ["low", "medium", "high"]
+        : []);
   const effortOrder = [
     "none",
     "minimal",

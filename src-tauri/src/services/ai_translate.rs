@@ -231,7 +231,9 @@ fn continuation_parts(original: &str, previous: &str) -> Result<(String, String)
 
 /// Fixed argument vectors per CLI. The prompt always travels as one trailing
 /// argument; no user input ever becomes a flag, and no shell is involved.
-/// Flag choices follow each tool's documented non-interactive mode.
+/// Flag choices follow each tool's documented non-interactive mode. Codex's
+/// adapter reads the model, effort and prompt from this vector and sends them
+/// through App Server instead of executing these legacy exec arguments.
 pub fn agent_args(
     id: CliProviderId,
     model: &str,
@@ -251,7 +253,19 @@ pub fn agent_args(
             "run".to_string(),
             "--model".to_string(),
             model.to_string(),
+            "--format".into(),
+            "json".into(),
             prompt.to_string(),
+        ],
+        CliProviderId::Agy => vec![
+            "-p".into(),
+            prompt.into(),
+            "--model".into(),
+            model.into(),
+            "--output-format".into(),
+            "stream-json".into(),
+            "--print-timeout".into(),
+            "30m".into(),
         ],
         CliProviderId::ClaudeCode => vec![
             "-p".to_string(),
@@ -259,7 +273,9 @@ pub fn agent_args(
             "--model".to_string(),
             model.to_string(),
             "--output-format".to_string(),
-            "text".to_string(),
+            "stream-json".to_string(),
+            "--verbose".into(),
+            "--include-partial-messages".into(),
             "--max-turns".to_string(),
             "5".to_string(),
         ],
@@ -271,10 +287,12 @@ pub fn agent_args(
                 format!("model_reasoning_effort=\"{effort}\""),
             ],
             CliProviderId::Opencode => vec!["--variant".to_string(), effort.to_string()],
-            CliProviderId::ClaudeCode => vec!["--effort".to_string(), effort.to_string()],
+            CliProviderId::Agy | CliProviderId::ClaudeCode => {
+                vec!["--effort".to_string(), effort.to_string()]
+            }
         };
         // Keep the prompt a positional argument; never interpret it as a flag.
-        let position = if id == CliProviderId::ClaudeCode {
+        let position = if matches!(id, CliProviderId::ClaudeCode | CliProviderId::Agy) {
             0
         } else {
             args.len() - 1
@@ -303,7 +321,19 @@ pub(crate) fn execute_streaming(
     work_dir: &Path,
     cancel: &AtomicBool,
     timeout: Duration,
+    on_chunk: impl FnMut(&[u8]),
+) -> Result<StreamResult, AppError> {
+    execute_streaming_with_progress(binary, args, work_dir, cancel, timeout, on_chunk, |_| {})
+}
+
+fn execute_streaming_with_progress(
+    binary: &Path,
+    args: &[String],
+    work_dir: &Path,
+    cancel: &AtomicBool,
+    timeout: Duration,
     mut on_chunk: impl FnMut(&[u8]),
+    mut on_progress: impl FnMut(&[u8]),
 ) -> Result<StreamResult, AppError> {
     use std::io::Read as _;
 
@@ -346,18 +376,31 @@ pub(crate) fn execute_streaming(
             }
         }
     });
-    let (err_tx, err_rx) = mpsc::channel::<Vec<u8>>();
+    let (err_tx, err_rx) = mpsc::sync_channel::<Vec<u8>>(16);
     std::thread::spawn(move || {
-        let mut collected = Vec::new();
         if let Some(mut pipe) = stderr_pipe {
-            let _ = pipe.read_to_end(&mut collected);
+            let mut buffer = [0u8; 8192];
+            loop {
+                match pipe.read(&mut buffer) {
+                    Ok(0) | Err(_) => break,
+                    Ok(count) => {
+                        if err_tx.send(buffer[..count].to_vec()).is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
         }
-        let _ = err_tx.send(collected);
     });
 
     let deadline = Instant::now() + timeout;
     let mut collected = Vec::new();
+    let mut stderr = Vec::new();
     loop {
+        while let Ok(chunk) = err_rx.try_recv() {
+            append_progress_tail(&mut stderr, &chunk);
+            on_progress(&chunk);
+        }
         while let Ok(chunk) = out_rx.try_recv() {
             collected.extend_from_slice(&chunk);
             if collected.len() > MAX_OUTPUT_BYTES {
@@ -416,14 +459,268 @@ pub(crate) fn execute_streaming(
     let status = child
         .wait()
         .map_err(|_| failed("The translation tool reported an error."))?;
-    let stderr = err_rx
-        .recv_timeout(Duration::from_secs(2))
-        .unwrap_or_default();
+    while let Ok(chunk) = err_rx.recv_timeout(Duration::from_secs(2)) {
+        append_progress_tail(&mut stderr, &chunk);
+        on_progress(&chunk);
+    }
     Ok(StreamResult {
         status,
         stdout: collected,
         stderr,
     })
+}
+
+/// Keep diagnostics bounded independently from the validated proposal.
+const MAX_PROGRESS_BYTES: usize = 128 * 1024;
+
+fn append_progress_tail(bytes: &mut Vec<u8>, chunk: &[u8]) {
+    bytes.extend_from_slice(chunk);
+    if bytes.len() > MAX_PROGRESS_BYTES {
+        bytes.drain(..bytes.len() - MAX_PROGRESS_BYTES);
+    }
+}
+
+#[derive(Default)]
+struct AgyStream {
+    pending: Vec<u8>,
+    response: Option<String>,
+    failed: bool,
+}
+
+impl AgyStream {
+    fn push(&mut self, chunk: &[u8], on_text: &mut impl FnMut(&[u8])) {
+        self.pending.extend_from_slice(chunk);
+        while let Some(end) = self.pending.iter().position(|b| *b == b'\n') {
+            let line: Vec<u8> = self.pending.drain(..=end).collect();
+            self.line(&line, on_text);
+        }
+    }
+
+    fn line(&mut self, line: &[u8], on_text: &mut impl FnMut(&[u8])) {
+        if line.iter().all(u8::is_ascii_whitespace) {
+            return;
+        }
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(line) else {
+            self.failed = true;
+            return;
+        };
+        match value["event"].as_str() {
+            Some("step_update") if value["step_update"]["step_type"] == "agent_response" => {
+                if let Some(delta) = value["step_update"]["text_delta"].as_str() {
+                    on_text(delta.as_bytes());
+                }
+            }
+            Some("result") => {
+                if self.response.is_some() || value["result"]["status"] != "SUCCESS" {
+                    self.failed = true;
+                }
+                self.response = value["result"]["response"].as_str().map(str::to_owned);
+                if self.response.is_none() {
+                    self.failed = true;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn finish(mut self) -> Result<Vec<u8>, AppError> {
+        let remaining = std::mem::take(&mut self.pending);
+        self.line(&remaining, &mut |_| {});
+        if self.failed || self.response.is_none() {
+            return Err(AppError::new(
+                "translation_failed",
+                "Antigravity did not return a successful complete result. Check agy authentication and model selection, then retry.",
+            ));
+        }
+        Ok(self.response.unwrap_or_default().into_bytes())
+    }
+}
+
+/// CLI JSON output is separate from the XHTML proposal. Never include tool
+/// output, reasoning or protocol envelopes in text destined for validation.
+struct ProviderJsonStream {
+    id: CliProviderId,
+    pending: Vec<u8>,
+    text: String,
+    final_response: Option<String>,
+    complete: bool,
+    failed: bool,
+    snapshots: std::collections::HashMap<String, String>,
+    opencode_message: Option<String>,
+    opencode_response: String,
+}
+
+impl ProviderJsonStream {
+    fn new(id: CliProviderId) -> Self {
+        Self {
+            id,
+            pending: Vec::new(),
+            text: String::new(),
+            final_response: None,
+            complete: false,
+            failed: false,
+            snapshots: Default::default(),
+            opencode_message: None,
+            opencode_response: String::new(),
+        }
+    }
+
+    fn push(&mut self, chunk: &[u8], on_text: &mut impl FnMut(&[u8])) {
+        self.pending.extend_from_slice(chunk);
+        while let Some(end) = self.pending.iter().position(|b| *b == b'\n') {
+            let line: Vec<u8> = self.pending.drain(..=end).collect();
+            self.line(&line, on_text);
+        }
+    }
+
+    fn append(&mut self, text: &str, on_text: &mut impl FnMut(&[u8])) {
+        self.text.push_str(text);
+        on_text(text.as_bytes());
+    }
+
+    fn snapshot(&mut self, key: &str, text: &str, on_text: &mut impl FnMut(&[u8])) {
+        let previous = self.snapshots.get(key).map(String::as_str).unwrap_or("");
+        if let Some(delta) = text.strip_prefix(previous) {
+            let delta = delta.to_string();
+            self.snapshots.insert(key.into(), text.into());
+            self.append(&delta, on_text);
+        } else {
+            self.failed = true;
+        }
+    }
+
+    fn line(&mut self, line: &[u8], on_text: &mut impl FnMut(&[u8])) {
+        if line.iter().all(u8::is_ascii_whitespace) {
+            return;
+        }
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(line) else {
+            self.failed = true;
+            return;
+        };
+        let kind = value["type"].as_str().unwrap_or("");
+        match self.id {
+            CliProviderId::Codex => match kind {
+                "item.started" | "item.updated" | "item.completed"
+                    if value["item"]["type"] == "agent_message" =>
+                {
+                    if let Some(text) = value["item"]["text"].as_str() {
+                        let key = value["item"]["id"].as_str().unwrap_or("message");
+                        self.snapshot(key, text, on_text);
+                        if kind == "item.completed" {
+                            self.final_response = Some(text.into());
+                        }
+                    }
+                }
+                "turn.completed" => self.complete = true,
+                "turn.failed" | "error" => self.failed = true,
+                _ => {}
+            },
+            CliProviderId::Opencode => match kind {
+                "text" => {
+                    if let Some(text) = value["part"]["text"].as_str() {
+                        let key = value["part"]["id"].as_str().unwrap_or("text");
+                        let message = value["part"]["messageID"].as_str();
+                        if message != self.opencode_message.as_deref() {
+                            self.opencode_response.clear();
+                            self.opencode_message = message.map(str::to_owned);
+                        }
+                        let previous = self.snapshots.get(key).map(String::as_str).unwrap_or("");
+                        if let Some(delta) = text.strip_prefix(previous) {
+                            self.opencode_response.push_str(delta);
+                        }
+                        self.snapshot(key, text, on_text);
+                    }
+                }
+                "step_finish" => {
+                    self.complete = value["part"]["reason"]
+                        .as_str()
+                        .is_none_or(|reason| reason == "stop");
+                    if matches!(value["part"]["reason"].as_str(), Some("error" | "length")) {
+                        self.failed = true;
+                    }
+                }
+                "error" => self.failed = true,
+                _ => {}
+            },
+            CliProviderId::ClaudeCode => match kind {
+                "stream_event" if value["parent_tool_use_id"].is_null() => {
+                    let event = &value["event"];
+                    if event["type"] == "content_block_delta"
+                        && event["delta"]["type"] == "text_delta"
+                    {
+                        if let Some(text) = event["delta"]["text"].as_str() {
+                            self.append(text, on_text);
+                        }
+                    }
+                }
+                "result" => {
+                    self.complete = true;
+                    self.failed |=
+                        value["is_error"].as_bool() != Some(false) || value["subtype"] != "success";
+                    self.final_response = value["result"].as_str().map(str::to_owned);
+                    if self.final_response.is_none() {
+                        self.failed = true;
+                    }
+                }
+                "error" => self.failed = true,
+                _ => {}
+            },
+            CliProviderId::Agy => unreachable!("agy has its own decoder"),
+        }
+    }
+
+    fn finish(mut self, on_text: &mut impl FnMut(&[u8])) -> Result<Vec<u8>, AppError> {
+        let remaining = std::mem::take(&mut self.pending);
+        self.line(&remaining, on_text);
+        if self.id == CliProviderId::Codex && self.final_response.is_none() {
+            self.failed = true;
+        }
+        let response = if self.id == CliProviderId::Opencode {
+            self.opencode_response
+        } else {
+            self.final_response.unwrap_or(self.text)
+        };
+        if self.failed || !self.complete || response.trim().is_empty() {
+            return Err(AppError::new(
+                "translation_failed",
+                format!(
+                    "{} did not return a successful complete response. Check the CLI connection and model, then retry.",
+                    self.id.label()
+                ),
+            ));
+        }
+        Ok(response.into_bytes())
+    }
+}
+
+fn execute_provider_streaming(
+    id: CliProviderId,
+    binary: &Path,
+    args: &[String],
+    work_dir: &Path,
+    cancel: &AtomicBool,
+    timeout: Duration,
+    mut on_chunk: impl FnMut(&[u8]),
+) -> Result<Vec<u8>, AppError> {
+    if id == CliProviderId::Codex {
+        return super::codex_stream::run(binary, args, work_dir, cancel, timeout, on_chunk);
+    }
+    if id != CliProviderId::Agy {
+        let mut stream = ProviderJsonStream::new(id);
+        let mut result = execute_streaming(binary, args, work_dir, cancel, timeout, |chunk| {
+            stream.push(chunk, &mut on_chunk)
+        })?;
+        ensure_success(&result)?;
+        result.stdout = stream.finish(&mut on_chunk)?;
+        return Ok(result.stdout);
+    }
+    let mut stream = AgyStream::default();
+    let mut result = execute_streaming(binary, args, work_dir, cancel, timeout, |chunk| {
+        stream.push(chunk, &mut on_chunk)
+    })?;
+    ensure_success(&result)?;
+    result.stdout = stream.finish()?;
+    Ok(result.stdout)
 }
 
 fn ensure_success(result: &StreamResult) -> Result<(), AppError> {
@@ -873,7 +1170,8 @@ where
         let outcome = if !prefix.is_empty() && remaining.trim().is_empty() {
             validate_proposal(prefix.as_bytes())
         } else {
-            execute_streaming(
+            execute_provider_streaming(
+                cli_id,
                 &binary,
                 &args,
                 &work_dir,
@@ -894,9 +1192,8 @@ where
                     }
                 },
             )
-            .and_then(|result| ensure_success(&result).map(|_| result))
             .and_then(|result| {
-                let decoded = String::from_utf8_lossy(&result.stdout);
+                let decoded = String::from_utf8_lossy(&result);
                 let stripped = strip_code_fences(&decoded);
                 validate_proposal(format!("{prefix}{stripped}").as_bytes())
             })
@@ -1040,7 +1337,8 @@ where
         let mut last_emit = Instant::now()
             .checked_sub(STREAM_EMIT_INTERVAL)
             .unwrap_or_else(Instant::now);
-        let outcome = execute_streaming(
+        let outcome = execute_provider_streaming(
+            cli_id,
             &binary,
             &args,
             &work_dir,
@@ -1061,9 +1359,8 @@ where
                 }
             },
         )
-        .and_then(|result| ensure_success(&result).map(|_| result))
         .and_then(|result| {
-            let decoded = String::from_utf8_lossy(&result.stdout);
+            let decoded = String::from_utf8_lossy(&result);
             let stripped = strip_code_fences(&decoded);
             validate_proposal(stripped.as_bytes())
         });
@@ -1111,6 +1408,165 @@ pub fn cancel_ai_translation(job_id: &str) -> Result<(), AppError> {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicBool;
+
+    fn decode_provider_fixture(
+        id: CliProviderId,
+        events: &[serde_json::Value],
+    ) -> (Result<Vec<u8>, AppError>, Vec<u8>) {
+        let input = events
+            .iter()
+            .map(|event| serde_json::to_string(event).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut stream = ProviderJsonStream::new(id);
+        let mut preview = Vec::new();
+        for chunk in input.as_bytes().chunks(3) {
+            stream.push(chunk, &mut |text| preview.extend_from_slice(text));
+        }
+        let result = stream.finish(&mut |text| preview.extend_from_slice(text));
+        (result, preview)
+    }
+
+    #[test]
+    fn codex_stream_deduplicates_snapshots_and_uses_last_completed_message() {
+        use serde_json::json;
+        let (result, preview) = decode_provider_fixture(
+            CliProviderId::Codex,
+            &[
+                json!({"type":"item.completed","item":{"id":"reason","type":"reasoning","text":"ignore"}}),
+                json!({"type":"item.updated","item":{"id":"answer","type":"agent_message","text":"<p>မြန်မာ"}}),
+                json!({"type":"item.completed","item":{"id":"answer","type":"agent_message","text":"<p>မြန်မာ</p>"}}),
+                json!({"type":"turn.completed"}),
+            ],
+        );
+        assert_eq!(result.unwrap(), "<p>မြန်မာ</p>".as_bytes());
+        assert_eq!(preview, "<p>မြန်မာ</p>".as_bytes());
+        let (result, _) = decode_provider_fixture(
+            CliProviderId::Codex,
+            &[
+                json!({"type":"item.completed","item":{"id":"comment","type":"agent_message","text":"Working."}}),
+                json!({"type":"item.completed","item":{"id":"final","type":"agent_message","text":"<p>final</p>"}}),
+                json!({"type":"turn.completed"}),
+            ],
+        );
+        assert_eq!(result.unwrap(), b"<p>final</p>");
+    }
+
+    #[test]
+    fn claude_stream_uses_text_deltas_without_duplicate_assistant_or_result() {
+        use serde_json::json;
+        let (result, preview) = decode_provider_fixture(
+            CliProviderId::ClaudeCode,
+            &[
+                json!({"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"ignore"}}}),
+                json!({"type":"stream_event","parent_tool_use_id":"tool","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"ignore"}}}),
+                json!({"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"<p>မြန်မာ"}}}),
+                json!({"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"</p>"}}}),
+                json!({"type":"assistant","message":{"content":[{"type":"text","text":"<p>မြန်မာ</p>"}]}}),
+                json!({"type":"result","subtype":"success","is_error":false,"result":"<p>မြန်မာ</p>"}),
+            ],
+        );
+        assert_eq!(result.unwrap(), "<p>မြန်မာ</p>".as_bytes());
+        assert_eq!(preview, "<p>မြန်မာ</p>".as_bytes());
+    }
+
+    #[test]
+    fn opencode_stream_joins_text_parts_and_ignores_tools() {
+        use serde_json::json;
+        let (result, preview) = decode_provider_fixture(
+            CliProviderId::Opencode,
+            &[
+                json!({"type":"tool_use","part":{"text":"ignore"}}),
+                json!({"type":"text","part":{"id":"a","text":"<p>မြန်မာ</p>"}}),
+                json!({"type":"text","part":{"id":"a","text":"<p>မြန်မာ</p>"}}),
+                json!({"type":"step_finish","part":{"reason":"tool-calls"}}),
+                json!({"type":"text","part":{"id":"b","text":"<p>next</p>"}}),
+                json!({"type":"step_finish","part":{"reason":"stop"}}),
+            ],
+        );
+        assert_eq!(result.unwrap(), "<p>မြန်မာ</p><p>next</p>".as_bytes());
+        assert_eq!(preview, "<p>မြန်မာ</p><p>next</p>".as_bytes());
+    }
+
+    #[test]
+    fn provider_streams_reject_missing_failed_and_malformed_completion() {
+        use serde_json::json;
+        for id in [
+            CliProviderId::Codex,
+            CliProviderId::Opencode,
+            CliProviderId::ClaudeCode,
+        ] {
+            assert!(decode_provider_fixture(id, &[]).0.is_err());
+            assert!(
+                decode_provider_fixture(id, &[json!({"type":"error"})])
+                    .0
+                    .is_err()
+            );
+            let mut stream = ProviderJsonStream::new(id);
+            stream.push(b"not json\n", &mut |_| {});
+            assert!(stream.finish(&mut |_| {}).is_err());
+        }
+        assert!(decode_provider_fixture(CliProviderId::ClaudeCode, &[json!({"type":"result","subtype":"error_max_turns","is_error":true,"result":"partial"})]).0.is_err());
+        assert!(
+            decode_provider_fixture(
+                CliProviderId::Codex,
+                &[
+                    json!({"type":"turn.failed"}),
+                    json!({"type":"turn.completed"})
+                ]
+            )
+            .0
+            .is_err()
+        );
+        let claude = agent_args(CliProviderId::ClaudeCode, "sonnet", "p", None);
+        assert!(claude.contains(&"--include-partial-messages".into()));
+        assert!(claude.contains(&"--verbose".into()));
+        let opencode = agent_args(CliProviderId::Opencode, "m", "p", None);
+        assert!(opencode.windows(2).any(|v| v == ["--format", "json"]));
+    }
+
+    #[test]
+    fn agy_stream_decodes_split_unicode_and_uses_terminal_response() {
+        let input = concat!(
+            "{\"event\":\"init\"}\n",
+            "{\"event\":\"step_update\",\"step_update\":{\"step_type\":\"tool\",\"text_delta\":\"ignore\"}}\n",
+            "{\"event\":\"step_update\",\"step_update\":{\"step_type\":\"agent_response\",\"text_delta\":\"<p>မြန်မာ</p>\"}}\n",
+            "{\"event\":\"result\",\"result\":{\"status\":\"SUCCESS\",\"response\":\"<p>မြန်မာ</p>\"}}"
+        );
+        let mut stream = AgyStream::default();
+        let mut preview = Vec::new();
+        for chunk in input.as_bytes().chunks(2) {
+            stream.push(chunk, &mut |text| preview.extend_from_slice(text));
+        }
+        assert_eq!(String::from_utf8(preview).unwrap(), "<p>မြန်မာ</p>");
+        assert_eq!(stream.finish().unwrap(), "<p>မြန်မာ</p>".as_bytes());
+        let args = agent_args(
+            CliProviderId::Agy,
+            "example-model",
+            "Translate.",
+            Some("high"),
+        );
+        assert!(
+            args.windows(2)
+                .any(|v| v == ["--output-format", "stream-json"])
+        );
+        assert!(args.windows(2).any(|v| v == ["--effort", "high"]));
+        assert!(args.windows(2).any(|v| v == ["-p", "Translate."]));
+    }
+
+    #[test]
+    fn agy_stream_rejects_failed_missing_and_malformed_results() {
+        for input in [
+            "",
+            "bad json\n",
+            r#"{"event":"result","result":{"status":"ERROR","response":"partial"}}"#,
+            r#"{"event":"result","result":{"status":"SUCCESS"}}"#,
+        ] {
+            let mut stream = AgyStream::default();
+            stream.push(input.as_bytes(), &mut |_| {});
+            assert!(stream.finish().is_err());
+        }
+    }
 
     #[test]
     fn translation_deadline_is_thirty_minutes() {
@@ -1342,6 +1798,7 @@ mod tests {
             ["exec", "--skip-git-repo-check", "--model", "gpt-5.6-sol"]
         );
         assert_eq!(codex[4], "Translate.");
+        assert!(!codex.iter().any(|arg| arg == "--json"));
 
         let opencode = agent_args(
             CliProviderId::Opencode,
@@ -1406,6 +1863,108 @@ mod tests {
                 chunks.push(chunk.to_vec());
             });
             (result, chunks)
+        }
+
+        #[test]
+        fn stderr_is_bounded_and_does_not_block_simultaneous_stdout() {
+            let stub = stub_script("head -c 262144 /dev/zero >&2\necho '<p>done</p>'");
+            let dir = tempfile::tempdir().unwrap();
+            let mut progress_bytes = 0;
+            let result = execute_streaming_with_progress(
+                &stub,
+                &[],
+                dir.path(),
+                &AtomicBool::new(false),
+                Duration::from_secs(10),
+                |_| {},
+                |chunk| progress_bytes += chunk.len(),
+            )
+            .unwrap();
+            assert_eq!(progress_bytes, 262144);
+            assert_eq!(result.stderr.len(), MAX_PROGRESS_BYTES);
+            assert_eq!(result.stdout, b"<p>done</p>\n");
+        }
+
+        #[test]
+        fn stderr_progress_can_cancel_a_still_running_child() {
+            let stub = stub_script("echo 'thinking' >&2\nsleep 3\necho '<p>late</p>'");
+            let dir = tempfile::tempdir().unwrap();
+            let cancel = AtomicBool::new(false);
+            let error = execute_streaming_with_progress(
+                &stub,
+                &[],
+                dir.path(),
+                &cancel,
+                Duration::from_secs(10),
+                |_| {},
+                |_| cancel.store(true, Ordering::SeqCst),
+            )
+            .unwrap_err();
+            assert_eq!(error.code, "translation_cancelled");
+        }
+
+        #[test]
+        fn structured_providers_deliver_text_before_process_completion() {
+            use serde_json::json;
+            let cases = [
+                (
+                    CliProviderId::Opencode,
+                    json!({"type":"text","part":{"id":"a","text":"<p>hello</p>"}}),
+                    json!({"type":"step_finish","part":{"reason":"stop"}}),
+                ),
+                (
+                    CliProviderId::ClaudeCode,
+                    json!({"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"<p>hello</p>"}}}),
+                    json!({"type":"result","subtype":"success","is_error":false,"result":"<p>hello</p>"}),
+                ),
+            ];
+            for (id, text, end) in cases {
+                let stub = stub_script(&format!("echo '{}'\nsleep 0.3\necho '{}'", text, end));
+                let dir = tempfile::tempdir().unwrap();
+                let mut preview = Vec::new();
+                let started = Instant::now();
+                let mut first_output = None;
+                let result = execute_provider_streaming(
+                    id,
+                    &stub,
+                    &[],
+                    dir.path(),
+                    &AtomicBool::new(false),
+                    Duration::from_secs(10),
+                    |chunk| {
+                        if first_output.is_none() {
+                            first_output = Some(started.elapsed());
+                        }
+                        preview.extend_from_slice(chunk);
+                    },
+                )
+                .unwrap();
+                assert!(first_output.unwrap() < Duration::from_millis(300));
+                assert_eq!(preview, b"<p>hello</p>");
+                assert_eq!(result, preview);
+            }
+        }
+
+        #[test]
+        fn agy_process_streams_text_and_returns_decoded_html() {
+            let stub = stub_script(
+                r#"echo '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"<p>hello</p>"}}'
+echo '{"event":"result","result":{"status":"SUCCESS","response":"<p>hello</p>"}}'"#,
+            );
+            let dir = tempfile::tempdir().unwrap();
+            let mut preview = Vec::new();
+            let result = execute_provider_streaming(
+                CliProviderId::Agy,
+                &stub,
+                &[],
+                dir.path(),
+                &AtomicBool::new(false),
+                Duration::from_secs(10),
+                |chunk| preview.extend_from_slice(chunk),
+            )
+            .unwrap();
+            assert_eq!(preview, b"<p>hello</p>");
+            assert_eq!(result, preview);
         }
 
         #[test]

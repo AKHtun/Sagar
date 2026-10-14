@@ -4,6 +4,7 @@
 pub mod ai;
 pub mod ai_translate;
 pub mod book_settings;
+mod codex_stream;
 pub mod export;
 pub mod import;
 pub mod projects;

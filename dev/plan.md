@@ -1,5 +1,93 @@
 # Plan.md — EPUB Translation Studio
 
+### Codex App Server text streaming — 2026-10-14
+
+Supersedes the stderr display approach, which the user confirmed only showed
+startup text until completion. Codex translation and HTML repair now use a
+Rust stdio client for codex app-server: initialize, ephemeral read-only thread,
+selected model/effort, and a single turn. item/agentMessage/delta feeds translated
+text into the existing single output box; final messages are deduplicated and
+successful turn completion is required before the existing XHTML/skeleton checks.
+Removed the separate diagnostics box. Other providers retain their adapters.
+No Node/Python runtime, TCP listener, source mutation or user config changes.
+The process is reaped on success, cancellation, timeout and protocol errors;
+messages/output are bounded, stale turns/commentary are ignored, and unexpected
+interactive actions fail explicitly rather than approving tools.
+Verified the installed protocol schema and an authenticated Rust adapter probe
+using gpt-6.1-sol / low: six text deltas, first at 4.17s, completion at 4.42s
+for synthetic short text. This is evidence of live deltas, not a chapter speed
+benchmark. Rust formatting, 125 unit tests, 20 export and 18 import tests passed;
+the live probe passed separately (normally ignored), and the performance sweep
+remains ignored. Frontend lint/build and 18 tests passed, including early/stale
+stream routing, single textarea, Myanmar text, Cancel/Escape and focus restore.
+Existing bundle-size warning remains. Next unfinished task: rebuild/restart and
+verify the same chapter/model/effort in the native app, with a timing comparison.
+Native themes/minimum-size/IME and Windows/Linux remain unverified. No checkboxes
+changed.
+
+### Codex live stderr progress — 2026-10-14
+
+Preserved Codex's restored plain exec arguments and streamed its stderr into a
+separate Codex progress box in both translation and HTML repair dialogs. Stdout
+alone supplies the proposal, validation and retry content. Progress activity
+resets the silence timer; stale jobs are ignored and early HTML repair events
+are queued until the start response returns. Diagnostic pipes and retained
+history are bounded (128 KiB tail); progress updates are throttled and flushed
+at completion. No saved draft/source mutation or JSON mode reintroduction.
+Rust formatting and all 31 translation-service tests passed. Regression coverage
+verifies progress before final stdout, proposal separation, stderr flooding,
+cancellation and continued structured output for other providers. Frontend
+lint/build and all 18 tests passed; the dialog regression covers early/stale
+progress, Myanmar text, readonly output, Cancel/Escape and focus restoration.
+Existing bundle-size warning remains. No running Sagar window was available;
+native light/dark, minimum-window, IME and Windows/Linux behavior remain
+unverified. Next unfinished task: rebuild/restart and verify live progress with
+the same chapter/model/effort, including a timing comparison. No checkboxes changed.
+
+### Codex streaming rollback — 2026-10-14
+
+User reported a chapter run increasing from about 140 seconds to over 200
+seconds after enabling JSON mode. Restored Codex's previous exec arguments
+without --json and its plain stdout execution path for translation and HTML
+repair. Other providers retain structured streaming. The timing cause is not
+confirmed; no same-chapter performance claim is made. Rust formatting and all
+28 translation-service tests passed, including a plain Codex process regression.
+Next unfinished task: rebuild/restart Sagar and time the same chapter with the
+same model/effort; an already-running job is unaffected by source changes.
+Native and cross-platform verification remain unverified. No checkboxes changed.
+
+### Structured streaming for existing CLI providers — 2026-10-14
+
+Codex now uses exec --json, OpenCode uses run --format json, and Claude Code
+uses stream-json with verbose and include-partial-messages. Provider decoders
+feed response text into the existing translation/HTML repair progress box,
+ignore reasoning/tools, deduplicate text snapshots, and require successful
+completion before validating proposals. Codex uses the last completed agent
+message; OpenCode retains the final assistant message's text parts.
+Live synthetic probes verified all three installed CLIs. Claude emitted text
+deltas; OpenCode emitted a completed text part; Codex emitted only a completed
+agent message. Codex exec therefore does not promise token-by-token output.
+Rust formatter and translation service tests, plus frontend lint/build passed;
+the existing bundle-size warning remains. Native dialog, keyboard/IME and
+Windows/Linux verification remain unverified. Next unfinished task: native
+verification and, if requested, a Codex transport with token delta support.
+No milestone checkboxes changed.
+
+### Antigravity CLI provider — 2026-10-14
+
+Added Antigravity (agy) to built-in provider discovery/checks, live `agy models`
+listing and saved translation selection, with low/medium/high effort controls.
+Translation and HTML repair run headless with stream-json; only agent response
+deltas appear in progress and the successful terminal response is validated.
+Malformed, failed or missing results are rejected. Existing cancellation,
+timeouts, isolated working directories and proposal review remain in use.
+Verified installed agy 1.1.23 version/model probes. Frontend lint/build and
+17 frontend tests passed; Rust unit/export/import tests passed (performance
+sweep ignored). Build retains the existing bundle-size warning.
+Next unfinished task: native provider selection and authenticated translation/
+repair verification at normal/minimum sizes in both themes; Windows/Linux and
+native keyboard/IME behavior remain unverified. No milestone checkboxes changed.
+
 ### Blockquote and code authoring — 2026-10-14
 
 Enabled inline code and standard pre/code blocks in the chapter editor while

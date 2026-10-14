@@ -53,6 +53,8 @@ export function AiFixHtmlDialog({
   const lastOutputAt = useRef<number>(Date.now());
   const jobId = useRef<string | null>(null);
   const starting = useRef(false);
+  const pendingEvents = useRef<AiHtmlFixEvent[]>([]);
+  const receiveEvent = useRef<(event: AiHtmlFixEvent) => void>(() => {});
   const closed = useRef(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
@@ -165,8 +167,13 @@ export function AiFixHtmlDialog({
         setNotice(payload.message);
       }
     };
+    receiveEvent.current = handleEvent;
     listen<AiHtmlFixEvent>("ai-html-fix-event", (event) => {
-      handleEvent(event.payload);
+      if (starting.current && !jobId.current && event.payload.chapterId === chapterId) {
+        pendingEvents.current.push(event.payload);
+      } else {
+        handleEvent(event.payload);
+      }
     })
       .then((fn) => {
         if (disposed) fn();
@@ -177,6 +184,7 @@ export function AiFixHtmlDialog({
       });
     return () => {
       disposed = true;
+      receiveEvent.current = () => {};
       unlisten?.();
       if (jobId.current) {
         const running = jobId.current;
@@ -205,6 +213,7 @@ export function AiFixHtmlDialog({
   const handleFix = useCallback(async () => {
     if (!selection || !consent || jobId.current || starting.current) return;
     starting.current = true;
+    pendingEvents.current = [];
     lastOutputAt.current = Date.now();
     setStalledSecs(0);
     setPhase("running");
@@ -226,8 +235,11 @@ export function AiFixHtmlDialog({
         return;
       }
       jobId.current = started.jobId;
+      for (const event of pendingEvents.current) receiveEvent.current(event);
+      pendingEvents.current = [];
     } catch (error) {
       starting.current = false;
+      pendingEvents.current = [];
       if (closed.current) return;
       setPhase("failed");
       setNotice(

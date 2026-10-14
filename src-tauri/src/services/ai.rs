@@ -1031,7 +1031,9 @@ pub fn validate_reasoning_effort(
     if !valid_effort_token(effort) {
         return Err(invalid());
     }
-    let supported = if agent == "claude_code" {
+    let supported = if agent == "agy" {
+        Some(vec!["low".into(), "medium".into(), "high".into()])
+    } else if agent == "claude_code" {
         Some(claude_efforts(model))
     } else if matches!(agent, "codex" | "opencode") {
         list_translation_models(data_dir, agent)?
@@ -1055,6 +1057,37 @@ pub fn validate_reasoning_effort(
         return Err(invalid());
     }
     Ok(Some(effort.to_string()))
+}
+
+fn parse_agy_models(text: &str) -> Vec<TranslationModel> {
+    let mut seen = HashSet::new();
+    text.lines()
+        .filter_map(|line| {
+            let mut parts = line.trim().splitn(2, char::is_whitespace);
+            let id = clean_model_id(parts.next()?)?;
+            if !id.contains('-')
+                || !id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/'))
+                || !seen.insert(id.clone())
+            {
+                return None;
+            }
+            let label = parts
+                .next()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(&id)
+                .to_string();
+            Some(TranslationModel {
+                id,
+                label,
+                detail: None,
+                reasoning_efforts: Some(vec!["low".into(), "medium".into(), "high".into()]),
+            })
+        })
+        .take(MAX_MODELS)
+        .collect()
 }
 
 /// Parses an OpenAI-compatible `/models` body (`{ data: [{ id }] }`).
@@ -1203,6 +1236,22 @@ pub fn list_translation_models(
                 )),
             }
         }
+        TranslationAgent::Cli(CliProviderId::Agy) => {
+            let binary = find_cli_or_unavailable(CliProviderId::Agy)?;
+            let output = run_cli_output(&binary, &["models"], MODEL_LIST_TIMEOUT)?;
+            if !output.status.success() {
+                return Err(AppError::new(
+                    "models_unavailable",
+                    "Antigravity models could not be loaded. Authenticate in agy first, then retry.",
+                ));
+            }
+            Ok(TranslationModelList {
+                agent: "agy".into(),
+                source: "live".into(),
+                models: parse_agy_models(&String::from_utf8_lossy(&output.stdout)),
+                message: "Live list from agy; a model ID can also be entered manually.".into(),
+            })
+        }
         TranslationAgent::Cli(CliProviderId::ClaudeCode) => Ok(TranslationModelList {
             agent: CliProviderId::ClaudeCode.as_str().to_string(),
             source: "catalog".to_string(),
@@ -1280,6 +1329,32 @@ pub fn set_translation_selection(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agy_models_selection_and_discovery() {
+        let models = parse_agy_models(
+            "Available models:\ngemini-example-high  Gemini Example (High)\ngemini-example-high Duplicate\n",
+        );
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].label, "Gemini Example (High)");
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("agy"), b"stub").unwrap();
+        assert!(cli_available_in(
+            &[dir.path().to_path_buf()],
+            CliProviderId::Agy
+        ));
+        let saved =
+            set_translation_selection(dir.path(), "agy", "gemini-example-high", Some("high"))
+                .unwrap();
+        assert_eq!(
+            get_translation_selection(dir.path())
+                .unwrap()
+                .unwrap()
+                .agent,
+            saved.agent
+        );
+        assert!(validate_reasoning_effort(dir.path(), "agy", "m", Some("xhigh")).is_err());
+    }
 
     #[test]
     fn codex_catalog_reads_slug_and_advertised_efforts() {

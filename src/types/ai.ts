@@ -67,7 +67,7 @@ export type AiTranslationEvent = {
   chapterId: string;
   kind: "started" | "stream" | "done" | "failed" | "cancelled";
   proposalHtml: string | null;
-  /** Running full-so-far output for `stream` events. */
+  /** Running translated text for `stream` events. */
   partialText: string | null;
   message: string;
 };
@@ -81,7 +81,7 @@ export type AiHtmlFixEvent = {
   chapterId: string;
   kind: "started" | "stream" | "done" | "failed" | "cancelled";
   fixedHtml: string | null;
-  /** Running full-so-far output for `stream` events. */
+  /** Running translated text for `stream` events. */
   partialText: string | null;
   message: string;
 };
