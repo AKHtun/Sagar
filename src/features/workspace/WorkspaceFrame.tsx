@@ -488,9 +488,14 @@ function ExportOutcomePanel({
           <h2 className="panel__heading">
             Export {outcome.mode === "completed" ? "completed" : "draft"} finished
           </h2>
-          <button type="button" className="btn" onClick={onDismiss}>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Close"
+            title="Close"
+            onClick={onDismiss}
+          >
             <Icon name="close" />
-            Close
           </button>
         </div>
         <StatusNotice kind="success">

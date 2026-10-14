@@ -270,6 +270,17 @@ button {
   background: var(--color-error-bg);
 }
 
+.btn--cancel {
+  color: var(--color-cancel-text);
+  background: var(--color-cancel);
+  border-color: var(--color-cancel);
+}
+
+.btn--cancel:hover:not(:disabled) {
+  background: var(--color-cancel-hover);
+  border-color: var(--color-cancel-hover);
+}
+
 .dialog--narrow {
   width: min(460px, calc(100vw - 48px));
 }
@@ -1624,6 +1635,13 @@ button {
 .icon-button[aria-expanded="true"] {
   background: var(--color-surface-selected);
   color: var(--color-accent);
+}
+
+.chapter-review-button[aria-pressed="true"],
+.chapter-review-button[aria-pressed="true"]:hover {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
 }
 .app-controls {
   padding: 14px 28px;

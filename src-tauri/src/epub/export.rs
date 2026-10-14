@@ -47,15 +47,17 @@ fn write_archive(
         .start_file("mimetype", stored)
         .map_err(|_| AppError::new("export_failed", "Cannot write EPUB declaration."))?;
     writer.write_all(MIMETYPE.as_bytes())?;
-    let total = source.entry_names_ordered().len();
-    for index in 0..total {
-        let (name, bytes) = source.read_by_index(index)?;
+    // This list excludes ZIP directory entries; its positions are not raw
+    // archive indices. Copy by validated name so trailing files are retained.
+    let names = source.entry_names_ordered().to_vec();
+    for name in names {
         if name == "mimetype" {
             continue;
         }
         if excluded.contains(&name) {
             continue;
         }
+        let bytes = source.read_entry(&name)?;
         let contents = patched.get(&name).map(Vec::as_slice).unwrap_or(&bytes);
         let options = if name == "mimetype" { stored } else { deflated };
         writer.start_file(name.as_str(), options).map_err(|_| {
@@ -114,7 +116,10 @@ pub fn validate_output(path: &Path) -> Result<Vec<ImportWarning>, AppError> {
         if !archive.contains(&item.href) {
             return Err(AppError::new(
                 "export_invalid",
-                "A resource listed in the exported book is missing.",
+                format!(
+                    "A resource listed in the exported book is missing: {} (manifest item {}).",
+                    item.href, item.id
+                ),
             ));
         }
         if item.media_type == "application/xhtml+xml" {

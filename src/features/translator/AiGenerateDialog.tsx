@@ -440,9 +440,9 @@ export function AiGenerateDialog({
 
             {running ? (
               <div className="button-row">
-                <button type="button" className="btn" onClick={handleCancel}>
+                <button type="button" className="btn btn--cancel" onClick={handleCancel}>
                   <Icon name="close" />
-                  Cancel run
+                  Cancel
                 </button>
               </div>
             ) : null}

@@ -1,5 +1,31 @@
 # Plan.md — EPUB Translation Studio
 
+### Reviewed chapter indicator — 2026-10-14
+
+The chapter review button stays green with a tinted background when the draft
+status is reviewed, including hover. Its pressed state and accessible label/
+tooltip identify Chapter reviewed. Editing resets status to draft through the
+existing save service and clears the green state. Lint/build and all four
+frontend tests passed. Next verification: native reviewed/edit/reload states
+in both themes; no milestone checkboxes changed.
+
+### Running-action button — 2026-10-14
+
+Both AI dialogs use the shared red/white Cancel button with the close icon.
+Frontend lint/build and four tests passed. Native rendered verification remains
+pending on a current build; no milestone checkboxes changed.
+
+### ZIP directory export regression — 2026-10-14
+
+Export copies validated filenames rather than treating the filtered file list
+as raw ZIP indices. Explicit directory entries previously truncated the copy
+loop and dropped trailing resources. The supplied local project reproduced a
+missing toc.ncx; export from an isolated database/snapshot copy now succeeds,
+retains every source resource and preserves navigation/CSS bytes. A synthetic
+integration regression covers multiple directory entries and source immutability.
+All 18 export tests passed. Next unfinished verification: restart the native
+app, export and reopen in a reader; EPUBCheck/cross-platform checks remain open.
+
 ### HTML view simplification — 2026-10-14
 
 The user's latest preference supersedes displaying the read-only document

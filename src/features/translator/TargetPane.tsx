@@ -200,9 +200,18 @@ export function TargetPane({
         <div className="chapter-review-actions">
           <button
             type="button"
-            className="icon-button"
-            aria-label="Mark chapter reviewed"
-            title="Mark chapter reviewed"
+            className="icon-button chapter-review-button"
+            aria-pressed={editor.draft?.status === "reviewed"}
+            aria-label={
+              editor.draft?.status === "reviewed"
+                ? "Chapter reviewed"
+                : "Mark chapter reviewed"
+            }
+            title={
+              editor.draft?.status === "reviewed"
+                ? "Chapter reviewed"
+                : "Mark chapter reviewed"
+            }
             disabled={
               !editor.draft || !hasContent(editor.draft.html) || editor.draft.conflict
             }

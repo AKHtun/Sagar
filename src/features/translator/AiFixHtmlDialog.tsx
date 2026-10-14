@@ -310,9 +310,13 @@ export function AiFixHtmlDialog({
 
             {running ? (
               <div className="button-row">
-                <button type="button" className="btn" onClick={handleCancelRun}>
+                <button
+                  type="button"
+                  className="btn btn--cancel"
+                  onClick={handleCancelRun}
+                >
                   <Icon name="close" />
-                  Cancel run
+                  Cancel
                 </button>
               </div>
             ) : null}
