@@ -13,6 +13,34 @@ import { ChapterEditor } from "./ChapterEditor";
 import { comparableDocument, hasContent } from "./richText";
 import type { useChapterEditor } from "./useChapterEditor";
 
+/** Local validation normally resolves in milliseconds. Bound it so a hung
+ * backend call can never leave both view buttons disabled with no feedback. */
+const VALIDATE_TIMEOUT_MS = 20_000;
+
+function validateChapterHtmlTimed(html: string): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            "Validation took too long (over 20 seconds) and was stopped. Your code is kept; try the Rich view again.",
+          ),
+        ),
+      VALIDATE_TIMEOUT_MS,
+    );
+    validateChapterHtml(html).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export function TargetPane({
   projectId,
   content,
@@ -83,7 +111,7 @@ export function TargetPane({
     setSwitching(true);
     setViewError(null);
     try {
-      const validated = await validateChapterHtml(html);
+      const validated = await validateChapterHtmlTimed(html);
       if (currentHtml.current !== html || destination.isDestroyed) return;
       const wrapper = document.createElement("div");
       wrapper.innerHTML = validated;
