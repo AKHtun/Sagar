@@ -96,8 +96,6 @@ jobs:
         include:
           - platform: "macos-latest" # Apple Silicon (M1 and above)
             args: "--target aarch64-apple-darwin"
-          - platform: "macos-latest" # Intel Macs
-            args: "--target x86_64-apple-darwin"
           - platform: "ubuntu-22.04"
             args: ""
           - platform: "windows-latest"
@@ -118,7 +116,7 @@ jobs:
         with:
           components: rustfmt
           # Apple targets are only needed on macOS runners.
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
