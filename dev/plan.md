@@ -406,7 +406,7 @@ The files below break down the existing roadmap without changing its scope or co
 
 - [x] UX review: dark mode, pane resizing, text zoom, shortcuts, error dialogs.
 - [ ] Accessibility and Burmese text rendering cross-OS tests.
-- [ ] Performance checks with large books (bounded RAM/use lazy loading).
+- [x] Performance checks with large books (bounded RAM/use lazy loading; 5,001 chapters / 56.9 MB macOS sweep, see Milestone 5 evidence).
 - [ ] Package and smoke-test installers for Windows/macOS/Linux.
       (macOS .app/.dmg built and smoke-tested; Windows/Linux pending.)
 - [x] Document backups, privacy, supported EPUB limits, and recovery.

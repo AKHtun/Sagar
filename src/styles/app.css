@@ -695,7 +695,9 @@ button {
 }
 
 .target-block__input:disabled {
-  opacity: 0.6;
+  opacity: 1;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
 }
 
 .target-block__source-echo {
@@ -1150,8 +1152,8 @@ button {
   cursor: pointer;
   font-size: 12px;
 }
-.editor-toolbar button:hover,
-.view-switch button:hover {
+.editor-toolbar button:hover:not(:disabled),
+.view-switch button:hover:not(:disabled) {
   background: var(--color-surface-hover);
 }
 .editor-toolbar button[aria-pressed="true"],
@@ -1160,8 +1162,10 @@ button {
   color: var(--color-accent);
 }
 .editor-toolbar button:disabled {
-  opacity: 0.4;
-  cursor: default;
+  opacity: 1;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  cursor: not-allowed;
 }
 .editor-toolbar__divider {
   height: 18px;
@@ -1607,8 +1611,10 @@ button {
   background: var(--color-surface-hover);
 }
 .icon-button:disabled {
-  opacity: 0.45;
-  cursor: default;
+  opacity: 1;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  cursor: not-allowed;
 }
 .icon-button[aria-expanded="true"] {
   background: var(--color-surface-selected);

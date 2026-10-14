@@ -145,7 +145,12 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
             className="icon-button"
             aria-label="Settings"
             title="Settings"
-            onClick={() => setSettingsOpen(true)}
+            onClick={(event) => {
+              // WebKit does not focus buttons on pointer clicks by default.
+              // Give the dialog a concrete trigger to restore on dismissal.
+              event.currentTarget.focus();
+              setSettingsOpen(true);
+            }}
           >
             <Icon name="settings" />
           </button>

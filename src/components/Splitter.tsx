@@ -69,8 +69,8 @@ export function Splitter({
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
-      const negative = invert ? "ArrowRight" : "ArrowLeft";
-      const positive = invert ? "ArrowLeft" : "ArrowRight";
+      const negative = orientation === "horizontal" ? "ArrowUp" : "ArrowLeft";
+      const positive = orientation === "horizontal" ? "ArrowDown" : "ArrowRight";
       if (event.key === negative) {
         event.preventDefault();
         applyDelta(-STEP);
@@ -85,7 +85,7 @@ export function Splitter({
         onChange(max);
       }
     },
-    [applyDelta, invert, max, min, onChange],
+    [applyDelta, max, min, onChange, orientation],
   );
 
   return (
@@ -101,6 +101,8 @@ export function Splitter({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onLostPointerCapture={onPointerUp}
       onKeyDown={onKeyDown}
     />
   );

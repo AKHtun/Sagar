@@ -38,7 +38,8 @@ recorded evidence on the named OS; nothing is marked verified without it.
 - [ ] Windows: install, run, import/export, Myanmar shaping (untested).
 - [ ] Linux: install, run, import/export, Myanmar shaping (untested).
 - [x] macOS (Apple Silicon) bundle: `bun tauri build` produced
-      `sagar.app` (6.4 MiB) and `sagar_0.1.0_aarch64.dmg` (3.1 MiB);
+      `Sagar.app` (9.94 MiB) and `Sagar_0.1.0_aarch64.dmg` (5.40 MiB)
+      during the 2026-10-13 release sweep;
       launch smoke passed in dev; installer opened on a clean machine is
       still recommended before distribution.
 - [ ] Windows/Linux installers (cannot be built or tested from macOS here).
@@ -48,8 +49,9 @@ recorded evidence on the named OS; nothing is marked verified without it.
 - [x] Keyboard: chapter list, splitters, editor, dialogs operable without
       the mouse; focus visible; dialogs restore focus on Escape.
 - [ ] Screen reader pass (VoiceOver at minimum) on real content.
-- [x] Contrast tokens defined for light/dark; manual contrast spot-check
-      against WCAG 4.5:1 pending final palette sign-off.
+- [x] Light/dark text, muted/disabled labels and status token pairs measured
+      at >= 4.5:1 by `tests/frontend/contrast.test.ts` (2026-10-13).
+      Native rendered controls and screen-reader verification remain open.
 - [x] Myanmar text input, wrapping and storage verified via synthetic
       fixtures at the storage level (UTF-8 intact; combining marks are text).
 - [ ] Myanmar rendering check with real Padauk/Myanmar Text fonts on each
@@ -68,5 +70,27 @@ recorded evidence on the named OS; nothing is marked verified without it.
 
 - [x] Chapters load on demand; export streams per-resource from the
       snapshot.
-- [ ] Large-book sweep (5k+ chapters, 50 MB EPUB) for import/export time
-      and memory bounds.
+- [x] Large-book service sweep on Apple Silicon macOS (2026-10-13):
+      5,001 chapters, 56,857,768 bytes; import 3.89 s, export 12.05 s;
+      export reimported successfully. Maximum resident set size 313,229,312
+      bytes for the timed Cargo/test invocation. Native WebView memory and
+      other platforms remain unmeasured.
+
+Reproduce: in `src-tauri`, run
+`cargo test --locked --test epub_import large_book_import_export_sweep -- --ignored --nocapture`.
+On macOS, prefix with `/usr/bin/time -l` to record peak resident memory.
+The fixture is synthetic and removed automatically after the sweep.
+
+Cross-platform PR/manual build automation: `.github/workflows/desktop-checks.yml`.
+It runs service tests and the sweep, then retains installers as artifacts;
+it does not publish. No remote run or native installer pass is claimed yet.
+
+## Local macOS package verification — 2026-10-13
+
+The full ad hoc app signature passes `codesign --verify --deep --strict` and
+the DMG passes `hdiutil verify`. Reproduce the local packaging command with
+`bun tauri build --config '{"bundle":{"macOS":{"signingIdentity":"-"}}}'`.
+This local override does not change release signing configuration. These
+artifacts are not Developer ID signed or notarized; clean-machine installation
+is still open. The latest Settings focus fix is verified in the dev build
+separately and requires a fresh package rebuild before distribution.

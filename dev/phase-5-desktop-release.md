@@ -14,7 +14,7 @@ Build on [Milestone 4 — EPUB export (vertical-slice first)](phase-4-epub-expor
 
 - [x] UX review: dark mode, pane resizing, text zoom, shortcuts, error dialogs.
 - [ ] Accessibility and Burmese text rendering cross-OS tests.
-- [ ] Performance checks with large books (bounded RAM/use lazy loading).
+- [x] Performance checks with large books (bounded RAM/use lazy loading).
 - [ ] Package and smoke-test installers for Windows/macOS/Linux.
       (macOS .app/.dmg were built and boot-smoked on Apple Silicon;
       Windows and Linux installers cannot be produced from this macOS
@@ -67,3 +67,26 @@ screen-reader/IME and installer checks remain the next unfinished release work.
 Hover and keyboard-focus highlighting now belong to the entire project row,
 including the separate trash action, rather than only the open-book button.
 The two actions remain separate controls with their existing behavior.
+
+### Release polish and large-book sweep — 2026-10-13
+
+Disabled editor and icon controls retain readable labels rather than fading
+their entire surface. Dark selected-row muted text now meets 4.5:1 contrast;
+a frontend regression test measures text/status token pairs in both themes.
+Splitters clear cancelled pointer drags and use arrows matching orientation.
+
+The explicit Rust release sweep generates a 56,857,768-byte, 5,001-chapter
+synthetic EPUB, imports it, loads its final chapter on demand, exports a draft
+and reimports the output. On Apple Silicon macOS the measured run took 3.89 s
+to import and 12.05 s to export, with 313,229,312 bytes maximum resident set
+size reported by `/usr/bin/time -l` for the test invocation (including Cargo).
+This measures the service fixture, not native WebView memory or every book.
+
+`desktop-checks.yml` adds PR/manual Windows, Linux and macOS service tests,
+the large-book sweep and installer artifacts without publishing a release.
+It has not been executed remotely; installer execution and visual/IME/screen
+reader passes remain open. Native macOS inspection covered light/dark library and workspace,
+Myanmar wrapping, Settings dismissal and keyboard pane resizing (638 → 662
+→ 638 px). Initial inspection was blocked by the locked Mac; it continued
+after unlock. Minimum-window, IME composition and VoiceOver remain open. Frontend check, three frontend tests, Rust formatting and
+124 Rust tests passed; the explicit large-book sweep passed separately.

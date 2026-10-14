@@ -162,6 +162,93 @@ fn as_pairs(files: &[(String, Vec<u8>)]) -> Vec<(&str, &[u8])> {
 
 // ------------------------------------------------------------------ tests
 
+/// Explicit release sweep; kept out of the fast suite because it writes a
+/// 50+ MB book and imports 5,001 chapters twice. Run with --ignored --nocapture.
+#[test]
+#[ignore = "large-book release performance sweep"]
+fn large_book_import_export_sweep() {
+    use std::time::Instant;
+    const CHAPTERS: usize = 5_001;
+    let dir = tempfile::tempdir().expect("temporary sweep directory");
+    let source = dir.path().join("large.epub");
+    let mut zip = ZipWriter::new(std::fs::File::create(&source).expect("create fixture"));
+    let stored = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let mut entry = |name: &str, bytes: &[u8]| {
+        zip.start_file(name, stored).expect("fixture entry");
+        zip.write_all(bytes).expect("fixture bytes");
+    };
+    entry("mimetype", b"application/epub+zip");
+    entry("META-INF/container.xml", CONTAINER.as_bytes());
+    let mut manifest = String::new();
+    let mut spine = String::new();
+    let mut nav = Vec::new();
+    for index in 0..CHAPTERS {
+        let href = format!("text/c{index}.xhtml");
+        let title = format!("Chapter {index}");
+        manifest.push_str(&format!(
+            "<item id=\"c{index}\" href=\"{href}\" media-type=\"application/xhtml+xml\"/>"
+        ));
+        spine.push_str(&format!("<itemref idref=\"c{index}\"/>"));
+        nav.push((href.clone(), title.clone()));
+        let body = format!(
+            "<p>{} မြန်မာစာ</p>",
+            "Reading and translating locally. ".repeat(330)
+        );
+        entry(
+            &format!("OEBPS/{href}"),
+            chapter_doc(&title, &body).as_bytes(),
+        );
+    }
+    entry("OEBPS/content.opf", opf(&spine, &manifest).as_bytes());
+    let nav_pairs: Vec<(&str, &str)> = nav
+        .iter()
+        .map(|(href, title)| (href.as_str(), title.as_str()))
+        .collect();
+    entry("OEBPS/nav.xhtml", nav_doc(&nav_pairs).as_bytes());
+    zip.finish().expect("finish fixture");
+    let source_size = std::fs::metadata(&source).expect("fixture size").len();
+    assert!(source_size >= 50_000_000);
+    let data = dir.path().join("data");
+    let start = Instant::now();
+    let imported = services::import::import_epub(&data, &source, false).expect("large import");
+    let import_time = start.elapsed();
+    assert_eq!(imported.chapters.len(), CHAPTERS);
+    let last = services::workspace::get_chapter(
+        &data,
+        &imported.project.id,
+        &imported.chapters[CHAPTERS - 1].id,
+    )
+    .expect("lazy chapter load");
+    let _ = last;
+    let output = dir.path().join("large-output.epub");
+    let start = Instant::now();
+    services::export::export_epub(
+        &data,
+        services::export::ExportRequest {
+            project_id: imported.project.id,
+            destination: output.clone(),
+            mode: "draft".into(),
+            title: None,
+            language: None,
+            include_original: true,
+        },
+    )
+    .expect("large export");
+    let export_time = start.elapsed();
+    let reopened =
+        services::import::import_epub(&data, &output, true).expect("reopen large output");
+    assert_eq!(reopened.chapters.len(), CHAPTERS);
+    assert_eq!(
+        std::fs::metadata(&source)
+            .expect("source unchanged size")
+            .len(),
+        source_size
+    );
+    eprintln!(
+        "Large sweep: {CHAPTERS} chapters, {source_size} source bytes; import {import_time:?}, export {export_time:?}"
+    );
+}
+
 #[test]
 fn import_creates_project_with_spine_ordered_chapters_and_metadata() {
     let source = multi_chapter_epub(&tempdir());
