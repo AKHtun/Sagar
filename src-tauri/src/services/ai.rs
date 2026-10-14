@@ -160,6 +160,8 @@ fn system_fallback_directories() -> Vec<PathBuf> {
             "/opt/homebrew/sbin",
             "/usr/local/bin",
             "/opt/local/bin",
+            "/home/linuxbrew/.linuxbrew/bin",
+            "/home/linuxbrew/.linuxbrew/sbin",
         ]
         .into_iter()
         .map(PathBuf::from)
@@ -178,6 +180,7 @@ fn fallback_directories() -> Vec<PathBuf> {
 
 /// Splits one login-shell `$PATH` dump into directories. Pure helper so the
 /// parsing is unit-testable without spawning a shell.
+#[cfg_attr(windows, allow(dead_code))]
 fn split_shell_path_output(text: &str) -> Vec<PathBuf> {
     if text.trim().is_empty() {
         return Vec::new();
@@ -1521,6 +1524,19 @@ opencode/no-adjustment
             assert!(
                 directories.contains(&home.join(relative)),
                 "missing {relative}"
+            );
+        }
+        // System prefixes cover the package managers GUI launches miss:
+        // Homebrew (Apple Silicon and Intel), MacPorts and Linuxbrew.
+        for system in [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/opt/local/bin",
+            "/home/linuxbrew/.linuxbrew/bin",
+        ] {
+            assert!(
+                system_fallback_directories().contains(&PathBuf::from(system)),
+                "missing {system}"
             );
         }
     }
