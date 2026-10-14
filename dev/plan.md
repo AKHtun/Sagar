@@ -1,5 +1,22 @@
 # Plan.md — EPUB Translation Studio
 
+### Release HTML → Rich mode regression — 2026-10-14
+
+Fixed the Milestone 2 editor-readiness race: a parent chapter-reset effect
+cleared the editor after the child reported readiness on immediate mount.
+Development Strict Mode effect replay hid the issue. Readiness is now scoped
+to chapter identity without clearing the current child registration.
+The browser-initialized regression harness reproduces the failure before the
+fix (its previous SSR/deferred mount concealed it). Coverage now verifies
+HTML → Rich after initial mount and chapter navigation without Strict Mode,
+including Myanmar text and inline emphasis; validation failures and external
+draft updates remain covered. All 26 frontend tests and bun run check passed;
+the existing bundle-size warning remains. No Rust code or persistence changed;
+Rust checks were not run. Native release, minimum-window, themes, keyboard/IME
+and Windows/Linux verification remain open. Next unfinished task: rebuild the
+native release and verify view switching with an existing chapter. No milestone
+checkboxes changed.
+
 ### Muse Spark free-model server regression — 2026-10-14
 
 Reproduced the saved opencode/muse-spark-1.3-contributor-free selection with

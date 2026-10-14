@@ -26,22 +26,27 @@ mock.module("@tauri-apps/plugin-dialog", () => ({
   save: async () => null,
 }));
 
+// Load Tiptap in a browser environment so it mounts immediately, as in the
+// desktop release. Importing without window silently tests its deferred SSR path.
+const browserWindow = new Window();
+Object.assign(globalThis, { window: browserWindow, document: browserWindow.document });
+
 const { TargetPane } = await import("../../src/features/translator/TargetPane");
 const { useChapterEditor } = await import("../../src/features/translator/useChapterEditor");
 type EditorApi = ReturnType<typeof useChapterEditor>;
 
 let api: EditorApi | null = null;
 
-function Harness({ proposal }: { proposal: string | null }) {
+function Harness({ proposal, chapterId = "ch1" }: { proposal: string | null; chapterId?: string }) {
   const content = useMemo(
     () => ({
-      chapterId: "ch1",
+      chapterId,
       title: "Chapter 1",
       // Fresh chapter: no translation yet.
       document: { html: "", status: "not_started", revision: 1 },
       images: [],
     }),
-    [],
+    [chapterId],
   );
   const editor = useChapterEditor(content as never);
   api = editor;
@@ -179,3 +184,48 @@ for (const proposal of [
     }
   });
 }
+
+
+test("HTML returns to Rich after immediate mount and chapter navigation without Strict Mode", async () => {
+  const window = new Window();
+  Object.assign(globalThis, {
+    window,
+    document: window.document,
+    navigator: window.navigator,
+    DOMParser: window.DOMParser,
+    Node: window.Node,
+    Element: window.Element,
+    HTMLElement: window.HTMLElement,
+    getComputedStyle: window.getComputedStyle.bind(window),
+    requestAnimationFrame: window.requestAnimationFrame.bind(window),
+    cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    for (const chapterId of ["ch1", "ch2", "ch1"]) {
+      await act(async () => {
+        root.render(createElement(Harness, { proposal: null, chapterId }));
+      });
+      await settle(window);
+      const rich = container.querySelector<HTMLButtonElement>('button[aria-label="Rich text view"]');
+      const html = container.querySelector<HTMLButtonElement>('button[aria-label="HTML view"]');
+      expect(rich?.disabled).toBe(false);
+      await act(async () => html?.click());
+      expect(container.querySelector('textarea[aria-label="Translation HTML code"]')).not.toBeNull();
+      expect(rich?.disabled).toBe(false);
+      await act(async () => api?.setHtml("<p>မင်္ဂလာပါ <em>translation</em></p>"));
+      await act(async () => rich?.click());
+      await settle(window);
+      expect(rich?.getAttribute("aria-pressed")).toBe("true");
+      expect(container.querySelector('textarea[aria-label="Translation HTML code"]')).toBeNull();
+      expect(container.querySelector(".chapter-editor")?.textContent).toContain("မင်္ဂလာပါ translation");
+    }
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    await window.happyDOM.close();
+  }
+});

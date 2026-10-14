@@ -58,7 +58,19 @@ export function TargetPane({
   onReloadAfterConflict: () => void;
   editor: ReturnType<typeof useChapterEditor>;
 }) {
-  const [activeEditor, setActiveEditor] = useState<TiptapEditor | null>(null);
+  // Scope readiness to the chapter instead of clearing it in a parent effect:
+  // child mount effects can report readiness before that effect runs.
+  const [readyEditor, setReadyEditor] = useState<{
+    chapterId: string | undefined;
+    editor: TiptapEditor;
+  } | null>(null);
+  const chapterId = content?.chapterId;
+  const activeEditor =
+    readyEditor && readyEditor.chapterId === chapterId ? readyEditor.editor : null;
+  const handleEditorReady = useCallback(
+    (editor: TiptapEditor) => setReadyEditor({ chapterId, editor }),
+    [chapterId],
+  );
   const [, refreshToolbar] = useState(0);
   const [imageError, setImageError] = useState<string | null>(null);
   const [imagePicker, setImagePicker] = useState(false);
@@ -84,7 +96,6 @@ export function TargetPane({
   }, [activeEditor]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset toolbar when navigating to another chapter.
   useEffect(() => {
-    setActiveEditor(null);
     setImagePicker(false);
     setImageError(null);
     setView("rich");
@@ -622,7 +633,7 @@ export function TargetPane({
                 html={editor.draft?.html ?? content.document.html ?? ""}
                 disabled={editor.draft?.conflict ?? false}
                 onChange={editor.setHtml}
-                onReady={setActiveEditor}
+                onReady={handleEditorReady}
                 onImage={() => setImagePicker(true)}
                 active={view === "rich"}
               />
