@@ -127,7 +127,7 @@ pub fn validate_output(path: &Path) -> Result<Vec<ImportWarning>, AppError> {
             let text = String::from_utf8(bytes).map_err(|_| {
                 AppError::new("export_invalid", "An exported document is not UTF-8.")
             })?;
-            roxmltree::Document::parse(&text).map_err(|_| {
+            crate::epub::xml::parse(&text).map_err(|_| {
                 AppError::new(
                     "export_invalid",
                     "An exported chapter or navigation document is not well-formed XML.",
@@ -137,7 +137,7 @@ pub fn validate_output(path: &Path) -> Result<Vec<ImportWarning>, AppError> {
         }
     }
     for (path, text) in &documents {
-        let doc = roxmltree::Document::parse(text)
+        let doc = crate::epub::xml::parse(text)
             .map_err(|_| AppError::new("export_invalid", "Invalid exported document."))?;
         for node in doc.descendants().filter(|node| node.is_element()) {
             for attribute in node
@@ -165,7 +165,7 @@ pub fn validate_output(path: &Path) -> Result<Vec<ImportWarning>, AppError> {
                     if !fragment.is_empty()
                         && let Some(target) = documents.get(&resource)
                     {
-                        let target = roxmltree::Document::parse(target)
+                        let target = crate::epub::xml::parse(target)
                             .map_err(|_| AppError::new("export_invalid", "Invalid link target."))?;
                         let id = crate::epub::percent_decode_path(fragment);
                         if !target
@@ -220,7 +220,7 @@ fn patched_chapter(
             // The spliced document must still parse; otherwise keep the
             // original rather than export a corrupt chapter.
             let text = String::from_utf8_lossy(&patched);
-            if roxmltree::Document::parse(text.as_ref()).is_err() {
+            if crate::epub::xml::parse(text.as_ref()).is_err() {
                 return Ok((
                     original,
                     vec![ImportWarning {
@@ -331,7 +331,7 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
             }
             if block.structural_locator == "__chapter_document__" {
                 let wrapped = format!("<w>{fragment}</w>");
-                let doc = roxmltree::Document::parse(&wrapped).ok()?;
+                let doc = crate::epub::xml::parse(&wrapped).ok()?;
                 let heading = doc.descendants().find(|node| {
                     node.is_element()
                         && matches!(
@@ -443,7 +443,7 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
     if !added_images.is_empty() {
         let text = std::str::from_utf8(&opf_out)
             .map_err(|_| AppError::new("export_failed", "Invalid package encoding."))?;
-        let doc = roxmltree::Document::parse(text)
+        let doc = crate::epub::xml::parse(text)
             .map_err(|_| AppError::new("export_failed", "Invalid package document."))?;
         let manifest = doc
             .descendants()
@@ -475,7 +475,7 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
         )?;
     }
     let text = String::from_utf8_lossy(&opf_out);
-    if roxmltree::Document::parse(text.as_ref()).is_err() {
+    if crate::epub::xml::parse(text.as_ref()).is_err() {
         return Err(AppError::new(
             "export_failed",
             "The package document could not be updated safely.",
@@ -743,7 +743,7 @@ fn package_images(
     images: &mut HashMap<String, (String, Vec<u8>)>,
 ) -> Result<String, AppError> {
     let wrapped = format!("<w>{fragment}</w>");
-    let doc = roxmltree::Document::parse(&wrapped)
+    let doc = crate::epub::xml::parse(&wrapped)
         .map_err(|_| AppError::new("invalid_translation", "Invalid saved XHTML."))?;
     let mut result = fragment.to_string();
     for img in doc.descendants().filter(|n| n.has_tag_name("img")) {
@@ -794,7 +794,7 @@ pub(crate) fn chapter_body_inner(original: &[u8]) -> Result<String, AppError> {
         )
     };
     let source = std::str::from_utf8(original).map_err(|_| invalid())?;
-    let doc = roxmltree::Document::parse(source).map_err(|_| invalid())?;
+    let doc = crate::epub::xml::parse(source).map_err(|_| invalid())?;
     let body = doc
         .descendants()
         .find(|n| n.has_tag_name(("http://www.w3.org/1999/xhtml", "body")))
@@ -828,7 +828,7 @@ pub(crate) fn chapter_document_shell(original: &[u8]) -> Result<(String, String)
         )
     };
     let source = std::str::from_utf8(original).map_err(|_| invalid())?;
-    let doc = roxmltree::Document::parse(source).map_err(|_| invalid())?;
+    let doc = crate::epub::xml::parse(source).map_err(|_| invalid())?;
     let body = doc
         .descendants()
         .find(|n| n.has_tag_name(("http://www.w3.org/1999/xhtml", "body")))
@@ -862,7 +862,7 @@ fn replace_chapter_body(original: &[u8], html: &str) -> Result<Vec<u8>, AppError
         )
     };
     let source = std::str::from_utf8(original).map_err(|_| invalid())?;
-    let doc = roxmltree::Document::parse(source).map_err(|_| invalid())?;
+    let doc = crate::epub::xml::parse(source).map_err(|_| invalid())?;
     let body = doc
         .descendants()
         .find(|n| n.has_tag_name(("http://www.w3.org/1999/xhtml", "body")))
@@ -889,7 +889,7 @@ fn replace_chapter_body(original: &[u8], html: &str) -> Result<Vec<u8>, AppError
     };
     let end = range.start + source[range.clone()].rfind('<').ok_or_else(invalid)?;
     let wrapped = format!("<w>{html}</w>");
-    let target = roxmltree::Document::parse(&wrapped).map_err(|_| invalid())?;
+    let target = crate::epub::xml::parse(&wrapped).map_err(|_| invalid())?;
     let mut anchors = String::new();
     for node in body.descendants().skip(1).filter(|n| n.is_element()) {
         if let Some(id) = node.attribute("id") {
@@ -909,7 +909,7 @@ fn replace_chapter_body(original: &[u8], html: &str) -> Result<Vec<u8>, AppError
     };
     let mut out = original.to_vec();
     out.splice(start..end, replacement.bytes());
-    roxmltree::Document::parse(std::str::from_utf8(&out).map_err(|_| invalid())?)
+    crate::epub::xml::parse(std::str::from_utf8(&out).map_err(|_| invalid())?)
         .map_err(|_| invalid())?;
     Ok(out)
 }
@@ -945,7 +945,7 @@ mod chapter_document_tests {
         ] {
             let (prefix, suffix) = chapter_document_shell(source.as_bytes()).expect("shell");
             let displayed = format!("{prefix}<p>မြန်မာ</p>{suffix}");
-            let displayed_doc = roxmltree::Document::parse(&displayed).expect("display xml");
+            let displayed_doc = crate::epub::xml::parse(&displayed).expect("display xml");
             assert!(
                 displayed_doc
                     .descendants()
@@ -954,7 +954,7 @@ mod chapter_document_tests {
             let output = replace_chapter_body(source.as_bytes(), "<h2>New</h2><p>Free text</p>")
                 .expect("replace");
             let text = std::str::from_utf8(&output).expect("utf8");
-            let doc = roxmltree::Document::parse(text).expect("xml");
+            let doc = crate::epub::xml::parse(text).expect("xml");
             assert!(
                 doc.descendants()
                     .any(|n| n.has_tag_name(("http://www.w3.org/1999/xhtml", "h2")))

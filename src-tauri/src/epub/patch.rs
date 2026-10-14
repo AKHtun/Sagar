@@ -482,7 +482,7 @@ pub fn upsert_dc_metadata(
         return Err(invalid());
     }
     let text = std::str::from_utf8(bytes).map_err(|_| invalid())?;
-    let doc = roxmltree::Document::parse(text).map_err(|_| invalid())?;
+    let doc = crate::epub::xml::parse(text).map_err(|_| invalid())?;
     let metadata = doc
         .root_element()
         .children()
@@ -547,7 +547,7 @@ mod book_metadata_tests {
         let patched = upsert_dc_metadata(opf, "creator", "New & Name").expect("patch");
         let patched = upsert_dc_metadata(&patched, "publisher", "Press <One>").expect("add");
         let text = std::str::from_utf8(&patched).expect("utf8");
-        let doc = roxmltree::Document::parse(text).expect("XML");
+        let doc = crate::epub::xml::parse(text).expect("XML");
         let creators: Vec<_> = doc
             .descendants()
             .filter(|n| n.has_tag_name(("http://purl.org/dc/elements/1.1/", "creator")))

@@ -1435,3 +1435,57 @@ fn custom_cover_persists_exports_restores_and_keeps_source_immutable() {
         epub::inspect(&destination).unwrap();
     }
 }
+
+#[test]
+fn svg_cover_with_html_doctype_loads_and_exports_unchanged() {
+    let dir = tempdir();
+    let data_dir = tempdir();
+    let mut files = rich_book_files();
+    let cover = r#"<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Cover</title></head><body><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 800 1104"><image width="800" height="1104" xlink:href="images/cover.png"/></svg></body></html>"#;
+    files
+        .iter_mut()
+        .find(|(n, _)| n == "OEBPS/ch1.xhtml")
+        .expect("chapter")
+        .1 = cover.as_bytes().to_vec();
+    let refs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "directories.epub", &refs);
+    let original = std::fs::read(&source).expect("source");
+    let book = import_rich_book(&data_dir, &source);
+    let chapter =
+        services::workspace::get_chapter(&data_dir, &book.project_id, &book.chapter_ids[0])
+            .expect("load SVG cover");
+    assert!(chapter.preview_html.contains("<svg"));
+    assert!(chapter.preview_html.contains("/OEBPS/images/cover.png"));
+    let destination = dir.join("export.epub");
+    services::export::export_epub(
+        &data_dir,
+        ExportRequest {
+            project_id: book.project_id,
+            destination: destination.clone(),
+            mode: "draft".into(),
+            title: None,
+            language: None,
+            include_original: true,
+        },
+    )
+    .expect("export with directories");
+    epub::export::validate_output(&destination).expect("valid export");
+    let mut output =
+        zip::ZipArchive::new(std::fs::File::open(&destination).expect("output")).expect("zip");
+    for (name, bytes) in &files {
+        if name.ends_with('/') || name.ends_with(".opf") {
+            continue;
+        }
+        let mut actual = Vec::new();
+        output
+            .by_name(name)
+            .expect("resource retained")
+            .read_to_end(&mut actual)
+            .expect("read");
+        assert_eq!(&actual, bytes, "resource {name}");
+    }
+    assert_eq!(std::fs::read(source).expect("source unchanged"), original);
+}

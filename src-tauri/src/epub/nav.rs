@@ -16,7 +16,7 @@ pub struct NavEntry {
 pub fn parse_nav(bytes: &[u8], nav_path: &str) -> Result<Vec<NavEntry>, AppError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|_| AppError::new("invalid_epub", "The navigation document is not UTF-8."))?;
-    let doc = roxmltree::Document::parse(text)
+    let doc = crate::epub::xml::parse(text)
         .map_err(|_| AppError::new("invalid_epub", "The navigation document is not valid XML."))?;
 
     // Prefer the nav element with epub:type="toc"; fall back to the first nav.

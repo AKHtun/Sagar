@@ -12,6 +12,7 @@ pub mod opf;
 pub mod patch;
 pub mod preview;
 pub mod rich_text;
+pub(crate) mod xml;
 
 use std::path::Path;
 

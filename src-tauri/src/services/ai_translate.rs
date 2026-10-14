@@ -83,6 +83,10 @@ pub fn build_translation_prompt(
          - Keep every tag, attribute, id, href, src, class and entity exactly\n\
            as-is. Do not add, remove, reorder or rename any element.\n\
          - Tables, images, links and formatting must round-trip unchanged.\n\
+         - Sagar's editable formatting uses <em> for italics and <strong> for\n\
+           bold, not <i> or <b>. Do not introduce unsupported formatting tags.\n\
+           If the source already uses <i> or <b>, preserve them under the\n\
+           structural rules above; conversion belongs to AI Fix HTML.\n\
          - Return valid, well-formed XHTML suitable for the body of an EPUB\n\
            XHTML document, never Markdown or plain text.\n\
          - Close every element, nest tags correctly, quote all attribute values,\n\
@@ -133,6 +137,9 @@ pub fn build_html_fix_prompt(html: &str) -> String {
            blockquote, table, thead, tbody, tfoot, tr, td, th, strong, em, u, s,\n\
            img, br, hr and a. Unwrap or convert any other element (div, span,\n\
            section, article, font, etc.) without dropping its text.\n\
+         - Convert <i> to <em> and <b> to <strong>, including their closing\n\
+           tags. Preserve their text, valid attributes and italic/bold meaning;\n\
+           do not unwrap these elements or remove their formatting.\n\
          - Keep every img src/alt and every a href; keep id, class, style,\n\
            title, lang, dir, colspan, rowspan and start attributes where valid.\n\
          - Never nest block elements (p, h1-h6, ul, ol, blockquote, table)\n\
@@ -1086,6 +1093,8 @@ mod tests {
         assert!(prompt.contains("မင်္ဂလာပါ"));
         assert!(prompt.contains("Do NOT translate"));
         assert!(prompt.contains("p, h1"));
+        assert!(prompt.contains("Convert <i> to <em> and <b> to <strong>"));
+        assert!(prompt.contains("do not unwrap these elements"));
         assert!(prompt.contains("Output only the fixed HTML fragment"));
     }
 
@@ -1193,6 +1202,12 @@ mod tests {
         assert!(prompt.contains("from en"), "{prompt}");
         assert!(prompt.contains(body), "{prompt}");
         assert!(prompt.contains("Keep every tag"), "{prompt}");
+        assert!(prompt.contains("<em> for italics"), "{prompt}");
+        assert!(prompt.contains("<strong> for"), "{prompt}");
+        assert!(
+            prompt.contains("conversion belongs to AI Fix HTML"),
+            "{prompt}"
+        );
         assert!(prompt.contains("no code fences"), "{prompt}");
         assert!(
             prompt.contains("Return valid, well-formed XHTML"),

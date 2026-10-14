@@ -49,7 +49,7 @@ pub fn parse_chapter(bytes: &[u8]) -> ChapterBlocks {
             };
         }
     };
-    let doc = match roxmltree::Document::parse(text) {
+    let doc = match crate::epub::xml::parse(text) {
         Ok(doc) => doc,
         Err(_) => {
             return ChapterBlocks {

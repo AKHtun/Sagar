@@ -55,6 +55,7 @@ fn serialize_safe(
     resource_prefix: &str,
     block_element: Option<&str>,
 ) {
+    let svg = element.tag_name().namespace() == Some("http://www.w3.org/2000/svg");
     let tag = element.tag_name().name().to_ascii_lowercase();
     let tag = if tag == "image"
         && element.tag_name().namespace() == Some("http://www.w3.org/1999/xhtml")
@@ -63,6 +64,10 @@ fn serialize_safe(
     } else {
         tag
     };
+    if svg {
+        serialize_svg(element, out, base_resource, resource_prefix);
+        return;
+    }
     if !matches!(
         tag.as_str(),
         "body"
@@ -194,6 +199,96 @@ fn serialize_safe(
     }
 }
 
+// SVG has its own small passive allowlist. Scripts, foreignObject, use,
+// animation, CSS and URL-valued paints are deliberately not rendered.
+fn serialize_svg(element: roxmltree::Node<'_, '_>, out: &mut String, base: &str, prefix: &str) {
+    let tag = element.tag_name().name();
+    if !matches!(
+        tag,
+        "svg"
+            | "g"
+            | "image"
+            | "path"
+            | "rect"
+            | "circle"
+            | "ellipse"
+            | "line"
+            | "polyline"
+            | "polygon"
+            | "title"
+            | "desc"
+            | "text"
+            | "tspan"
+    ) {
+        return;
+    }
+    out.push('<');
+    out.push_str(tag);
+    if tag == "svg" {
+        out.push_str(" xmlns=\"http://www.w3.org/2000/svg\"");
+    }
+    for attr in element.attributes() {
+        let name = attr.name();
+        if name == "href"
+            && tag == "image"
+            && (attr.namespace().is_none()
+                || attr.namespace() == Some("http://www.w3.org/1999/xlink"))
+        {
+            let url = rewrite_url(attr.value(), base, prefix);
+            if !url.is_empty() {
+                out.push_str(&format!(" href=\"{}\"", escape_html_text(&url)));
+            }
+        } else if attr.namespace().is_none()
+            && matches!(
+                name,
+                "viewBox"
+                    | "preserveAspectRatio"
+                    | "width"
+                    | "height"
+                    | "x"
+                    | "y"
+                    | "x1"
+                    | "x2"
+                    | "y1"
+                    | "y2"
+                    | "cx"
+                    | "cy"
+                    | "r"
+                    | "rx"
+                    | "ry"
+                    | "d"
+                    | "points"
+                    | "transform"
+                    | "opacity"
+                    | "fill"
+                    | "stroke"
+                    | "stroke-width"
+                    | "font-size"
+                    | "text-anchor"
+            )
+        {
+            let value = attr.value();
+            if matches!(name, "fill" | "stroke")
+                && !value
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '#' || c == '-')
+            {
+                continue;
+            }
+            out.push_str(&format!(" {name}=\"{}\"", escape_html_text(value)));
+        }
+    }
+    out.push('>');
+    for child in element.children() {
+        if child.is_element() {
+            serialize_safe(child, out, base, prefix, None);
+        } else if let Some(text) = child.text() {
+            out.push_str(&escape_html_text(text));
+        }
+    }
+    out.push_str(&format!("</{tag}>"));
+}
+
 /// Rewrites a URL for preview: relative paths point at the snapshot via
 /// `epubres://`; external URLs are kept inert (never auto-fetched); unsafe
 /// schemes are stripped.
@@ -279,5 +374,24 @@ mod tests {
         let html = sanitize("<x:weird>text</x:weird>");
         assert!(!html.contains("<x:weird>"), "{html}");
         assert!(html.contains("text"), "{html}");
+    }
+}
+
+#[cfg(test)]
+mod svg_tests {
+    use super::*;
+    #[test]
+    fn svg_cover_is_local_and_active_content_is_removed() {
+        let output = sanitize_fragment(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 800 1104" onload="bad()"><image xlink:href="cover.jpg"/><image href="https://example.com/a.png"/><script>bad()</script><foreignObject><div>bad</div></foreignObject><rect fill="url(https://example.com/a)" width="10"/></svg>"#,
+            "body",
+            "OEBPS/cover.xhtml",
+            "epubres://pid",
+        );
+        assert!(output.contains("viewBox=\"0 0 800 1104\""));
+        assert!(output.contains("href=\"epubres://pid/OEBPS/cover.jpg\""));
+        for unsafe_value in ["onload", "script", "foreignObject", "https:", "url(", "bad"] {
+            assert!(!output.contains(unsafe_value), "{output}");
+        }
     }
 }

@@ -1,5 +1,30 @@
 # Plan.md — EPUB Translation Studio
 
+### SVG cover preview and DOCTYPE export regression — 2026-10-14
+
+Source XML parsing accepts the inert HTML5 doctype while rejecting internal
+entity declarations and external DTDs. Chapter loading, segmentation, navigation,
+patching and export validation share this behavior. Preview supports a restricted
+passive SVG subset, rewrites image href/xlink:href to local snapshot URLs, and
+drops scripts, foreignObject, animations, CSS and URL paints. Original SVG bytes
+remain preserved in exports; arbitrary SVG authoring is still unsupported.
+Synthetic regressions cover cover loading, sanitization, export validation and
+resource/source byte preservation. Rust checks passed: 93 unit, 19 export and
+17 import tests (large-book sweep ignored). A temporary diagnostic also imported,
+loaded the cover and exported the supplied pg11-images-3.epub successfully.
+Next unfinished verification: rebuilt native preview/export in both themes and
+an external EPUB reader/EPUBCheck; cross-platform rendering remains unverified.
+No milestone checkboxes changed.
+
+### AI italic/bold formatting instructions — 2026-10-14
+
+Translation instructions identify em/strong as editable italic/bold formatting
+and prohibit introducing unsupported tags while retaining source structure.
+AI Fix HTML explicitly converts i/b to em/strong without losing text, valid
+attributes or formatting. All five prompt tests passed. Next unfinished check:
+verify a native AI Fix HTML run on a draft containing i tags; no milestone
+checkboxes changed.
+
 ### Reviewed chapter indicator — 2026-10-14
 
 The chapter review button stays green with a tinted background when the draft

@@ -15,6 +15,7 @@ import type {
   ProjectSummary,
 } from "../../types/project";
 import { toCommandError } from "./errors";
+import { preparePreviewImages } from "./preview";
 
 /**
  * Typed wrappers around Tauri commands. Frontend code calls these instead of
@@ -116,18 +117,12 @@ export async function getChapter(
 ): Promise<ChapterContent> {
   try {
     const content = await invoke<ChapterContent>("get_chapter", { projectId, chapterId });
-    const document = new DOMParser().parseFromString(content.previewHtml, "text/html");
-    for (const image of document.querySelectorAll("img[src]")) {
-      const src = image.getAttribute("src") ?? "";
-      if (src.startsWith("epubres://")) {
-        const url = new URL(src);
-        image.setAttribute(
-          "src",
-          convertFileSrc(`${url.hostname}${url.pathname}`, "epubres"),
-        );
-      }
-    }
-    return { ...content, previewHtml: document.body.innerHTML };
+    return {
+      ...content,
+      previewHtml: preparePreviewImages(content.previewHtml, (path) =>
+        convertFileSrc(path, "epubres"),
+      ),
+    };
   } catch (error) {
     throw toCommandError(error);
   }
