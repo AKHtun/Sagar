@@ -10,7 +10,8 @@ export function plainFragment(text: string): string {
 export function hasContent(html: string): boolean {
   const doc = new DOMParser().parseFromString(html, "text/html");
   return (
-    (doc.body.textContent ?? "").trim() !== "" || doc.querySelector("img, table") !== null
+    (doc.body.textContent ?? "").trim() !== "" ||
+    doc.querySelector("img, svg, table") !== null
   );
 }
 export function editorContent(fragment: string): string {
@@ -35,7 +36,57 @@ export function inlineFragment(html: string): string {
   return Array.from(doc.body.childNodes).map(serialize).join("<br/><br/>");
 }
 
-/** Canonical document XHTML: retain paragraph/list/heading structure. */
+/**
+ * Canonical document XHTML: retain the reader's block structure (including
+ * original div/figure/section wrappers) and SVG cover artwork so the
+ * rich-text preservation check can tell lossy conversions apart instead of
+ * silently dropping them.
+ */
+const SVG_TAGS = [
+  "svg",
+  "g",
+  "image",
+  "path",
+  "rect",
+  "circle",
+  "ellipse",
+  "line",
+  "polyline",
+  "polygon",
+  "title",
+  "desc",
+  "text",
+  "tspan",
+];
+const SVG_ATTRS = [
+  "href",
+  "xlink:href",
+  "viewBox",
+  "preserveAspectRatio",
+  "width",
+  "height",
+  "x",
+  "y",
+  "x1",
+  "x2",
+  "y1",
+  "y2",
+  "cx",
+  "cy",
+  "r",
+  "rx",
+  "ry",
+  "d",
+  "points",
+  "transform",
+  "opacity",
+  "fill",
+  "stroke",
+  "stroke-width",
+  "font-size",
+  "text-anchor",
+  "version",
+];
 export function documentFragment(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const serialize = (node: Node): string => {
@@ -51,6 +102,7 @@ export function documentFragment(html: string): string {
       "tr",
       "td",
       "th",
+      "caption",
       "h1",
       "h2",
       "h3",
@@ -61,6 +113,28 @@ export function documentFragment(html: string): string {
       "ol",
       "li",
       "blockquote",
+      "div",
+      "section",
+      "article",
+      "main",
+      "header",
+      "footer",
+      "aside",
+      "figure",
+      "figcaption",
+      "pre",
+      "dl",
+      "dt",
+      "dd",
+      "span",
+      "b",
+      "i",
+      "code",
+      "sup",
+      "sub",
+      "ruby",
+      "rt",
+      "rp",
       "strong",
       "em",
       "u",
@@ -69,6 +143,7 @@ export function documentFragment(html: string): string {
       "br",
       "hr",
       "a",
+      ...SVG_TAGS,
     ];
     const children = Array.from(node.childNodes).map(serialize).join("");
     if (!allowed.includes(tag)) return children;
@@ -88,12 +163,28 @@ export function documentFragment(html: string): string {
             : tag === "ol"
               ? ["start"]
               : []),
+      ...(SVG_TAGS.includes(tag) ? SVG_ATTRS : []),
     ].sort();
     const attributes = names
       .filter((name) => node.hasAttribute(name))
       .map((name) => ` ${name}="${plainFragment(node.getAttribute(name) ?? "")}"`)
       .join("");
-    if (["br", "img", "hr"].includes(tag)) return `<${tag}${attributes}/>`;
+    if (
+      [
+        "br",
+        "img",
+        "hr",
+        "image",
+        "path",
+        "rect",
+        "circle",
+        "ellipse",
+        "line",
+        "polyline",
+        "polygon",
+      ].includes(tag)
+    )
+      return `<${tag}${attributes}/>`;
     return `<${tag}${attributes}>${children}</${tag}>`;
   };
   return Array.from(doc.body.childNodes).map(serialize).join("");
@@ -107,7 +198,7 @@ export function comparableDocument(html: string): string {
       element.setAttribute("style", element.style.cssText);
   }
   for (const element of document.querySelectorAll(
-    "body, ul, ol, blockquote, table, thead, tbody, tfoot, tr",
+    "body, ul, ol, blockquote, table, thead, tbody, tfoot, tr, div, section, article, main, header, footer, aside, figure, figcaption, pre, dl, svg, g",
   )) {
     for (const node of Array.from(element.childNodes)) {
       if (node.nodeType === Node.TEXT_NODE && !(node.textContent ?? "").trim())

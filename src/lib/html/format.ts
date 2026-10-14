@@ -1,5 +1,5 @@
 const BLOCK_TAGS =
-  "p|h1|h2|h3|h4|h5|h6|ul|ol|li|blockquote|table|thead|tbody|tfoot|tr|td|th";
+  "p|h1|h2|h3|h4|h5|h6|ul|ol|li|blockquote|table|thead|tbody|tfoot|tr|td|th|div|section|article|main|header|footer|aside|figure|figcaption|pre|dl|dt|dd|svg|g";
 
 /**
  * Pretty-print a chapter body fragment so the translation code view reads

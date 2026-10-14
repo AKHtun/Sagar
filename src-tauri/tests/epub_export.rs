@@ -1447,6 +1447,17 @@ fn svg_cover_with_html_doctype_loads_and_exports_unchanged() {
         .find(|(n, _)| n == "OEBPS/ch1.xhtml")
         .expect("chapter")
         .1 = cover.as_bytes().to_vec();
+    // Fixture PNGs are stub bytes without a real image signature; use a
+    // genuine 1px PNG so the picker mime check accepts the SVG reference.
+    use base64::Engine as _;
+    let png = base64::engine::general_purpose::STANDARD
+        .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aIu0AAAAASUVORK5CYII=")
+        .expect("png");
+    files
+        .iter_mut()
+        .find(|(n, _)| n == "OEBPS/images/cover.png")
+        .expect("cover image")
+        .1 = png;
     let refs: Vec<(&str, &[u8])> = files
         .iter()
         .map(|(n, b)| (n.as_str(), b.as_slice()))
@@ -1459,6 +1470,21 @@ fn svg_cover_with_html_doctype_loads_and_exports_unchanged() {
             .expect("load SVG cover");
     assert!(chapter.preview_html.contains("<svg"));
     assert!(chapter.preview_html.contains("/OEBPS/images/cover.png"));
+    assert_eq!(chapter.images.len(), 1);
+    // Pasting the original ebookmaker cover markup into the translation must
+    // validate (the reported bug): save it as the chapter document here and
+    // check the exported book below keeps the SVG image reference intact.
+    let translation = "<div class=\"x-ebookmaker-cover\"><svg xmlns=\"http://www.w3.org/2000/svg\" height=\"100%\" preserveAspectRatio=\"xMidYMid meet\" version=\"1.1\" viewBox=\"0 0 800 1104\" width=\"100%\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><image width=\"800\" height=\"1104\" xlink:href=\"images/cover.png\"/></svg></div>";
+    services::workspace::save_chapter_document(
+        &data_dir,
+        &book.chapter_ids[0],
+        Some(translation.into()),
+        "reviewed",
+        0,
+    )
+    .expect("save translated cover");
+    services::workspace::save_chapter_document(&data_dir, &book.chapter_ids[1], None, "skipped", 0)
+        .expect("keep other chapter");
     let destination = dir.join("export.epub");
     services::export::export_epub(
         &data_dir,
@@ -1475,8 +1501,24 @@ fn svg_cover_with_html_doctype_loads_and_exports_unchanged() {
     epub::export::validate_output(&destination).expect("valid export");
     let mut output =
         zip::ZipArchive::new(std::fs::File::open(&destination).expect("output")).expect("zip");
+    let mut exported_cover = String::new();
+    output
+        .by_name("OEBPS/ch1.xhtml")
+        .expect("translated cover")
+        .read_to_string(&mut exported_cover)
+        .expect("read");
+    assert!(
+        exported_cover.contains("x-ebookmaker-cover"),
+        "{exported_cover}"
+    );
+    assert!(exported_cover.contains("<svg"), "{exported_cover}");
+    assert!(
+        exported_cover.contains("images/cover.png"),
+        "{exported_cover}"
+    );
+    assert!(!exported_cover.contains("data:image"), "{exported_cover}");
     for (name, bytes) in &files {
-        if name.ends_with('/') || name.ends_with(".opf") {
+        if name.ends_with('/') || name.ends_with(".opf") || name == "OEBPS/ch1.xhtml" {
             continue;
         }
         let mut actual = Vec::new();
@@ -1488,4 +1530,5 @@ fn svg_cover_with_html_doctype_loads_and_exports_unchanged() {
         assert_eq!(&actual, bytes, "resource {name}");
     }
     assert_eq!(std::fs::read(source).expect("source unchanged"), original);
+    epub::inspect(&destination).expect("reopen exported epub");
 }

@@ -59,8 +59,16 @@ export function TargetPane({
     setActiveEditor(null);
     setImagePicker(false);
     setImageError(null);
-    setView("rich");
-    setViewError(null);
+    // SVG cover artwork has no rich-text representation: open those chapters
+    // in HTML so the original markup is never silently stripped by the rich
+    // editor on load. Other chapters keep the rich default.
+    const initialHtml = content?.document.html ?? "";
+    setView(initialHtml.includes("<svg") ? "html" : "rich");
+    setViewError(
+      initialHtml.includes("<svg")
+        ? "This chapter uses original SVG artwork (e.g. a cover). It is kept exactly as in the source; continue editing it here to preserve the image at export."
+        : null,
+    );
     setAiOpen(false);
     setFixConfirmOpen(false);
     setFormattingOpen(false);

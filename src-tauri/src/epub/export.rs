@@ -746,14 +746,39 @@ fn package_images(
     let doc = crate::epub::xml::parse(&wrapped)
         .map_err(|_| AppError::new("invalid_translation", "Invalid saved XHTML."))?;
     let mut result = fragment.to_string();
-    for img in doc.descendants().filter(|n| n.has_tag_name("img")) {
-        let Some(src) = img.attribute("src") else {
-            continue;
-        };
+    // New <img> uploads (data: URLs) plus SVG cover images that carry a
+    // pasted data: URL in either href form are packaged as new resources.
+    // Relative original references (e.g. "cover.jpg") stay untouched so the
+    // immutable snapshot resource is reused byte-for-byte at export.
+    let targets: Vec<String> = doc
+        .descendants()
+        .filter(|n| n.is_element())
+        .filter_map(|n| {
+            // Match by local name: stored fragments are wrapped without a
+            // default namespace, so namespaced matching would miss them.
+            if n.tag_name().name() == "img" {
+                n.attribute("src").map(str::to_string)
+            } else if n.tag_name().name() == "image" {
+                n.attribute("href")
+                    .or_else(|| {
+                        n.attributes()
+                            .find(|a| {
+                                a.name() == "href"
+                                    && a.namespace() == Some("http://www.w3.org/1999/xlink")
+                            })
+                            .map(|a| a.value())
+                    })
+                    .map(str::to_string)
+            } else {
+                None
+            }
+        })
+        .collect();
+    for src in targets {
         if !src.starts_with("data:") {
             continue;
         }
-        let (mime, bytes) = super::rich_text::image_bytes(src)?;
+        let (mime, bytes) = super::rich_text::image_bytes(&src)?;
         use sha2::{Digest, Sha256};
         let digest: String = Sha256::digest(&bytes)
             .iter()
@@ -778,7 +803,7 @@ fn package_images(
         images
             .entry(path.clone())
             .or_insert((mime.to_string(), bytes));
-        result = result.replace(src, &relative_resource(chapter, &path));
+        result = result.replace(src.as_str(), &relative_resource(chapter, &path));
     }
     Ok(result)
 }

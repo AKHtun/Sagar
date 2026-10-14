@@ -75,17 +75,41 @@ pub fn get_chapter(
             epub::preview::sanitize_fragment(body_xml, "body", &base_resource, &resource_prefix);
     }
     use base64::Engine;
-    for img in doc
+    // Collect both <img src> and SVG cover <image href|xlink:href> so the
+    // Translation image picker can re-insert original artwork (e.g.
+    // ebookmaker covers) instead of reporting "no supported images".
+    let candidates: Vec<(String, String)> = doc
         .descendants()
-        .filter(|n| n.has_tag_name(("http://www.w3.org/1999/xhtml", "img")))
-    {
-        let Some(src) = img.attribute("src") else {
-            continue;
-        };
-        if src.contains(':') || src.starts_with('/') {
+        .filter(|n| n.is_element())
+        .filter_map(|n| {
+            if n.has_tag_name(("http://www.w3.org/1999/xhtml", "img")) {
+                Some((
+                    n.attribute("src")?.to_string(),
+                    n.attribute("alt").unwrap_or("Chapter image").to_string(),
+                ))
+            } else if n.has_tag_name(("http://www.w3.org/2000/svg", "image")) {
+                let href = n
+                    .attribute("href")
+                    .or_else(|| {
+                        n.attributes()
+                            .find(|a| {
+                                a.name() == "href"
+                                    && a.namespace() == Some("http://www.w3.org/1999/xlink")
+                            })
+                            .map(|a| a.value())
+                    })?
+                    .to_string();
+                Some((href, "Chapter image".to_string()))
+            } else {
+                None
+            }
+        })
+        .collect();
+    for (raw_src, alt) in candidates {
+        if raw_src.contains(':') || raw_src.starts_with('/') {
             continue;
         }
-        let href = epub::resolve_href(&base_resource, src);
+        let href = epub::resolve_href(&base_resource, &raw_src);
         let Ok(bytes) = archive.read_entry(&href) else {
             continue;
         };
@@ -106,10 +130,9 @@ pub fn get_chapter(
             base64::engine::general_purpose::STANDARD.encode(bytes)
         );
         if !content.images.iter().any(|image| image.src == src) {
-            content.images.push(crate::domain::ChapterImage {
-                src,
-                alt: img.attribute("alt").unwrap_or("Chapter image").to_string(),
-            });
+            content
+                .images
+                .push(crate::domain::ChapterImage { src, alt });
         }
     }
     Ok(content)
