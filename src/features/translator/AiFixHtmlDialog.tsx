@@ -18,6 +18,9 @@ import { agentLabel } from "../settings/TranslationModelSection";
 
 type Phase = "idle" | "running" | "fixed" | "failed";
 
+/** Silence before a running job shows a stall warning (job keeps running). */
+const STALL_WARNING_AFTER_SECS = 120;
+
 /**
  * AI HTML-fix dialog. Sends the user's *current* Translation HTML to the
  * selected local CLI, which restructures it into rich-text-compatible XHTML
@@ -45,7 +48,9 @@ export function AiFixHtmlDialog({
   const [streamed, setStreamed] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [stalledSecs, setStalledSecs] = useState(0);
   const [eventsDead, setEventsDead] = useState(false);
+  const lastOutputAt = useRef<number>(Date.now());
   const jobId = useRef<string | null>(null);
   const starting = useRef(false);
   const closed = useRef(false);
@@ -135,6 +140,8 @@ export function AiFixHtmlDialog({
       if (payload.kind === "started") return;
       if (payload.kind === "stream") {
         setStreamed(payload.partialText ?? "");
+        lastOutputAt.current = Date.now();
+        setStalledSecs(0);
         requestAnimationFrame(() => {
           if (streamRef.current) {
             streamRef.current.scrollTop = streamRef.current.scrollHeight;
@@ -183,16 +190,23 @@ export function AiFixHtmlDialog({
   useEffect(() => {
     if (phase !== "running") {
       setElapsed(0);
+      setStalledSecs(0);
       return;
     }
     setElapsed(0);
-    const timer = setInterval(() => setElapsed((value) => value + 1), 1000);
+    setStalledSecs(0);
+    const timer = setInterval(() => {
+      setElapsed((value) => value + 1);
+      setStalledSecs(Math.floor((Date.now() - lastOutputAt.current) / 1000));
+    }, 1000);
     return () => clearInterval(timer);
   }, [phase]);
 
   const handleFix = useCallback(async () => {
     if (!selection || !consent || jobId.current || starting.current) return;
     starting.current = true;
+    lastOutputAt.current = Date.now();
+    setStalledSecs(0);
     setPhase("running");
     setNotice(null);
     setFixed(null);
@@ -329,7 +343,13 @@ export function AiFixHtmlDialog({
             ) : null}
             {running ? (
               <StatusNotice kind="loading">
-                Repairing… ({elapsed}s elapsed — this can take several minutes)
+                Repairing… ({elapsed}s elapsed — this can take up to 30 minutes)
+              </StatusNotice>
+            ) : null}
+            {running && stalledSecs >= STALL_WARNING_AFTER_SECS ? (
+              <StatusNotice kind="info">
+                No output for {stalledSecs}s — still running. Slow connections can stall
+                for minutes; your draft is safe. You can wait or Cancel.
               </StatusNotice>
             ) : null}
             {running || streamed !== "" ? (

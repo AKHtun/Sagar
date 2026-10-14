@@ -194,3 +194,20 @@ partial invalid saves, and confirm byte-identical source/snapshot preservation.
 Frontend lint/build, cargo formatting and all 116 Rust tests passed. Native
 Book Settings/AI interactions and cross-platform verification remain open;
 full EPUBCheck conformance was not performed.
+
+### Bundled-app CLI discovery fix — 2026-10-14
+
+Release builds launched from Finder/Dock inherit a sparse `launchd` PATH, so
+`codex` (nvm/npm shim), `opencode` (`~/.opencode/bin`) and `claude`
+(`~/.local/bin`) reported "Not found on PATH" even when installed. CLI lookup
+in `services/ai.rs` now searches process PATH, then the login-shell PATH
+(bounded `printf %s "$PATH"` probe, constant args only), then well-known
+per-user install directories (including nvm version bins) plus brew/system
+prefixes, deduplicated with process-PATH precedence. Error messages no longer
+claim PATH-only lookup and stay free of filesystem paths. Four regression
+tests cover fallback listing, nvm expansion, shell-output parsing and
+combined-directory resolution. Rust suite (101 unit, 19 export, 17 import),
+frontend lint/build and cargo formatting passed; new code is clippy-clean
+(six pre-existing clippy warnings in untouched files remain). Next unfinished
+verification: rebuilt release app on macOS finding all three tools, plus
+Windows/Linux checks.

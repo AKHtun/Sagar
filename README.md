@@ -22,6 +22,30 @@ cargo clippy --all-targets -- -D warnings
 Requires the **Tauri** **2** **prerequisites** for your OS (see
 [https://v2.tauri.app/start/prerequisites/](https://v2.tauri.app/start/prerequisites/) ).
 
+## Release (version tags)
+
+The version lives in 4 files that must always agree: `package.json`,
+`src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and
+`src-tauri/Cargo.lock` (the `sagar` entry). Never edit them by hand —
+one command bumps all four, commits, and tags:
+
+```bash
+bun run release:tag -- 0.1.4 -m "version 0.1.4"  # bumps all 4 files, commits, tags v0.1.4
+git push origin <branch> v0.1.4                   # pre-push re-validates before it leaves
+```
+
+Pushing a `v*` tag triggers the release workflow, which builds for
+macOS/Windows/Linux. Helpers:
+
+```bash
+bun run version:check          # verify the 4 files agree
+bun run version:set -- 0.1.4   # bump files without committing/tagging
+bun run hooks:install          # reinstall the pre-push guard (auto-runs on bun install)
+```
+
+There is no git hook for tag *creation*, so the `pre-push` hook validates
+the tagged commit itself and blocks mismatched tags before they reach CI.
+
 ## How it works
 
 1. **Import** — open a DRM-free, reflowable EPUB 3 file. The app validates the

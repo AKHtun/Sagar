@@ -11,7 +11,12 @@
     "icons": "bun scripts/generate-icons.ts",
     "lint": "biome check src",
     "format": "biome format --write src",
-    "check": "bun run lint && bun run build"
+    "check": "bun run lint && bun run build",
+    "version:check": "bun scripts/release-version.ts check",
+    "version:set": "bun scripts/release-version.ts set",
+    "release:tag": "bun scripts/release-version.ts tag",
+    "hooks:install": "bun scripts/install-hooks.ts",
+    "postinstall": "bun scripts/install-hooks.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

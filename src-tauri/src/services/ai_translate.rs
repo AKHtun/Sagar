@@ -27,7 +27,9 @@ use crate::services::ai as ai_settings;
 use crate::storage::ai_translate;
 
 /// Hard deadline for one chapter run; users can always cancel earlier.
-const TRANSLATION_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// Thirty minutes covers long chapters and slow connections (all agents —
+/// Codex, OpenCode, Claude Code — share this path, as does AI HTML fix).
+const TRANSLATION_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 /// How often a running child is polled for cancel/deadline.
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 /// Refuse chapters (or proposals) that would make prompts/outputs unbounded.
@@ -380,7 +382,7 @@ pub(crate) fn execute_streaming(
             let _ = child.wait();
             return Err(AppError::new(
                 "translation_timeout",
-                "The translation took too long and was stopped.",
+                "The translation took longer than 30 minutes and was stopped. Slow connections can stall output for minutes; retrying keeps any complete sections.",
             ));
         }
         std::thread::sleep(POLL_INTERVAL);
@@ -768,7 +770,7 @@ where
     let binary = ai_settings::find_cli_binary(cli_id).ok_or_else(|| {
         AppError::new(
             "provider_not_available",
-            "The translation tool was not found on PATH.",
+            "The translation tool was not found. Install it, then reopen Sagar and try again.",
         )
     })?;
     drop(conn);
@@ -945,7 +947,7 @@ where
     let binary = ai_settings::find_cli_binary(cli_id).ok_or_else(|| {
         AppError::new(
             "provider_not_available",
-            "The repair tool was not found on PATH.",
+            "The repair tool was not found. Install it, then reopen Sagar and try again.",
         )
     })?;
 
@@ -1068,6 +1070,13 @@ pub fn cancel_ai_translation(job_id: &str) -> Result<(), AppError> {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicBool;
+
+    #[test]
+    fn translation_deadline_is_thirty_minutes() {
+        // Long chapters and slow connections need headroom; the dialogs
+        // advertise this deadline and warn on stalls before it.
+        assert_eq!(TRANSLATION_TIMEOUT, Duration::from_secs(30 * 60));
+    }
 
     #[test]
     fn prompts_combine_book_and_current_guidance_with_preservation_rules() {

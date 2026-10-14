@@ -29,23 +29,8 @@ jobs:
       - name: Validate release version
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          bun -e '
-            const tag = process.env.RELEASE_TAG;
-            const versions = {
-              "package.json": (await Bun.file("package.json").json()).version,
-              "src-tauri/tauri.conf.json": (await Bun.file("src-tauri/tauri.conf.json").json()).version,
-              "src-tauri/Cargo.toml": Bun.TOML.parse(await Bun.file("src-tauri/Cargo.toml").text()).package.version,
-            };
-            if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(tag)) {
-              throw new Error(`Expected a version tag such as v0.1.0; received ${tag}`);
-            }
-            for (const [file, version] of Object.entries(versions)) {
-              if (tag !== `v${version}`) {
-                throw new Error(`${file} version ${version} does not match release tag ${tag}`);
-              }
-            }
-          '
+        # Same check the pre-push hook runs locally, plus Cargo.lock.
+        run: bun scripts/release-version.ts check --tag "$RELEASE_TAG"
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile

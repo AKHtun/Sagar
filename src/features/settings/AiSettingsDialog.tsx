@@ -386,8 +386,8 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                           <span className="project-row__main">
                             <span className="project-row__title">{provider.label}</span>
                             <span className="project-row__meta">
-                              Looks for <code>{provider.binaries.join(", ")}</code> on
-                              PATH
+                              Looks for <code>{provider.binaries.join(", ")}</code> in
+                              standard install locations
                               {result?.version ? ` · ${result.version}` : null}
                               {result && !result.connected
                                 ? ` · ${result.message}`

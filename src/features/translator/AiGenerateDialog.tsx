@@ -23,6 +23,9 @@ import type { useChapterEditor } from "./useChapterEditor";
 
 type Phase = "idle" | "running" | "proposal" | "failed";
 
+/** Silence before a running job shows a stall warning (job keeps running). */
+const STALL_WARNING_AFTER_SECS = 120;
+
 function plainText(html: string): string {
   return new DOMParser().parseFromString(html, "text/html").body.textContent ?? "";
 }
@@ -60,7 +63,9 @@ export function AiGenerateDialog({
   const [confirmInsert, setConfirmInsert] = useState(false);
   const [copied, setCopied] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [stalledSecs, setStalledSecs] = useState(0);
   const [eventsDead, setEventsDead] = useState(false);
+  const lastOutputAt = useRef<number>(Date.now());
   const jobId = useRef<string | null>(null);
   const starting = useRef(false);
   const closed = useRef(false);
@@ -168,6 +173,8 @@ export function AiGenerateDialog({
       }
       if (payload.kind === "stream") {
         setStreamed(payload.partialText ?? "");
+        lastOutputAt.current = Date.now();
+        setStalledSecs(0);
         // Follow the live output; runs after paint so the new text is laid out.
         requestAnimationFrame(() => {
           if (streamRef.current) {
@@ -234,14 +241,20 @@ export function AiGenerateDialog({
     };
   }, [chapterId]);
 
-  // Elapsed ticker while a run is in flight; translation can take minutes.
+  // Elapsed + stall tickers while a run is in flight; translation can take
+  // up to 30 minutes, and slow connections can stall output for minutes.
   useEffect(() => {
     if (phase !== "running") {
       setElapsed(0);
+      setStalledSecs(0);
       return;
     }
     setElapsed(0);
-    const timer = setInterval(() => setElapsed((value) => value + 1), 1000);
+    setStalledSecs(0);
+    const timer = setInterval(() => {
+      setElapsed((value) => value + 1);
+      setStalledSecs(Math.floor((Date.now() - lastOutputAt.current) / 1000));
+    }, 1000);
     return () => clearInterval(timer);
   }, [phase]);
 
@@ -251,6 +264,8 @@ export function AiGenerateDialog({
     }
     starting.current = true;
     pendingEvents.current = [];
+    lastOutputAt.current = Date.now();
+    setStalledSecs(0);
     setPhase("running");
     setNotice(null);
     setProposal(null);
@@ -455,7 +470,13 @@ export function AiGenerateDialog({
             ) : null}
             {running ? (
               <StatusNotice kind="loading">
-                Translating… ({elapsed}s elapsed — this can take several minutes)
+                Translating… ({elapsed}s elapsed — this can take up to 30 minutes)
+              </StatusNotice>
+            ) : null}
+            {running && stalledSecs >= STALL_WARNING_AFTER_SECS ? (
+              <StatusNotice kind="info">
+                No output for {stalledSecs}s — still running. Slow connections can stall
+                for minutes; your draft is safe. You can wait or Cancel.
               </StatusNotice>
             ) : null}
             {running || streamed !== "" ? (

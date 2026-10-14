@@ -83,15 +83,199 @@ fn path_directories() -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
-pub(crate) fn find_cli_binary(id: CliProviderId) -> Option<PathBuf> {
-    let directories = path_directories();
-    id.binaries()
-        .iter()
-        .find_map(|binary| find_on_path_in(&directories, binary))
+/// Home directory for per-user install lookups. Absolute paths only so a
+/// relative `HOME` can never escape into the search list.
+fn home_directory() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        std::env::var_os("USERPROFILE")
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .map(PathBuf::from)
+                    .filter(|path| path.is_absolute())
+            })
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+    }
 }
 
-fn cli_available(id: CliProviderId) -> bool {
-    find_cli_binary(id).is_some()
+/// Well-known per-user install locations for `home`, without touching the
+/// filesystem beyond a best-effort `nvm` directory listing. Callers filter by
+/// file existence at lookup time, so missing directories are harmless.
+fn fallback_directories_for(home: &Path) -> Vec<PathBuf> {
+    let mut directories = Vec::new();
+    for relative in [
+        ".opencode/bin",
+        ".local/bin",
+        "bin",
+        ".cargo/bin",
+        ".bun/bin",
+        ".deno/bin",
+        ".volta/bin",
+        ".asdf/shims",
+        "Library/pnpm/bin",
+    ] {
+        directories.push(home.join(relative));
+    }
+    #[cfg(windows)]
+    {
+        if let Some(appdata) = std::env::var_os("APPDATA").map(PathBuf::from) {
+            if appdata.is_absolute() {
+                directories.push(appdata.join("npm"));
+            }
+        }
+    }
+    // nvm installs one `bin` directory per Node version (for example npm
+    // shims such as `codex`); expand whatever versions exist right now.
+    let nvm_nodes = home.join(".nvm").join("versions").join("node");
+    if let Ok(entries) = std::fs::read_dir(&nvm_nodes) {
+        let mut versions: Vec<PathBuf> = entries
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.is_dir())
+            .map(|path| path.join("bin"))
+            .collect();
+        versions.sort();
+        directories.extend(versions);
+    }
+    directories
+}
+
+/// System-wide locations that GUI launches often miss but interactive shells
+/// include. Kept small and constant; no user input is involved.
+fn system_fallback_directories() -> Vec<PathBuf> {
+    #[cfg(windows)]
+    {
+        Vec::new()
+    }
+    #[cfg(not(windows))]
+    {
+        [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "/opt/local/bin",
+        ]
+        .into_iter()
+        .map(PathBuf::from)
+        .collect()
+    }
+}
+
+fn fallback_directories() -> Vec<PathBuf> {
+    let mut directories = Vec::new();
+    if let Some(home) = home_directory() {
+        directories.extend(fallback_directories_for(&home));
+    }
+    directories.extend(system_fallback_directories());
+    directories
+}
+
+/// Splits one login-shell `$PATH` dump into directories. Pure helper so the
+/// parsing is unit-testable without spawning a shell.
+fn split_shell_path_output(text: &str) -> Vec<PathBuf> {
+    if text.trim().is_empty() {
+        return Vec::new();
+    }
+    std::env::split_paths(text.trim()).collect()
+}
+
+/// Reads the login shell's `PATH` without executing anything else. Bundled
+/// desktop apps launched from Finder/Dock inherit a sparse `PATH` from
+/// `launchd`, while terminal sessions see brew, nvm, `~/.local/bin` and
+/// `~/.opencode/bin` entries. Only a constant `printf` script ever runs; no
+/// user input reaches `argv`. Failures return an empty list so callers fall
+/// back to the process `PATH` plus well-known directories.
+#[cfg(unix)]
+fn shell_path_directories() -> Vec<PathBuf> {
+    const SHELL_TIMEOUT: Duration = Duration::from_secs(2);
+    const MAX_PATH_BYTES: usize = 32 * 1024;
+
+    let mut shells: Vec<PathBuf> = Vec::new();
+    if let Some(configured) = std::env::var_os("SHELL").map(PathBuf::from)
+        && configured.is_absolute()
+    {
+        shells.push(configured);
+    }
+    for fallback in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
+        let path = PathBuf::from(fallback);
+        if !shells.contains(&path) {
+            shells.push(path);
+        }
+    }
+
+    for shell in shells {
+        let mut command = std::process::Command::new(&shell);
+        command
+            .args(["-l", "-c", "printf %s \"$PATH\""])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
+        let Ok(child) = command.spawn() else {
+            continue;
+        };
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = sender.send(child.wait_with_output());
+        });
+        let Ok(Ok(output)) = receiver.recv_timeout(SHELL_TIMEOUT) else {
+            continue;
+        };
+        if !output.status.success() || output.stdout.is_empty() {
+            continue;
+        }
+        if output.stdout.len() > MAX_PATH_BYTES {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&output.stdout).to_string();
+        let directories = split_shell_path_output(&text);
+        if !directories.is_empty() {
+            return directories;
+        }
+    }
+    Vec::new()
+}
+
+#[cfg(windows)]
+fn shell_path_directories() -> Vec<PathBuf> {
+    Vec::new()
+}
+
+/// Combined lookup order: process `PATH` first (preserves user precedence),
+/// then the login-shell `PATH`, then well-known install locations.
+/// Duplicates are removed while keeping the first occurrence.
+fn search_directories() -> Vec<PathBuf> {
+    let mut seen = HashSet::new();
+    let mut ordered = Vec::new();
+    for directory in path_directories()
+        .into_iter()
+        .chain(shell_path_directories())
+        .chain(fallback_directories())
+    {
+        if seen.insert(directory.clone()) {
+            ordered.push(directory);
+        }
+    }
+    ordered
+}
+
+fn find_cli_binary_in(directories: &[PathBuf], id: CliProviderId) -> Option<PathBuf> {
+    id.binaries()
+        .iter()
+        .find_map(|binary| find_on_path_in(directories, binary))
+}
+
+pub(crate) fn find_cli_binary(id: CliProviderId) -> Option<PathBuf> {
+    find_cli_binary_in(&search_directories(), id)
+}
+
+fn cli_available_in(directories: &[PathBuf], id: CliProviderId) -> bool {
+    find_cli_binary_in(directories, id).is_some()
 }
 
 /// Runs a CLI with fixed arguments and a timeout. Only caller-chosen constant
@@ -250,13 +434,16 @@ pub fn normalize_base_url(raw: &str) -> Result<String, AppError> {
 
 pub fn list_ai_providers(data_dir: &Path) -> Result<AiProviderList, AppError> {
     let conn = open_settings_db(data_dir)?;
+    // One combined lookup for all three providers so the login-shell probe
+    // runs once instead of once per provider.
+    let directories = search_directories();
     let cli = CliProviderId::all()
         .into_iter()
         .map(|id| CliProviderStatus {
             id: id.as_str().to_string(),
             label: id.label().to_string(),
             binaries: id.binaries().iter().map(|name| name.to_string()).collect(),
-            available: cli_available(id),
+            available: cli_available_in(&directories, id),
         })
         .collect();
     let custom = ai_providers::list_custom(&conn)?;
@@ -278,7 +465,9 @@ pub fn check_ai_cli(data_dir: &Path, provider_id: &str) -> Result<CliCheckResult
             available: false,
             connected: false,
             version: None,
-            message: "Not found on PATH. Install the tool to use it here.".to_string(),
+            message:
+                "Not found. Install the tool, then reopen Sagar so it can see the new install."
+                    .to_string(),
         });
     };
     match probe_cli_version(&binary) {
@@ -900,7 +1089,7 @@ fn find_cli_or_unavailable(id: CliProviderId) -> Result<PathBuf, AppError> {
         AppError::new(
             "provider_not_available",
             format!(
-                "{} was not found on PATH. Install the tool to list its models.",
+                "{} was not found. Install the tool, then reopen Sagar to list its models.",
                 id.label()
             ),
         )
@@ -1316,5 +1505,78 @@ opencode/no-adjustment
         )
         .expect("custom selection");
         assert_eq!(saved.model, "other-model");
+    }
+
+    #[test]
+    fn fallback_lists_standard_tool_directories() {
+        let home = Path::new("/tmp/example-home");
+        let directories = fallback_directories_for(home);
+        for relative in [
+            ".opencode/bin",
+            ".local/bin",
+            ".cargo/bin",
+            ".bun/bin",
+            ".volta/bin",
+        ] {
+            assert!(
+                directories.contains(&home.join(relative)),
+                "missing {relative}"
+            );
+        }
+    }
+
+    #[test]
+    fn fallback_expands_nvm_version_bins() {
+        let home = tempfile::tempdir().expect("temp home");
+        let first = home.path().join(".nvm/versions/node/v20.0.0/bin");
+        let second = home.path().join(".nvm/versions/node/v22.0.0/bin");
+        std::fs::create_dir_all(&first).expect("stage nvm bin");
+        std::fs::create_dir_all(&second).expect("stage nvm bin");
+        let directories = fallback_directories_for(home.path());
+        assert!(directories.contains(&first), "first node bin listed");
+        assert!(directories.contains(&second), "second node bin listed");
+    }
+
+    #[test]
+    fn shell_path_output_splits_without_a_shell() {
+        #[cfg(unix)]
+        {
+            let directories = split_shell_path_output("/opt/homebrew/bin:/usr/local/bin");
+            assert_eq!(
+                directories,
+                vec![
+                    PathBuf::from("/opt/homebrew/bin"),
+                    PathBuf::from("/usr/local/bin")
+                ]
+            );
+        }
+        assert!(split_shell_path_output("   ").is_empty());
+        assert!(split_shell_path_output("").is_empty());
+    }
+
+    #[test]
+    fn staged_tool_is_found_through_combined_directories() {
+        // Regression for bundled desktop launches: the process PATH alone
+        // misses per-user installs (opencode, claude, nvm shims), so the
+        // combined lookup must still resolve a staged tool directory.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let binary = dir.path().join("opencode");
+        std::fs::write(&binary, b"stub").expect("stage binary");
+        let directories = vec![dir.path().to_path_buf()];
+        let found = find_cli_binary_in(&directories, CliProviderId::Opencode).expect("tool found");
+        assert_eq!(found, binary);
+        assert!(cli_available_in(&directories, CliProviderId::Opencode));
+        assert!(!cli_available_in(&directories, CliProviderId::Codex));
+
+        let home = tempfile::tempdir().expect("temp home");
+        let tool_dir = home.path().join(".opencode/bin");
+        std::fs::create_dir_all(&tool_dir).expect("stage tool dir");
+        let staged = tool_dir.join("opencode");
+        std::fs::write(&staged, b"stub").expect("stage tool");
+        let fallbacks = fallback_directories_for(home.path());
+        assert_eq!(
+            find_on_path_in(&fallbacks, "opencode").expect("fallback hit"),
+            staged
+        );
     }
 }
