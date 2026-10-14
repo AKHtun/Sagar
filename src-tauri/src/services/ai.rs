@@ -1564,6 +1564,9 @@ opencode/no-adjustment
         }
         // System prefixes cover the package managers GUI launches miss:
         // Homebrew (Apple Silicon and Intel), MacPorts and Linuxbrew.
+        // Windows relies on PATH plus per-user install locations, so the
+        // system list is intentionally empty there.
+        #[cfg(not(windows))]
         for system in [
             "/opt/homebrew/bin",
             "/usr/local/bin",
@@ -1575,6 +1578,11 @@ opencode/no-adjustment
                 "missing {system}"
             );
         }
+        #[cfg(windows)]
+        assert!(
+            system_fallback_directories().is_empty(),
+            "windows has no unix system fallbacks"
+        );
     }
 
     #[test]
