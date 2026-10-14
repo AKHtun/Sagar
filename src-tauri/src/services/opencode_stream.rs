@@ -171,7 +171,12 @@ impl Server {
                     }
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(_) => return Err(failed()),
+                Err(_) => {
+                    // Prefer an expired deadline over a generic failure when
+                    // the child pipe closes around the same time.
+                    check(cancel, started, timeout)?;
+                    return Err(failed());
+                }
             }
         };
         // Continue draining stdout; a verbose child must not block on its pipe.
@@ -486,9 +491,15 @@ pub(super) fn run(
         .ok_or_else(failed)?
         .to_string();
     server.session = Some(id.clone());
-    let request = server
-        .request(reqwest::Method::GET, "/event")
-        .timeout(timeout);
+    // The SSE stream lifetime is bounded by the polling loops below via
+    // `check`. Give the underlying request headroom so reqwest's own timeout
+    // cannot fire at the same instant as the translation deadline and mask a
+    // timeout as a generic failure.
+    let request = server.request(reqwest::Method::GET, "/event").timeout(
+        timeout
+            .checked_add(Duration::from_secs(10))
+            .unwrap_or(timeout),
+    );
     let (tx, rx) = mpsc::sync_channel(16);
     std::thread::spawn(move || {
         let Ok(response) = request.send().and_then(|r| r.error_for_status()) else {
@@ -526,7 +537,14 @@ pub(super) fn run(
         match rx.recv_timeout(Duration::from_millis(50)) {
             Ok(Wire::Ready) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
-            _ => return Err(failed()),
+            _ => {
+                // The event thread reports every transport problem as Failed,
+                // including its own read timeout. Prefer the translation
+                // deadline when it has expired so timeouts stay distinct from
+                // generic failures.
+                check(cancel, started, timeout)?;
+                return Err(failed());
+            }
         }
     }
     let mut body = json!({"model":{"providerID":provider,"modelID":model},"parts":[{"type":"text","text":prompt}]});
@@ -561,7 +579,12 @@ pub(super) fn run(
                 events.handle(v, &mut on_text)
             })?,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
-            _ => return Err(failed()),
+            _ => {
+                // Same deadline precedence as above: a closed/idle event
+                // stream at the deadline is a timeout, not a generic failure.
+                check(cancel, started, timeout)?;
+                return Err(failed());
+            }
         }
     }
     events.response()
