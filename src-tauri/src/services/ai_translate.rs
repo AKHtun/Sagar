@@ -731,12 +731,21 @@ fn ensure_success(result: &StreamResult) -> Result<(), AppError> {
     if result.status.success() {
         Ok(())
     } else {
+        let tail = stderr_tail(&result.stderr);
+        // Shim installs (`claude`/`codex` via bun or npm) exec `node` through
+        // `/usr/bin/env`; a GUI launch with a sparse PATH surfaces exactly
+        // this line. Name the remedy instead of leaving a bare env error.
+        if tail.contains("node: No such file or directory") {
+            return Err(AppError::new(
+                "translation_failed",
+                format!(
+                    "The translation tool could not find Node.js (\"env: node: No such file or directory\"). Install Node.js or make sure its folder is on your login-shell PATH, then reopen Sagar and retry.{tail}"
+                ),
+            ));
+        }
         Err(AppError::new(
             "translation_failed",
-            format!(
-                "The translation tool exited with an error.{}",
-                stderr_tail(&result.stderr)
-            ),
+            format!("The translation tool exited with an error.{tail}"),
         ))
     }
 }

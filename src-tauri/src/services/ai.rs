@@ -106,7 +106,7 @@ fn home_directory() -> Option<PathBuf> {
 }
 
 /// Well-known per-user install locations for `home`, without touching the
-/// filesystem beyond a best-effort `nvm` directory listing. Callers filter by
+/// filesystem beyond best-effort directory listings. Callers filter by
 /// file existence at lookup time, so missing directories are harmless.
 fn fallback_directories_for(home: &Path) -> Vec<PathBuf> {
     let mut directories = Vec::new();
@@ -119,7 +119,11 @@ fn fallback_directories_for(home: &Path) -> Vec<PathBuf> {
         ".deno/bin",
         ".volta/bin",
         ".asdf/shims",
+        ".local/share/mise/shims",
+        ".config/herd-lite/bin",
         "Library/pnpm/bin",
+        // Laravel Herd ships its own PHP/Node on macOS; harmless when absent.
+        "Library/Application Support/Herd/bin",
     ] {
         directories.push(home.join(relative));
     }
@@ -143,7 +147,79 @@ fn fallback_directories_for(home: &Path) -> Vec<PathBuf> {
         versions.sort();
         directories.extend(versions);
     }
+    // Other version managers keep one `bin` per Node release outside the
+    // login-shell PATH that GUI launches see. Expand them the same way so a
+    // `#!/usr/bin/env node` shim (for example a bun/npm-installed `claude`)
+    // resolves its runtime even when the shell probe misses it.
+    directories.extend(node_version_bins(home));
     directories
+}
+
+/// Versioned Node `bin` directories for managers other than nvm. Each base
+/// holds one subdirectory per installed release; only existing `bin`
+/// directories are returned.
+fn node_version_bins(home: &Path) -> Vec<PathBuf> {
+    // (base directory, tail from a version directory to its `bin`)
+    let layouts: Vec<(PathBuf, Vec<&str>)> = vec![
+        (
+            home.join(".local")
+                .join("share")
+                .join("fnm")
+                .join("node-versions"),
+            vec!["installation", "bin"],
+        ),
+        (
+            home.join(".fnm").join("node-versions"),
+            vec!["installation", "bin"],
+        ),
+        (
+            home.join(".local")
+                .join("share")
+                .join("mise")
+                .join("installs")
+                .join("node"),
+            vec!["bin"],
+        ),
+        (
+            home.join(".volta").join("tools").join("image").join("node"),
+            vec!["bin"],
+        ),
+        (
+            home.join(".asdf").join("installs").join("nodejs"),
+            vec!["bin"],
+        ),
+        (home.join("n").join("versions").join("node"), vec!["bin"]),
+    ];
+    let mut bins = Vec::new();
+    for (base, tail) in layouts {
+        let Ok(entries) = std::fs::read_dir(&base) else {
+            continue;
+        };
+        let mut versions: Vec<PathBuf> = entries
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.is_dir())
+            .map(|path| tail.iter().fold(path, |path, part| path.join(part)))
+            .filter(|path| path.is_dir())
+            .collect();
+        versions.sort();
+        bins.extend(versions);
+    }
+    // `n` also defaults to a system-wide tree outside `$HOME`.
+    #[cfg(not(windows))]
+    {
+        let system_n = PathBuf::from("/usr/local/n/versions/node");
+        if let Ok(entries) = std::fs::read_dir(&system_n) {
+            let mut versions: Vec<PathBuf> = entries
+                .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+                .filter(|path| path.is_dir())
+                .map(|path| path.join("bin"))
+                .filter(|path| path.is_dir())
+                .collect();
+            versions.sort();
+            bins.extend(versions);
+        }
+    }
+    bins
 }
 
 /// System-wide locations that GUI launches often miss but interactive shells
@@ -158,7 +234,11 @@ fn system_fallback_directories() -> Vec<PathBuf> {
         [
             "/opt/homebrew/bin",
             "/opt/homebrew/sbin",
+            // Unlinked Homebrew Node kegs keep a `node` binary here even when
+            // the versioned formula is not linked into `/opt/homebrew/bin`.
+            "/opt/homebrew/opt/node/bin",
             "/usr/local/bin",
+            "/usr/local/opt/node/bin",
             "/opt/local/bin",
             "/home/linuxbrew/.linuxbrew/bin",
             "/home/linuxbrew/.linuxbrew/sbin",
@@ -213,9 +293,16 @@ fn shell_path_directories() -> Vec<PathBuf> {
     }
 
     for shell in shells {
+        // Fish lists PATH differently; join with `:` so the output splits
+        // like POSIX shells. Only a constant script ever runs.
+        let probe = if shell.file_name().is_some_and(|name| name == "fish") {
+            "string join : $PATH"
+        } else {
+            "printf %s \"$PATH\""
+        };
         let mut command = std::process::Command::new(&shell);
         command
-            .args(["-l", "-c", "printf %s \"$PATH\""])
+            .args(["-l", "-c", probe])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null());
@@ -301,15 +388,30 @@ fn build_child_path(parent: Option<&Path>, directories: &[PathBuf]) -> Option<Os
     std::env::join_paths(ordered).ok()
 }
 
+/// Directory holding one runtime binary (for example `node`) inside the
+/// discovery directories, if present.
+fn find_runtime_dir(directories: &[PathBuf], binary: &str) -> Option<PathBuf> {
+    find_on_path_in(directories, binary).and_then(|path| path.parent().map(Path::to_path_buf))
+}
+
 /// Augmented `PATH` for one tool binary. Installed CLIs are often runtime
-/// shims (`codex` is a `#!/usr/bin/env node` script): the bundled app's own
-/// sparse environment would make the child fail with "interpreter not found"
-/// even though discovery resolved the tool. Same combined directories as
-/// lookup, so the child sees at least what discovery saw. Returns `None`
-/// when no value can be built, in which case callers inherit the parent
-/// environment unchanged.
+/// shims (`claude` installed through bun/npm is a `#!/usr/bin/env node`
+/// script, as is `codex`): the bundled app's own sparse environment would
+/// make the child fail with "interpreter not found" even though discovery
+/// resolved the tool. Same combined directories as lookup, so the child sees
+/// at least what discovery saw, with the tool's own directory first and the
+/// resolved `node` directory promoted right behind it (a shim in
+/// `~/.bun/bin` rarely sits next to its `node` in an nvm/fnm/mise tree).
+/// Returns `None` when no value can be built, in which case callers inherit
+/// the parent environment unchanged.
 pub(crate) fn cli_child_path_env(binary: &Path) -> Option<OsString> {
-    build_child_path(binary.parent(), &search_directories())
+    let directories = search_directories();
+    let mut combined = Vec::new();
+    if let Some(node_dir) = find_runtime_dir(&directories, "node") {
+        combined.push(node_dir);
+    }
+    combined.extend(directories);
+    build_child_path(binary.parent(), &combined)
 }
 
 /// Runs a CLI with fixed arguments and a timeout. Only caller-chosen constant
