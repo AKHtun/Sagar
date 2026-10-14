@@ -1,6 +1,6 @@
 [package]
 name = "sagar"
-version = "0.1.3"
+version = "0.1.4"
 description = "EPUB Translation Studio — offline manual EPUB translation"
 authors = ["you"]
 edition = "2024"
