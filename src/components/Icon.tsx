@@ -1,4 +1,5 @@
 const paths = {
+  grid: "M3 3h7v7H3V3Zm11 0h7v7h-7V3ZM3 14h7v7H3v-7Zm11 0h7v7h-7v-7Z",
   chevronDown: "M6 9l6 6 6-6",
   paragraph: "M13 4h7M13 4v16M18 4v16M13 4H9a4 4 0 0 0 0 8h4",
   richText: "M5 3h10l4 4v14H5V3Zm10 0v4h4M8 11h8M8 15h8M8 18h5",
@@ -16,6 +17,7 @@ const paths = {
   right: "M9 5l7 7-7 7",
   sidebar: "M3 4h18v16H3V4Zm6 0v16",
   check: "M5 12l4 4L19 6",
+  copy: "M9 9h12v12H9V9ZM15 9V3H3v12h6",
   keep: "M5 4h14v16H5V4Zm4 5h6M9 13h6",
   sun: "M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8ZM12 2v2M12 20v2M2 12h2M20 12h2M5 5l1 1M18 18l1 1M5 19l1-1M18 6l1-1",
   moon: "M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10Z",

@@ -53,10 +53,12 @@ pub fn import_epub(
     }
     std::fs::copy(source_path, &snapshot_abs_path)?;
 
+    let original_source_path = source_path.canonicalize()?;
     let now = chrono::Utc::now().to_rfc3339();
     let new_project = projects::NewProject {
         id: project_id.clone(),
         source_sha256: sha256,
+        original_source_path: Some(original_source_path.to_string_lossy().into_owned()),
         source_snapshot_path: snapshot_rel_path,
         title: parsed
             .metadata
@@ -116,7 +118,7 @@ pub fn import_epub(
     })
 }
 
-fn hash_file(path: &Path) -> Result<String, AppError> {
+pub(crate) fn hash_file(path: &Path) -> Result<String, AppError> {
     use std::io::Read;
 
     let mut file = std::fs::File::open(path)?;

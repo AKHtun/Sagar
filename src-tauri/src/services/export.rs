@@ -96,11 +96,23 @@ pub fn export_epub(data_dir: &Path, request: ExportRequest) -> Result<ExportOutc
         .canonicalize()
         .unwrap_or(request.destination.clone());
     let snapshot_canonical = snapshot_abs.canonicalize().unwrap_or(snapshot_abs);
-    if destination == snapshot_canonical {
+    let (original_path, source_hash): (Option<String>, String) = conn.query_row(
+        "SELECT original_source_path, source_sha256 FROM projects WHERE id=?1",
+        [&request.project_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let is_original_path = original_path.is_some_and(|path| {
+        let path = std::path::PathBuf::from(path);
+        destination == path.canonicalize().unwrap_or(path)
+    });
+    // Legacy projects lack a source path. Protect unchanged originals (and
+    // identical copies) by their persisted import hash as well.
+    let is_original_content =
+        destination.is_file() && crate::services::import::hash_file(&destination)? == source_hash;
+    if destination == snapshot_canonical || is_original_path || is_original_content {
         return Err(AppError::new(
             "destination_unsafe",
-            "The output cannot overwrite the project's stored copy of the \
-             book.",
+            "Choose a separate output file. Export cannot overwrite the original book or its stored copy.",
         ));
     }
     if let Some(parent) = destination.parent() {
@@ -137,6 +149,11 @@ pub fn export_epub(data_dir: &Path, request: ExportRequest) -> Result<ExportOutc
         destination: destination.clone(),
         translated_title: saved_metadata.0,
         metadata,
+        custom_cover: conn.query_row(
+            "SELECT custom_cover FROM projects WHERE id=?1",
+            [&project_id],
+            |row| row.get(0),
+        )?,
         target_language: {
             conn.query_row(
                 "SELECT target_language FROM projects WHERE id = ?1",

@@ -14,6 +14,17 @@ import { AiSettingsDialog } from "../settings/AiSettingsDialog";
 import type { AppearancePreferences } from "../settings/AppearanceSettings";
 import { BookSettingsDialog } from "../workspace/BookSettingsDialog";
 
+type LibraryView = "table" | "grid";
+const LIBRARY_VIEW_KEY = "sagar.library-view";
+
+function readLibraryView(): LibraryView {
+  try {
+    return localStorage.getItem(LIBRARY_VIEW_KEY) === "grid" ? "grid" : "table";
+  } catch {
+    return "table";
+  }
+}
+
 type LibraryState =
   | { status: "loading" }
   | { status: "ready"; projects: ProjectSummary[] }
@@ -32,6 +43,7 @@ type LibraryScreenProps = {
 
 export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps) {
   const [library, setLibrary] = useState<LibraryState>({ status: "loading" });
+  const [view, setView] = useState<LibraryView>(readLibraryView);
   const [query, setQuery] = useState("");
   const [importingName, setImportingName] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -42,6 +54,14 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
   const [removeNotice, setRemoveNotice] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bookSettings, setBookSettings] = useState<ProjectSummary | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LIBRARY_VIEW_KEY, view);
+    } catch {
+      // Keep the switch usable when local preferences cannot be saved.
+    }
+  }, [view]);
 
   const refreshProjects = useCallback(() => {
     setLibrary({ status: "loading" });
@@ -186,16 +206,43 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
           <h2 className="panel__heading" id="recent-projects-heading">
             Your books
           </h2>
-          <label className="library-search">
-            <Icon name="search" size={16} />
-            <input
-              type="search"
-              aria-label="Search books"
-              placeholder="Search books"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
+          <div className="library-controls">
+            <label className="library-search">
+              <Icon name="search" size={16} />
+              <input
+                type="search"
+                aria-label="Search books"
+                placeholder="Search books"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            <fieldset
+              className="view-switch view-switch--icons"
+              aria-label="Library view"
+            >
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Table view"
+                title="Table view"
+                aria-pressed={view === "table"}
+                onClick={() => setView("table")}
+              >
+                <Icon name="list" />
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Grid view"
+                title="Grid view"
+                aria-pressed={view === "grid"}
+                onClick={() => setView("grid")}
+              >
+                <Icon name="grid" />
+              </button>
+            </fieldset>
+          </div>
         </div>
         {library.status === "loading" ? (
           <StatusNotice kind="loading">Loading projects…</StatusNotice>
@@ -213,7 +260,7 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
           </div>
         ) : null}
         {library.status === "ready" && library.projects.length > 0 ? (
-          <ul className="project-list">
+          <ul className={`project-list${view === "grid" ? " project-list--grid" : ""}`}>
             {filtered.map((project) => (
               <li key={project.id} className="project-item">
                 <ProjectRow
@@ -372,21 +419,23 @@ function ProjectRow({
 }) {
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: saved Book Settings can change the cover without changing project ID.
   useEffect(() => {
     let cancelled = false;
     getProjectCover(project.id)
       .then((cover) => {
-        if (!cancelled && cover) {
-          setCoverSrc(`data:${cover.mediaType};base64,${cover.base64}`);
+        if (!cancelled) {
+          setCoverSrc(cover ? `data:${cover.mediaType};base64,${cover.base64}` : null);
         }
       })
       .catch(() => {
+        if (!cancelled) setCoverSrc(null);
         // No cover available; the neutral placeholder stays.
       });
     return () => {
       cancelled = true;
     };
-  }, [project.id]);
+  }, [project.id, project.updatedAt]);
 
   return (
     <>

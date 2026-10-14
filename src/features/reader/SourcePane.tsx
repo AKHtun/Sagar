@@ -1,4 +1,5 @@
-import { type MouseEvent, useState } from "react";
+import { type MouseEvent, useEffect, useRef, useState } from "react";
+import { HtmlCode } from "../../components/HtmlCode";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
 import type { ChapterContent } from "../../types/chapter";
@@ -16,6 +17,30 @@ export function SourcePane({
   onRetry: () => void;
 }) {
   const [view, setView] = useState<"reader" | "html">("reader");
+  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "error">(
+    "idle",
+  );
+  const copyRequest = useRef(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Reset feedback and invalidate pending clipboard results when the displayed chapter or view changes.
+  useEffect(() => {
+    setCopyState("idle");
+    copyRequest.current += 1;
+    return () => {
+      copyRequest.current += 1;
+    };
+  }, [content, loading, error, view]);
+
+  async function copyHtml() {
+    if (!content || loading || error || copyState === "copying") return;
+    const request = ++copyRequest.current;
+    setCopyState("copying");
+    try {
+      await navigator.clipboard.writeText(content.sourceDocument);
+      if (request === copyRequest.current) setCopyState("copied");
+    } catch {
+      if (request === copyRequest.current) setCopyState("error");
+    }
+  }
   return (
     <section className="pane pane--source" aria-labelledby="source-pane-heading">
       <div className="pane__header">
@@ -23,6 +48,18 @@ export function SourcePane({
           Original <span className="pane__badge">Read only</span>
         </h2>
         <fieldset className="view-switch view-switch--icons" aria-label="Original view">
+          {view === "html" ? (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Copy original HTML"
+              title={copyState === "copied" ? "HTML copied" : "Copy original HTML"}
+              disabled={loading || !!error || !content || copyState === "copying"}
+              onClick={() => void copyHtml()}
+            >
+              <Icon name={copyState === "copied" ? "check" : "copy"} />
+            </button>
+          ) : null}
           <button
             type="button"
             className="icon-button"
@@ -46,6 +83,18 @@ export function SourcePane({
         </fieldset>
       </div>
       <div className="pane__scroll">
+        {copyState === "copied" ? (
+          <StatusNotice kind="success">Original HTML copied.</StatusNotice>
+        ) : null}
+        {copyState === "error" ? (
+          <StatusNotice
+            kind="error"
+            onRetry={() => void copyHtml()}
+            retryLabel="Copy again"
+          >
+            Could not copy HTML. Try again or select the code and copy it manually.
+          </StatusNotice>
+        ) : null}
         {loading ? <StatusNotice kind="loading">Loading chapter…</StatusNotice> : null}
         {error ? (
           <StatusNotice kind="error" onRetry={onRetry}>
@@ -54,9 +103,7 @@ export function SourcePane({
         ) : null}
         {!loading && !error && content ? (
           view === "html" ? (
-            <pre className="source-code">
-              <code>{content.sourceDocument}</code>
-            </pre>
+            <HtmlCode value={content.sourceDocument} />
           ) : (
             <article
               className="book-text"

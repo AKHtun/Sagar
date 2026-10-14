@@ -232,7 +232,11 @@ pub fn replace_metadata_value(
 
 /// Replaces the inner text of `<a href="…">` elements whose raw href matches
 /// a label mapping (nav document labels).
-pub fn patch_anchor_labels(bytes: &[u8], labels: &HashMap<String, String>) -> Vec<u8> {
+pub fn patch_anchor_labels(
+    bytes: &[u8],
+    labels: &HashMap<String, String>,
+    nav_path: &str,
+) -> Vec<u8> {
     if labels.is_empty() {
         return bytes.to_vec();
     }
@@ -257,7 +261,7 @@ pub fn patch_anchor_labels(bytes: &[u8], labels: &HashMap<String, String>) -> Ve
                         .ok()
                         .flatten()
                         .map(|attr| decode_basic_entities(attr.value.as_ref()))
-                        .and_then(|href| labels.get(&href).cloned())
+                        .and_then(|href| labels.get(&super::resolve_href(nav_path, &href)).cloned())
                 } else {
                     None
                 };
@@ -453,7 +457,7 @@ mod tests {
 </ol></nav></body></html>"#;
         let mut labels = HashMap::new();
         labels.insert("text/c1.xhtml".to_string(), "နိဒါန်း".to_string());
-        let patched = patch_anchor_labels(nav.as_bytes(), &labels);
+        let patched = patch_anchor_labels(nav.as_bytes(), &labels, "nav.xhtml");
         let text = String::from_utf8(patched).expect("utf8");
         assert!(text.contains(">နိဒါန်း</a>"), "{text}");
         assert!(text.contains(">Keep</a>"), "{text}");

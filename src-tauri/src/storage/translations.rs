@@ -430,6 +430,7 @@ mod tests {
         projects::create_project(
             &conn,
             &NewProject {
+                original_source_path: None,
                 id: "p1".into(),
                 source_sha256: "abc".into(),
                 source_snapshot_path: "projects/p1/source.epub".into(),

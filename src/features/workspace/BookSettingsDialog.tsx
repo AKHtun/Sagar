@@ -17,6 +17,7 @@ export function BookSettingsDialog({
   const [tab, setTab] = useState<"metadata" | "instructions">("metadata");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [readingCover, setReadingCover] = useState(false);
   const [retry, setRetry] = useState(0);
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -48,7 +49,7 @@ export function BookSettingsDialog({
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        if (!saving) onClose();
+        if (!saving && !readingCover) onClose();
       }
       if (event.key !== "Tab") return;
       const controls = Array.from(
@@ -71,7 +72,7 @@ export function BookSettingsDialog({
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose, saving]);
+  }, [onClose, saving, readingCover]);
   async function save() {
     if (!settings || saving) return;
     setSaving(true);
@@ -86,6 +87,46 @@ export function BookSettingsDialog({
       );
     } finally {
       setSaving(false);
+    }
+  }
+  async function chooseCover(file: File | undefined) {
+    if (!file) return;
+    if (
+      !["image/png", "image/jpeg", "image/gif"].includes(file.type) ||
+      file.size > 8 * 1024 * 1024
+    ) {
+      setError("Choose a PNG, JPEG or GIF image under 8 MB.");
+      return;
+    }
+    setReadingCover(true);
+    setError(null);
+    try {
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () =>
+          typeof reader.result === "string"
+            ? resolve(reader.result)
+            : reject(new Error("The cover could not be read."));
+        reader.onerror = () =>
+          reject(new Error("The cover could not be read. Choose the image again."));
+        reader.readAsDataURL(file);
+      });
+      // Verify browser decoding before retaining the selection; Rust also
+      // checks format signatures and size at the save boundary.
+      await new Promise<void>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve();
+        image.onerror = () =>
+          reject(new Error("This image could not be decoded. Choose another cover."));
+        image.src = data;
+      });
+      setSettings((current) => (current ? { ...current, customCover: data } : current));
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "The cover could not be read.",
+      );
+    } finally {
+      setReadingCover(false);
     }
   }
   function update(key: keyof BookSettings, value: string) {
@@ -110,7 +151,7 @@ export function BookSettingsDialog({
             className="icon-button"
             aria-label="Close book settings"
             title="Close"
-            disabled={saving}
+            disabled={saving || readingCover}
             onClick={onClose}
           >
             <Icon name="close" />
@@ -161,6 +202,51 @@ export function BookSettingsDialog({
                   These fields describe the exported EPUB. The original book is preserved.
                   Leave author, publisher or description blank to keep its source value.
                 </p>
+                <div
+                  className={`book-cover-settings${settings.customCover ? " book-cover-settings--custom" : ""}`}
+                >
+                  <span className="book-cover-settings__label">Export cover</span>
+                  {settings.customCover ? (
+                    <img
+                      className="book-cover-settings__preview"
+                      src={settings.customCover}
+                      alt="Custom export cover preview"
+                    />
+                  ) : (
+                    <p className="dialog__muted">
+                      The original cover will be used, if the book has one.
+                    </p>
+                  )}
+                  <label className="form-field">
+                    <span>Choose custom cover</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/gif"
+                      disabled={saving || readingCover}
+                      onChange={(event) => {
+                        void chooseCover(event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                  {readingCover ? (
+                    <StatusNotice kind="loading">Reading cover…</StatusNotice>
+                  ) : null}
+                  {settings.customCover ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={saving || readingCover}
+                      onClick={() => setSettings({ ...settings, customCover: null })}
+                    >
+                      Use original cover
+                    </button>
+                  ) : null}
+                  <p className="dialog__muted">
+                    PNG, JPEG or GIF, up to 8 MB. Saved with Book Settings and included in
+                    export. Cancel discards this selection.
+                  </p>
+                </div>
                 <div className="form-grid">
                   {(
                     [
@@ -177,7 +263,7 @@ export function BookSettingsDialog({
                         value={settings[key]}
                         required={key === "title" || key === "targetLanguage"}
                         maxLength={key.includes("Language") ? 64 : 1024}
-                        disabled={saving}
+                        disabled={saving || readingCover}
                         onChange={(event) => update(key, event.target.value)}
                       />
                     </label>
@@ -189,7 +275,7 @@ export function BookSettingsDialog({
                     rows={4}
                     value={settings.description}
                     maxLength={20000}
-                    disabled={saving}
+                    disabled={saving || readingCover}
                     onChange={(event) => update("description", event.target.value)}
                   />
                 </label>
@@ -207,7 +293,7 @@ export function BookSettingsDialog({
                     rows={10}
                     value={settings.instructions}
                     maxLength={20000}
-                    disabled={saving}
+                    disabled={saving || readingCover}
                     placeholder="Use these character names consistently…"
                     onChange={(event) => update("instructions", event.target.value)}
                   />
@@ -219,10 +305,19 @@ export function BookSettingsDialog({
               </>
             )}
             <div className="button-row dialog__actions">
-              <button type="button" className="btn" disabled={saving} onClick={onClose}>
+              <button
+                type="button"
+                className="btn"
+                disabled={saving || readingCover}
+                onClick={onClose}
+              >
                 Cancel
               </button>
-              <button type="submit" className="btn btn--primary" disabled={saving}>
+              <button
+                type="submit"
+                className="btn btn--primary"
+                disabled={saving || readingCover}
+              >
                 {saving ? "Saving…" : "Save book settings"}
               </button>
             </div>

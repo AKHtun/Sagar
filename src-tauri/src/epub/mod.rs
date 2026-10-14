@@ -5,6 +5,7 @@
 pub mod archive;
 pub mod blocks;
 pub mod container;
+pub mod cover;
 pub mod export;
 pub mod nav;
 pub mod opf;

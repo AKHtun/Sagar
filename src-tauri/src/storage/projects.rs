@@ -10,6 +10,7 @@ use crate::error::AppError;
 pub struct NewProject {
     pub id: String,
     pub source_sha256: String,
+    pub original_source_path: Option<String>,
     /// Path relative to the app data dir, using '/' separators.
     pub source_snapshot_path: String,
     pub title: String,
@@ -47,8 +48,8 @@ pub fn create_project(
     let tx = conn.unchecked_transaction()?;
     tx.execute(
         "INSERT INTO projects (id, source_sha256, source_snapshot_path, title, author,
-            source_language, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+            source_language, created_at, updated_at, original_source_path)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8)",
         rusqlite::params![
             project.id,
             project.source_sha256,
@@ -57,6 +58,7 @@ pub fn create_project(
             project.author,
             project.source_language,
             project.created_at,
+            project.original_source_path,
         ],
     )?;
     for (chapter, blocks) in chapters {

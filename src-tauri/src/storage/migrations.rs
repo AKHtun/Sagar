@@ -137,6 +137,11 @@ const MIGRATIONS: &[(i64, &str)] = &[
          ALTER TABLE projects ADD COLUMN export_description TEXT;
          ALTER TABLE projects ADD COLUMN translation_instructions TEXT NOT NULL DEFAULT '';",
     ),
+    (
+        8,
+        "ALTER TABLE projects ADD COLUMN original_source_path TEXT;",
+    ),
+    (9, "ALTER TABLE projects ADD COLUMN custom_cover TEXT;"),
 ];
 
 /// Highest defined schema version. Currently asserted on by tests; production
@@ -214,5 +219,30 @@ mod book_settings_migration_tests {
             .query_row("SELECT revision FROM chapter_documents", [], |r| r.get(0))
             .expect("draft");
         assert_eq!(revision, 4);
+    }
+}
+
+#[cfg(test)]
+mod source_path_upgrade_tests {
+    use super::*;
+
+    #[test]
+    fn upgrade_preserves_existing_projects_and_leaves_unknown_paths_null() {
+        let conn = Connection::open_in_memory().unwrap();
+        for (version, sql) in MIGRATIONS.iter().filter(|(version, _)| *version <= 7) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", version).unwrap();
+        }
+        conn.execute("INSERT INTO projects(id, source_sha256, source_snapshot_path, title, created_at, updated_at) VALUES('old','hash','projects/old/source.epub','Existing book','now','now')", []).unwrap();
+        assert_eq!(apply(&conn).unwrap(), latest_version());
+        let (title, path): (String, Option<String>) = conn
+            .query_row(
+                "SELECT title, original_source_path FROM projects WHERE id='old'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(title, "Existing book");
+        assert_eq!(path, None);
     }
 }

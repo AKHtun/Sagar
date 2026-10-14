@@ -13,6 +13,8 @@ pub struct BookSettings {
     pub source_language: String,
     pub target_language: String,
     pub instructions: String,
+    #[serde(default)]
+    pub custom_cover: Option<String>,
 }
 
 fn checked(value: &str, name: &str, limit: usize) -> Result<String, AppError> {
@@ -41,11 +43,11 @@ pub fn get(data_dir: &Path, project_id: &str) -> Result<BookSettings, AppError> 
     let project = crate::storage::projects::get_project(&conn, project_id)?;
     let mut settings = conn.query_row(
         "SELECT COALESCE(translated_title,title), COALESCE(export_author,author,''),
-        export_publisher, export_description, COALESCE(source_language,''), target_language, translation_instructions
+        export_publisher, export_description, COALESCE(source_language,''), target_language, translation_instructions, custom_cover
         FROM projects WHERE id=?1", [project_id], |row| Ok(BookSettings {
             title: row.get(0)?, author: row.get(1)?, publisher: row.get::<_,Option<String>>(2)?.unwrap_or_default(),
             description: row.get::<_,Option<String>>(3)?.unwrap_or_default(), source_language: row.get(4)?,
-            target_language: row.get(5)?, instructions: row.get(6)?,
+            target_language: row.get(5)?, instructions: row.get(6)?, custom_cover: row.get(7)?,
         }))?;
     // Read original optional fields for the editor without changing import data.
     let mut archive = crate::epub::archive::SafeArchive::open(
@@ -95,11 +97,14 @@ pub fn save(data_dir: &Path, project_id: &str, settings: BookSettings) -> Result
         Some(validate_language_tag(&settings.source_language)?)
     };
     let target = validate_language_tag(&settings.target_language)?;
+    if let Some(cover) = &settings.custom_cover {
+        crate::epub::rich_text::image_bytes(cover)?;
+    }
     let conn = open_db(data_dir)?;
     let tx = conn.unchecked_transaction()?;
     let changed = tx.execute("UPDATE projects SET translated_title=?1, export_author=?2, export_publisher=?3,
-        export_description=?4, source_language=?5, target_language=?6, translation_instructions=?7, updated_at=?8 WHERE id=?9",
-        rusqlite::params![title, nonblank(&author), nonblank(&publisher), nonblank(&description), source, target, instructions, chrono::Utc::now().to_rfc3339(), project_id])?;
+        export_description=?4, source_language=?5, target_language=?6, translation_instructions=?7, updated_at=?8, custom_cover=?10 WHERE id=?9",
+        rusqlite::params![title, nonblank(&author), nonblank(&publisher), nonblank(&description), source, target, instructions, chrono::Utc::now().to_rfc3339(), project_id, settings.custom_cover])?;
     if changed == 0 {
         return Err(AppError::new(
             "project_not_found",

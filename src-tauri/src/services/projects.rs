@@ -74,6 +74,18 @@ pub fn delete_project(data_dir: &Path, project_id: &str) -> Result<(), AppError>
 
 pub fn get_cover(data_dir: &Path, project_id: &str) -> Result<Option<CoverImage>, AppError> {
     let conn = open_project_database(data_dir)?;
+    let custom: Option<String> = conn.query_row(
+        "SELECT custom_cover FROM projects WHERE id=?1",
+        [project_id],
+        |row| row.get(0),
+    )?;
+    if let Some(cover) = custom {
+        let (mime, bytes) = epub::rich_text::image_bytes(&cover)?;
+        return Ok(Some(CoverImage {
+            media_type: mime.into(),
+            base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+        }));
+    }
     let snapshot_path: String = conn.query_row(
         "SELECT source_snapshot_path FROM projects WHERE id = ?1",
         rusqlite::params![project_id],

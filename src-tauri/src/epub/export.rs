@@ -106,32 +106,78 @@ pub fn validate_output(path: &Path) -> Result<Vec<ImportWarning>, AppError> {
     let opf_bytes = archive.read_entry(&opf_path)?;
     let parsed = opf::parse_opf(&opf_bytes, &opf_path)?;
 
-    let mut warnings = Vec::new();
-    for item in &parsed.spine_items {
+    let mut documents = HashMap::new();
+    for item in parsed.manifest.values() {
+        if item.href.contains(":") {
+            continue;
+        }
         if !archive.contains(&item.href) {
             return Err(AppError::new(
                 "export_invalid",
-                "The exported book is missing chapter files.",
+                "A resource listed in the exported book is missing.",
             ));
         }
-        let bytes = archive.read_entry(&item.href)?;
-        let text = String::from_utf8_lossy(&bytes);
-        if roxmltree::Document::parse(text.as_ref()).is_err() {
-            return Err(AppError::new(
-                "export_invalid",
-                "A chapter in the exported book is not well-formed XML.",
-            ));
+        if item.media_type == "application/xhtml+xml" {
+            let bytes = archive.read_entry(&item.href)?;
+            let text = String::from_utf8(bytes).map_err(|_| {
+                AppError::new("export_invalid", "An exported document is not UTF-8.")
+            })?;
+            roxmltree::Document::parse(&text).map_err(|_| {
+                AppError::new(
+                    "export_invalid",
+                    "An exported chapter or navigation document is not well-formed XML.",
+                )
+            })?;
+            documents.insert(item.href.clone(), text);
         }
     }
-    if let Some(nav_href) = &parsed.nav_href
-        && !archive.contains(nav_href)
-    {
-        warnings.push(ImportWarning {
-            code: "navigation_missing".into(),
-            message: "The exported book has no table of contents document.".into(),
-            location: None,
-        });
+    for (path, text) in &documents {
+        let doc = roxmltree::Document::parse(text)
+            .map_err(|_| AppError::new("export_invalid", "Invalid exported document."))?;
+        for node in doc.descendants().filter(|node| node.is_element()) {
+            for attribute in node
+                .attributes()
+                .filter(|attr| matches!(attr.name(), "href" | "src"))
+            {
+                let href = attribute.value();
+                // External URLs and data URLs are not archive resources.
+                if href.contains(':') || href.starts_with("//") {
+                    continue;
+                }
+                let resource = if href.starts_with('#') || href.starts_with('?') || href.is_empty()
+                {
+                    path.clone()
+                } else {
+                    crate::epub::resolve_href(path, href)
+                };
+                if !archive.contains(&resource) {
+                    return Err(AppError::new(
+                        "export_broken_reference",
+                        "A link or image points to a missing resource. Include original chapters or update the translation links before exporting.",
+                    ));
+                }
+                if let Some((_, fragment)) = href.split_once('#') {
+                    if !fragment.is_empty()
+                        && let Some(target) = documents.get(&resource)
+                    {
+                        let target = roxmltree::Document::parse(target)
+                            .map_err(|_| AppError::new("export_invalid", "Invalid link target."))?;
+                        let id = crate::epub::percent_decode_path(fragment);
+                        if !target
+                            .descendants()
+                            .any(|node| node.attribute("id") == Some(id.as_str()))
+                        {
+                            return Err(AppError::new(
+                                "export_broken_reference",
+                                "A link points to a missing location in a chapter. Update the translation link before exporting.",
+                            ));
+                        }
+                    }
+                }
+            }
+        }
     }
+    let warnings = Vec::new();
     Ok(warnings)
 }
 
@@ -217,6 +263,7 @@ pub struct ExportInput {
     pub destination: std::path::PathBuf,
     pub translated_title: Option<String>,
     pub metadata: Vec<(String, String)>,
+    pub custom_cover: Option<String>,
     pub target_language: String,
     /// (chapter_id, resource_href) in spine order with per-block patches.
     pub chapters: Vec<(String, String)>,
@@ -269,30 +316,35 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
                 )?);
             }
         }
-        // Nav label: the chapter's first translated heading block.
-        let heading_label = blocks
-            .iter()
-            .find(|block| {
-                matches!(
-                    block.element_name.as_str(),
-                    "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
-                ) && block.target_fragment.is_some()
-            })
-            .map(|block| block.target_fragment.clone().expect("checked"));
-        if let (Some(label), Some(nav_path)) = (&heading_label, &nav_path) {
-            // Nav hrefs are relative to the navigation document's directory.
-            let nav_dir = nav_path
-                .rfind('/')
-                .map(|index| &nav_path[..index])
-                .unwrap_or("");
-            let prefix = format!("{nav_dir}/");
-            let relative = if !nav_dir.is_empty() && resource_href.starts_with(&prefix) {
-                resource_href[prefix.len()..].to_string()
-            } else {
-                resource_href.clone()
-            };
-            let text = crate::domain::strip_fragment(&label.clone());
-            nav_labels.insert(relative, text);
+        let heading_label = blocks.iter().find_map(|block| {
+            let fragment = block.target_fragment.as_ref()?;
+            if matches!(
+                block.element_name.as_str(),
+                "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
+            ) {
+                return Some(crate::domain::strip_fragment(fragment));
+            }
+            if block.structural_locator == "__chapter_document__" {
+                let wrapped = format!("<w>{fragment}</w>");
+                let doc = roxmltree::Document::parse(&wrapped).ok()?;
+                let heading = doc.descendants().find(|node| {
+                    node.is_element()
+                        && matches!(
+                            node.tag_name().name(),
+                            "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
+                        )
+                })?;
+                return Some(
+                    heading
+                        .descendants()
+                        .filter_map(|node| node.text().filter(|_| node.is_text()))
+                        .collect::<String>(),
+                );
+            }
+            None
+        });
+        if let Some(label) = heading_label {
+            nav_labels.insert(resource_href.clone(), label);
         }
 
         let translated_count = blocks
@@ -339,7 +391,7 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
             nav_out = strip_nav_entries(&nav_out, nav_path, &excluded);
         }
         if !nav_labels.is_empty() {
-            nav_out = patch::patch_anchor_labels(&nav_out, &nav_labels);
+            nav_out = patch::patch_anchor_labels(&nav_out, &nav_labels, nav_path);
         }
         patched.insert(nav_path.clone(), nav_out);
     }
@@ -405,6 +457,17 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
     }
     for (path, (_, bytes)) in added_images {
         patched.insert(path, bytes);
+    }
+    if let Some(cover) = &input.custom_cover {
+        opf_out = super::cover::apply(
+            &mut snapshot,
+            &parsed_opf,
+            &opf_path,
+            &opf_out,
+            &mut patched,
+            &excluded,
+            cover,
+        )?;
     }
     let text = String::from_utf8_lossy(&opf_out);
     if roxmltree::Document::parse(text.as_ref()).is_err() {
@@ -653,7 +716,7 @@ fn strip_nav_entries(bytes: &[u8], nav_path: &str, excluded: &HashSet<String>) -
     out
 }
 
-fn relative_resource(base: &str, target: &str) -> String {
+pub(super) fn relative_resource(base: &str, target: &str) -> String {
     let mut base_parts: Vec<&str> = base.split('/').collect();
     base_parts.pop();
     let target_parts: Vec<&str> = target.split('/').collect();

@@ -242,3 +242,19 @@ lint/build passed; native sidebar interaction/visual checks remain open.
 Workspace Book Settings is now after Export at the right end of the header.
 Export uses the shared square download icon button with its accessible label
 and tooltip, following the user's explicit preference for this toolbar.
+
+### HTML syntax highlighting — 2026-10-14
+
+Original and translation HTML views share an offline HTML/XML highlighter.
+Only escaped highlighter output is rendered; imported markup remains inert.
+Translation editing retains its native textarea, with an inert, scroll-linked
+syntax layer, preserving the existing draft/autosave path and native selection,
+undo and IME handling. Colors use shared light/dark tokens; forced-color mode
+uses ordinary visible input text. Original Copy HTML still copies raw source.
+
+Two Bun regression tests pass for token coloring, exact Unicode/whitespace
+preservation, incomplete code and escaping executable markup. Frontend lint and
+build pass (existing bundle-size warning). No current Sagar window was available
+for visual checks. Normal/minimum-window layout, scrolling/caret alignment,
+light/dark appearance, native undo/IME and Windows/Linux verification remain
+open; milestone checkboxes are unchanged.

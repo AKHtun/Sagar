@@ -49,4 +49,5 @@ export type BookSettings = {
   sourceLanguage: string;
   targetLanguage: string;
   instructions: string;
+  customCover: string | null;
 };

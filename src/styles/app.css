@@ -1374,15 +1374,29 @@ button {
   }
 }
 
-.html-editor {
-  display: block;
-  width: 100%;
-  min-height: 55vh;
+.html-code-editor {
+  position: relative;
+  height: 55vh;
+  min-height: 180px;
   resize: vertical;
-  padding: 14px;
+  overflow: hidden;
   border: var(--border-subtle);
   border-radius: 4px;
   background: var(--color-surface);
+}
+.html-editor,
+.html-code-editor__highlight {
+  box-sizing: border-box;
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text);
   font:
     13px / 1.8 ui-monospace,
@@ -1390,6 +1404,57 @@ button {
     Consolas,
     monospace;
   tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  letter-spacing: normal;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+.html-code-editor__highlight {
+  pointer-events: none;
+}
+.html-code-editor__highlight code {
+  font: inherit;
+}
+.html-editor {
+  resize: none;
+  color: transparent;
+  caret-color: var(--color-text);
+}
+.html-editor::selection {
+  background: var(--color-surface-selected);
+  color: var(--color-text);
+}
+.html-code-editor:focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.html-syntax .hljs-tag,
+.html-syntax .hljs-name {
+  color: var(--color-accent);
+}
+.html-syntax .hljs-attr {
+  color: var(--color-warning);
+}
+.html-syntax .hljs-string {
+  color: var(--color-success);
+}
+.html-syntax .hljs-comment,
+.html-syntax .hljs-meta {
+  color: var(--color-text-muted);
+}
+.html-syntax .hljs-symbol {
+  color: var(--color-info);
+}
+@media (forced-colors: active) {
+  .html-editor {
+    color: CanvasText;
+    caret-color: CanvasText;
+  }
+  .html-code-editor__highlight {
+    visibility: hidden;
+  }
 }
 .html-editor__hint {
   color: var(--color-text-muted);
@@ -2140,4 +2205,107 @@ button {
 .chapter-nav .chapter-list {
   flex: 1;
   min-height: 0;
+}
+
+.book-cover-settings {
+  display: grid;
+  gap: 8px;
+  margin-block: 12px 20px;
+}
+.book-cover-settings__label {
+  font-weight: 600;
+}
+.book-cover-settings__preview {
+  width: 100%;
+  max-width: 140px;
+  height: 180px;
+  object-fit: contain;
+  object-position: left center;
+}
+.book-cover-settings .btn {
+  justify-self: start;
+}
+
+.book-cover-settings--custom {
+  grid-template-columns: 140px minmax(0, 1fr);
+  align-items: start;
+}
+.book-cover-settings--custom .book-cover-settings__label {
+  grid-column: 1 / -1;
+}
+.book-cover-settings--custom .book-cover-settings__preview {
+  grid-column: 1;
+  grid-row: 2 / 6;
+}
+.book-cover-settings--custom
+  > :not(.book-cover-settings__label):not(.book-cover-settings__preview) {
+  grid-column: 2;
+}
+
+/* Library view controls and cover cards share the table's book actions. */
+.library-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.library-books .panel__header {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.project-list--grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+.project-list--grid > .project-item {
+  display: grid;
+  grid-template-columns: 1fr 34px 34px;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  border: var(--border-subtle);
+  border-radius: var(--radius-control);
+  min-width: 0;
+}
+.project-list--grid .project-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  height: 100%;
+}
+.project-list--grid .project-row__cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 110px;
+  height: 154px;
+  font-size: 32px;
+}
+.project-list--grid .project-row__meta {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.project-list--grid .project-row__progress {
+  width: 100%;
+  margin-left: 0;
+  text-align: left;
+}
+.project-list--grid .project-row__time {
+  display: block;
+  margin-left: 0;
+}
+.project-list--grid .project-item > .icon-button {
+  grid-column: 2;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  margin: 0;
+}
+.project-list--grid .project-item > .project-row__remove {
+  grid-column: 3;
 }

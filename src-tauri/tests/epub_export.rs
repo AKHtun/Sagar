@@ -1049,3 +1049,340 @@ fn book_settings_persist_instructions_and_export_metadata_without_changing_sourc
         services::workspace::snapshot_path(&data_dir, &book.project_id).expect("snapshot");
     assert_eq!(std::fs::read(snapshot).expect("snapshot intact"), original);
 }
+
+#[test]
+fn export_rejects_original_path_even_when_original_has_changed() {
+    let dir = tempdir();
+    let data_dir = tempdir();
+    let files = rich_book_files();
+    let refs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "source.epub", &refs);
+    let book = import_rich_book(&data_dir, &source);
+    std::fs::write(&source, b"changed original").unwrap();
+    let error = services::export::export_epub(
+        &data_dir,
+        ExportRequest {
+            project_id: book.project_id,
+            destination: source.clone(),
+            mode: "draft".into(),
+            title: None,
+            language: None,
+            include_original: true,
+        },
+    )
+    .expect_err("original path protected");
+    assert_eq!(error.code, "destination_unsafe");
+    assert_eq!(std::fs::read(source).unwrap(), b"changed original");
+}
+
+#[test]
+fn legacy_original_hash_is_protected_and_filtered_links_block_export() {
+    let dir = tempdir();
+    let data_dir = tempdir();
+    let files = rich_book_files();
+    let refs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "source.epub", &refs);
+    let book = import_rich_book(&data_dir, &source);
+    let conn = sagar_lib::storage::open_database(&data_dir.join("sagar.db")).unwrap();
+    conn.execute(
+        "UPDATE projects SET original_source_path=NULL WHERE id=?1",
+        [&book.project_id],
+    )
+    .unwrap();
+    save_block(&book, 0, 0, "Translated", "reviewed");
+    for (destination, expected) in [
+        (source.clone(), "destination_unsafe"),
+        (dir.join("filtered.epub"), "export_broken_reference"),
+    ] {
+        let error = services::export::export_epub(
+            &data_dir,
+            ExportRequest {
+                project_id: book.project_id.clone(),
+                destination: destination.clone(),
+                mode: "draft".into(),
+                title: None,
+                language: None,
+                include_original: false,
+            },
+        )
+        .expect_err("unsafe export rejected");
+        assert_eq!(error.code, expected);
+        if destination != source {
+            assert!(!destination.exists());
+        }
+    }
+    // A failed validation must preserve an existing output file too.
+    let destination = dir.join("existing.epub");
+    std::fs::write(&destination, b"previous output").unwrap();
+    assert!(
+        services::export::export_epub(
+            &data_dir,
+            ExportRequest {
+                project_id: book.project_id,
+                destination: destination.clone(),
+                mode: "draft".into(),
+                title: None,
+                language: None,
+                include_original: false,
+            }
+        )
+        .is_err()
+    );
+    assert_eq!(std::fs::read(destination).unwrap(), b"previous output");
+}
+
+#[test]
+fn authored_heading_updates_nested_fragment_navigation() {
+    let dir = tempdir();
+    let data_dir = tempdir();
+    let mut files = rich_book_files();
+    let nav = files
+        .iter_mut()
+        .find(|(name, _)| name == "OEBPS/nav.xhtml")
+        .unwrap();
+    nav.1 = String::from_utf8(nav.1.clone())
+        .unwrap()
+        .replace("ch1.xhtml", "../ch1.xhtml#heading")
+        .replace("ch2.xhtml", "../ch2.xhtml")
+        .into_bytes();
+    nav.0 = "OEBPS/navigation/nav.xhtml".into();
+    let opf = files
+        .iter_mut()
+        .find(|(name, _)| name == "OEBPS/content.opf")
+        .unwrap();
+    opf.1 = String::from_utf8(opf.1.clone())
+        .unwrap()
+        .replace("href=\"nav.xhtml\"", "href=\"navigation/nav.xhtml\"")
+        .into_bytes();
+    let refs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "source.epub", &refs);
+    let book = import_rich_book(&data_dir, &source);
+    services::workspace::save_chapter_document(
+        &data_dir,
+        &book.chapter_ids[0],
+        Some("<h1 id=\"heading\">မြန်မာ <em>ခေါင်းစဉ်</em></h1><p>Text</p>".into()),
+        "reviewed",
+        0,
+    )
+    .unwrap();
+    let destination = dir.join("out.epub");
+    services::export::export_epub(
+        &data_dir,
+        ExportRequest {
+            project_id: book.project_id,
+            destination: destination.clone(),
+            mode: "draft".into(),
+            title: None,
+            language: None,
+            include_original: true,
+        },
+    )
+    .unwrap();
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(destination).unwrap()).unwrap();
+    let mut nav = String::new();
+    zip.by_name("OEBPS/navigation/nav.xhtml")
+        .unwrap()
+        .read_to_string(&mut nav)
+        .unwrap();
+    assert!(nav.contains(">မြန်မာ ခေါင်းစဉ်</a>"), "{nav}");
+    assert!(nav.contains("../ch1.xhtml#heading"));
+}
+
+#[test]
+fn validator_rejects_missing_assets_invalid_navigation_and_missing_anchors() {
+    for case in 0..3 {
+        let dir = tempdir();
+        let mut files = rich_book_files();
+        match case {
+            0 => files.retain(|(name, _)| name != "OEBPS/images/river.png"),
+            1 => {
+                files
+                    .iter_mut()
+                    .find(|(name, _)| name == "OEBPS/nav.xhtml")
+                    .unwrap()
+                    .1 = b"<html>".to_vec()
+            }
+            _ => {
+                let chapter = files
+                    .iter_mut()
+                    .find(|(name, _)| name == "OEBPS/ch1.xhtml")
+                    .unwrap();
+                chapter.1 = String::from_utf8(chapter.1.clone())
+                    .unwrap()
+                    .replace("#note-1", "#missing")
+                    .into_bytes();
+            }
+        }
+        let refs: Vec<(&str, &[u8])> = files
+            .iter()
+            .map(|(n, b)| (n.as_str(), b.as_slice()))
+            .collect();
+        let path = write_epub(&dir, "invalid.epub", &refs);
+        assert!(epub::export::validate_output(&path).is_err(), "case {case}");
+    }
+}
+
+#[test]
+fn custom_cover_persists_exports_restores_and_keeps_source_immutable() {
+    use base64::Engine;
+    let image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jvJkAAAAASUVORK5CYII=";
+    let png = image;
+    for has_cover in [true, false] {
+        let image = if has_cover {
+            "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+        } else {
+            png
+        };
+        let expected_mime = if has_cover { "image/gif" } else { "image/png" };
+        let dir = tempdir();
+        let data_dir = tempdir();
+        let mut files = rich_book_files();
+        let opf = files
+            .iter_mut()
+            .find(|(n, _)| n == "OEBPS/content.opf")
+            .unwrap();
+        let mut text = String::from_utf8(opf.1.clone()).unwrap();
+        if has_cover {
+            text = text.replace(
+                "</metadata>",
+                "<meta name=\"cover\" content=\"cover-img\"/></metadata>",
+            );
+        } else {
+            text = text.replace("  <item id=\"cover-img\" href=\"images/cover.png\" media-type=\"image/png\" properties=\"cover-image\"/>", "");
+        }
+        opf.1 = text.into_bytes();
+        if has_cover {
+            let chapter = files
+                .iter_mut()
+                .find(|(n, _)| n == "OEBPS/ch1.xhtml")
+                .unwrap();
+            chapter.1 = String::from_utf8(chapter.1.clone())
+                .unwrap()
+                .replace("images/river.png", "images/cover.png")
+                .replace("</body>", "<object data=\"images/cover.png\" type=\"image/png\"/><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><image xlink:href=\"images/cover.png\"/></svg></body>")
+                .into_bytes();
+        }
+        let refs: Vec<(&str, &[u8])> = files
+            .iter()
+            .map(|(n, b)| (n.as_str(), b.as_slice()))
+            .collect();
+        let source = write_epub(&dir, "source.epub", &refs);
+        let original = std::fs::read(&source).unwrap();
+        let book = import_rich_book(&data_dir, &source);
+        let mut settings = services::book_settings::get(&data_dir, &book.project_id).unwrap();
+        assert!(settings.custom_cover.is_none());
+        settings.custom_cover = Some(image.into());
+        services::book_settings::save(&data_dir, &book.project_id, settings.clone()).unwrap();
+        assert_eq!(
+            services::book_settings::get(&data_dir, &book.project_id)
+                .unwrap()
+                .custom_cover
+                .as_deref(),
+            Some(image)
+        );
+        let cover = services::projects::get_cover(&data_dir, &book.project_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            format!("data:{};base64,{}", cover.media_type, cover.base64),
+            image
+        );
+        let destination = dir.join("custom.epub");
+        let export = |destination: PathBuf| {
+            services::export::export_epub(
+                &data_dir,
+                ExportRequest {
+                    project_id: book.project_id.clone(),
+                    destination,
+                    mode: "draft".into(),
+                    title: None,
+                    language: None,
+                    include_original: true,
+                },
+            )
+        };
+        export(destination.clone()).unwrap();
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&destination).unwrap()).unwrap();
+        let mut opf = String::new();
+        zip.by_name("OEBPS/content.opf")
+            .unwrap()
+            .read_to_string(&mut opf)
+            .unwrap();
+        let doc = roxmltree::Document::parse(&opf).unwrap();
+        let covers: Vec<_> = doc
+            .descendants()
+            .filter(|n| {
+                n.attribute("properties")
+                    .is_some_and(|p| p.split_whitespace().any(|p| p == "cover-image"))
+            })
+            .collect();
+        assert_eq!(covers.len(), 1);
+        let href = covers[0].attribute("href").unwrap();
+        assert_eq!(covers[0].attribute("media-type"), Some(expected_mime));
+        let mut bytes = Vec::new();
+        zip.by_name(&format!("OEBPS/{href}"))
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(
+            bytes,
+            base64::engine::general_purpose::STANDARD
+                .decode(image.split_once(',').unwrap().1)
+                .unwrap()
+        );
+        if has_cover {
+            let mut chapter = String::new();
+            zip.by_name("OEBPS/ch1.xhtml")
+                .unwrap()
+                .read_to_string(&mut chapter)
+                .unwrap();
+            assert!(chapter.contains(href));
+            let chapter_doc = roxmltree::Document::parse(&chapter).unwrap();
+            assert!(chapter_doc.descendants().any(|node| {
+                node.has_tag_name(("http://www.w3.org/1999/xhtml", "object"))
+                    && node.attribute("data") == Some(href)
+                    && node.attribute("type") == Some(expected_mime)
+            }));
+            assert!(chapter_doc.descendants().any(|node| {
+                node.has_tag_name(("http://www.w3.org/2000/svg", "image"))
+                    && node.attribute(("http://www.w3.org/1999/xlink", "href")) == Some(href)
+            }));
+            assert!(
+                doc.descendants()
+                    .any(|n| n.attribute("name") == Some("cover")
+                        && n.attribute("content") == covers[0].attribute("id"))
+            );
+        }
+        let mut invalid = settings.clone();
+        invalid.custom_cover = Some("data:image/png;base64,bm90IGFuIGltYWdl".into());
+        assert!(services::book_settings::save(&data_dir, &book.project_id, invalid).is_err());
+        assert_eq!(
+            services::book_settings::get(&data_dir, &book.project_id)
+                .unwrap()
+                .custom_cover,
+            settings.custom_cover
+        );
+        settings.custom_cover = None;
+        services::book_settings::save(&data_dir, &book.project_id, settings).unwrap();
+        let restored = dir.join("restored.epub");
+        export(restored.clone()).unwrap();
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(restored).unwrap()).unwrap();
+        let mut restored_opf = String::new();
+        zip.by_name("OEBPS/content.opf")
+            .unwrap()
+            .read_to_string(&mut restored_opf)
+            .unwrap();
+        assert!(!restored_opf.contains("sagar-cover-"));
+        assert_eq!(std::fs::read(&source).unwrap(), original);
+        epub::inspect(&destination).unwrap();
+    }
+}

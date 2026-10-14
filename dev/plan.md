@@ -531,3 +531,22 @@ as an extension of the export/workspace slice and the authorized AI assist
 work. See [AI follow-ups](later-ai-translation.md) for fields, prompt behavior,
 preservation tests and remaining native/cross-platform checks. Release and
 future AI milestone checkboxes are unchanged.
+
+### Custom cover follow-up — 2026-10-13
+
+The explicitly requested custom cover feature is implemented in Book Settings
+and EPUB export using local SQLite storage and an export-only asset override.
+See Milestone 4 for behavior, regression tests and native verification limits.
+Release checkboxes remain unchanged.
+
+### Library views follow-up — 2026-10-13
+
+The Home library supports the existing table and a responsive cover grid through
+accessible view buttons beside Search. The view preference is saved locally;
+search, open, progress, Book Settings and removal share the same project data
+and actions in both layouts. This is a Milestone 5 UI polish follow-up.
+`bun run check` passed (lint, TypeScript and production build); Vite reports a
+large bundle warning. No running development build was available for rendered
+light/dark, minimum-window, keyboard or native interaction verification.
+Next unfinished task: verify both layouts in the desktop app at 1280×800 and
+960×640 in both themes; Windows/Linux release checks remain open.

@@ -1,6 +1,7 @@
 import { DOMSerializer, DOMParser as ProseMirrorParser } from "@tiptap/pm/model";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { HtmlCodeEditor } from "../../components/HtmlCode";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
 import { validateChapterHtml } from "../../lib/tauri/commands";
@@ -512,15 +513,13 @@ export function TargetPane({
                     {viewError}
                   </StatusNotice>
                 ) : null}
-                <textarea
-                  className="html-editor"
-                  aria-label="Translation HTML code"
+                <HtmlCodeEditor
+                  key={content.chapterId}
                   value={editor.draft?.html ?? content.document.html ?? ""}
-                  spellCheck={false}
                   disabled={editor.draft?.conflict ?? false}
-                  onChange={(event) => {
+                  onChange={(value) => {
                     setViewError(null);
-                    editor.setHtml(event.target.value);
+                    editor.setHtml(value);
                   }}
                 />
               </>
