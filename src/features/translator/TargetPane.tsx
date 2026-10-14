@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { HtmlCodeEditor } from "../../components/HtmlCode";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
+import { formatChapterHtml } from "../../lib/html/format";
 import { validateChapterHtml } from "../../lib/tauri/commands";
 import type { ChapterContent } from "../../types/chapter";
 import { AiFixHtmlDialog } from "./AiFixHtmlDialog";
@@ -124,6 +125,17 @@ export function TargetPane({
     if (canEdit) activeEditor.chain().focus().setImage({ src, alt }).run();
     setImagePicker(false);
   };
+  const showHtml = useCallback(() => {
+    // Rich edits and AI insertions save as a single line; normalize to one
+    // block per line so the code view reads like the original source.
+    // HTML typing itself is left alone to preserve the caret.
+    const current = editor.draft?.html ?? "";
+    const pretty = formatChapterHtml(current);
+    if (editor.draft && pretty !== current) editor.setHtml(pretty);
+    setImagePicker(false);
+    setViewError(null);
+    setView("html");
+  }, [editor]);
   return (
     <section className="pane pane--target" aria-labelledby="target-pane-heading">
       <div className="pane__header">
@@ -152,11 +164,7 @@ export function TargetPane({
             title="HTML view"
             aria-pressed={view === "html"}
             disabled={switching || !editor.draft}
-            onClick={() => {
-              setView("html");
-              setImagePicker(false);
-              setViewError(null);
-            }}
+            onClick={showHtml}
           >
             <Icon name="code" />
           </button>
@@ -489,11 +497,6 @@ export function TargetPane({
             ) : null}
             {view === "html" ? (
               <>
-                <p className="html-editor__hint">
-                  Edit chapter HTML or paste a complete original XHTML document. Changes
-                  autosave. Use XHTML tags such as &lt;p&gt;, &lt;h2&gt;, &lt;strong&gt;,
-                  &lt;ul&gt; and &lt;br/&gt;.
-                </p>
                 {viewError ? (
                   <StatusNotice
                     kind="error"
@@ -548,7 +551,7 @@ export function TargetPane({
           onApply={(fixedHtml) => {
             setFixConfirmOpen(false);
             setViewError(null);
-            editor.setHtml(fixedHtml);
+            editor.setHtml(formatChapterHtml(fixedHtml));
             setView("rich");
           }}
           onClose={() => setFixConfirmOpen(false)}

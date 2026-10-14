@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatChapterHtml } from "../../lib/html/format";
 import { saveChapterDocument } from "../../lib/tauri/commands";
 import type { BlockStatus, ChapterContent } from "../../types/chapter";
 import type { SaveIndicator } from "./useTranslationEditor";
@@ -30,7 +31,7 @@ export function useChapterEditor(content: ChapterContent | null) {
       content
         ? {
             chapterId: content.chapterId,
-            html: content.document.html ?? "",
+            html: formatChapterHtml(content.document.html ?? ""),
             status: content.document.status,
             revision: content.document.revision,
             version: 0,

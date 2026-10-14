@@ -15,6 +15,7 @@ const paths = {
   download: "M12 3v13M7 11l5 5 5-5M4 17v4h16v-4",
   left: "M15 5l-7 7 7 7",
   right: "M9 5l7 7-7 7",
+  back: "M19 12H5M12 19l-7-7 7-7",
   sidebar: "M3 4h18v16H3V4Zm6 0v16",
   check: "M5 12l4 4L19 6",
   copy: "M9 9h12v12H9V9ZM15 9V3H3v12h6",

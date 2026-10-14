@@ -196,7 +196,7 @@ export function WorkspaceFrame({
         <button
           type="button"
           className="icon-button"
-          aria-label="Library"
+          aria-label="Back to library"
           title="Back to library"
           onClick={() => {
             void editor.flushAll().then((ok) => {
@@ -204,7 +204,7 @@ export function WorkspaceFrame({
             });
           }}
         >
-          <Icon name="book" />
+          <Icon name="back" />
         </button>
         <p className="workspace__book">
           <span className="workspace__book-title">{project?.title ?? "Loading…"}</span>

@@ -318,7 +318,7 @@ export function BookSettingsDialog({
                 className="btn btn--primary"
                 disabled={saving || readingCover}
               >
-                {saving ? "Saving…" : "Save book settings"}
+                {saving ? "Saving…" : "Save"}
               </button>
             </div>
           </form>
