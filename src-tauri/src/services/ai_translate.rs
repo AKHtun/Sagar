@@ -397,22 +397,40 @@ fn execute_streaming_with_progress(
     let deadline = Instant::now() + timeout;
     let mut collected = Vec::new();
     let mut stderr = Vec::new();
+    // Block on stdout with a timeout instead of blind sleeping so chunks are
+    // delivered promptly. The timeout still paces cancel/deadline checks
+    // while idle.
+    let mut stdout_closed = false;
     loop {
         while let Ok(chunk) = err_rx.try_recv() {
             append_progress_tail(&mut stderr, &chunk);
             on_progress(&chunk);
         }
-        while let Ok(chunk) = out_rx.try_recv() {
-            collected.extend_from_slice(&chunk);
-            if collected.len() > MAX_OUTPUT_BYTES {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(AppError::new(
-                    "proposal_too_large",
-                    "The proposal was too large to use safely.",
-                ));
+        if !stdout_closed {
+            match out_rx.recv_timeout(POLL_INTERVAL) {
+                Ok(first) => {
+                    for chunk in std::iter::once(first).chain(out_rx.try_iter()) {
+                        collected.extend_from_slice(&chunk);
+                        if collected.len() > MAX_OUTPUT_BYTES {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            return Err(AppError::new(
+                                "proposal_too_large",
+                                "The proposal was too large to use safely.",
+                            ));
+                        }
+                        on_chunk(&chunk);
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    stdout_closed = true;
+                }
             }
-            on_chunk(&chunk);
+            while let Ok(chunk) = err_rx.try_recv() {
+                append_progress_tail(&mut stderr, &chunk);
+                on_progress(&chunk);
+            }
         }
         match child.try_wait() {
             Ok(Some(_)) => break,
@@ -439,7 +457,11 @@ fn execute_streaming_with_progress(
                 "The translation took longer than 30 minutes and was stopped. Slow connections can stall output for minutes; retrying keeps any complete sections.",
             ));
         }
-        std::thread::sleep(POLL_INTERVAL);
+        if stdout_closed {
+            // No more stdout will arrive; avoid spinning on a disconnected
+            // channel while waiting for exit/cancel/deadline.
+            std::thread::sleep(POLL_INTERVAL);
+        }
     }
     // The process exited; collect whatever is still in flight (bounded: both
     // readers end at EOF once the pipes close).
@@ -1925,7 +1947,7 @@ mod tests {
                 json!({"type":"result","subtype":"success","is_error":false,"result":"<p>hello</p>"}),
             )];
             for (id, text, end) in cases {
-                let stub = stub_script(&format!("echo '{}'\nsleep 0.3\necho '{}'", text, end));
+                let stub = stub_script(&format!("echo '{}'\nsleep 1\necho '{}'", text, end));
                 let dir = tempfile::tempdir().unwrap();
                 let mut preview = Vec::new();
                 let started = Instant::now();
@@ -1945,7 +1967,16 @@ mod tests {
                     },
                 )
                 .unwrap();
-                assert!(first_output.unwrap() < Duration::from_millis(300));
+                let total = started.elapsed();
+                let first = first_output.expect("expected streamed text before completion");
+                assert!(
+                    first < Duration::from_millis(800),
+                    "first chunk took {first:?} of {total:?}"
+                );
+                assert!(
+                    first + Duration::from_millis(200) < total,
+                    "first chunk {first:?} was not well before completion {total:?}"
+                );
                 assert_eq!(preview, b"<p>hello</p>");
                 assert_eq!(result, preview);
             }
