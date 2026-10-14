@@ -71,7 +71,13 @@ export function TargetPane({
     !activeEditor.isDestroyed &&
     activeEditor.isEditable;
   const showRichText = useCallback(async () => {
-    if (!activeEditor || activeEditor.isDestroyed) return;
+    if (!activeEditor || activeEditor.isDestroyed) {
+      // The chapter editor is still mounting (or was destroyed on chapter
+      // switch). Surface feedback instead of silently ignoring the click,
+      // which previously looked like the Rich button was dead.
+      setViewError("The rich editor is still loading. Try again in a moment.");
+      return;
+    }
     const html = currentHtml.current;
     const destination = activeEditor;
     setSwitching(true);
@@ -154,9 +160,11 @@ export function TargetPane({
             type="button"
             className="icon-button"
             aria-label="Rich text view"
-            title="Rich text view"
+            title={!activeEditor ? "Rich text view (editor loading)" : "Rich text view"}
             aria-pressed={view === "rich"}
-            disabled={switching || !editor.draft || editor.draft.conflict}
+            disabled={
+              switching || !editor.draft || editor.draft.conflict || !activeEditor
+            }
             onClick={() => void showRichText()}
           >
             <Icon name="richText" />

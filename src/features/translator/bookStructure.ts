@@ -1,4 +1,5 @@
 import Image from "@tiptap/extension-image";
+import { TableCell, TableHeader } from "@tiptap/extension-table";
 import { Node } from "@tiptap/react";
 import { documentFragment } from "./richText";
 
@@ -141,5 +142,48 @@ export const BookStructure = [
     }),
   ),
 ];
+
+/**
+ * Table cells without the stock align → style normalization.
+ *
+ * Tiptap's TableCell/TableHeader parse legacy `align="center"` (and
+ * `style="text-align: …"`) into an `align` attribute that always renders
+ * `style="text-align: …"`. A backend-valid `<td align="center">` round-trips
+ * as `<td align="center" style="text-align: center;">`, fails the
+ * comparable-document check, and traps AI-translated chapters in HTML view.
+ * The original `align`/`style` attributes are preserved verbatim by the
+ * global BookAttributes instead; there is no cell-alignment UI to keep.
+ *
+ * NOTE: <thead>/<tfoot>/<caption> are intentionally NOT modeled as nodes.
+ * Separate section nodes preserve wrappers but prosemirror-tables'
+ * auto-fix rewrites them on every transaction (even typing), corrupting
+ * rows. Those tables stay in HTML view by design (loss-aware trap) until
+ * flattened via AI Fix HTML; see `build_html_fix_prompt`.
+ */
+export const BookTableCell = TableCell.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      align: {
+        default: null,
+        parseHTML: () => null,
+        renderHTML: () => ({}),
+      },
+    };
+  },
+});
+
+export const BookTableHeader = TableHeader.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      align: {
+        default: null,
+        parseHTML: () => null,
+        renderHTML: () => ({}),
+      },
+    };
+  },
+});
 
 export const bookStructureNames = BookStructure.map((extension) => extension.name);

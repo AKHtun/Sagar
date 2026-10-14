@@ -1,11 +1,11 @@
 import Image from "@tiptap/extension-image";
-import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
+import { Table, TableRow } from "@tiptap/extension-table";
 import { type Editor, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef } from "react";
 import { BookAnchor } from "./bookAnchor";
 import { BookAttributes } from "./bookAttributes";
-import { BookStructure } from "./bookStructure";
+import { BookStructure, BookTableCell, BookTableHeader } from "./bookStructure";
 import { documentFragment } from "./richText";
 import { useSlashMenu } from "./useSlashMenu";
 
@@ -38,8 +38,8 @@ export function ChapterEditor({
       BookAnchor,
       ChapterTable.configure({ resizable: false }),
       TableRow,
-      TableCell,
-      TableHeader,
+      BookTableCell,
+      BookTableHeader,
       StarterKit.configure({
         trailingNode: false,
         link: { openOnClick: false, autolink: false },

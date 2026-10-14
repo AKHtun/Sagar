@@ -3,8 +3,14 @@ import { Window } from "happy-dom";
 import { Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
-import { BookStructure } from "../../src/features/translator/bookStructure";
+import { Table, TableRow } from "@tiptap/extension-table";
+import {
+  BookStructure,
+  BookTableCell,
+  BookTableHeader,
+} from "../../src/features/translator/bookStructure";
 import { BookAttributes } from "../../src/features/translator/bookAttributes";
+import { BookAnchor } from "../../src/features/translator/bookAnchor";
 import { comparableDocument, documentFragment } from "../../src/features/translator/richText";
 import { runSlashCommand } from "../../src/features/translator/useSlashMenu";
 
@@ -18,9 +24,17 @@ Object.assign(globalThis, {
   cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
 });
 
+const ChapterTable = Table.extend({
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, unknown> }) {
+    return ["table", HTMLAttributes, ["tbody", 0]];
+  },
+});
+
 function createEditor(html: string) {
   return new Editor({
-    extensions: [ ...BookStructure, BookAttributes,
+    extensions: [ ...BookStructure, BookAttributes, BookAnchor,
+      ChapterTable.configure({ resizable: false }),
+      TableRow, BookTableCell, BookTableHeader,
       StarterKit.configure({ trailingNode: false, link: { openOnClick: false, autolink: false } }),
       Image.configure({ allowBase64: true }),
     ],
@@ -37,6 +51,8 @@ for (const [label, html] of [
   ["definition list", '<dl><dt>Term</dt><dd><p>Meaning</p></dd></dl><pre>one\n  two</pre>'],
   ["SVG", '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 10 10"><g><title>Cover</title><image xlink:href="cover.png"/><path d="M0 0L10 10"/></g></svg><p>မြန်မာ</p>'],
   ["responsive image", '<figure><picture><source srcset="a.webp" type="image/webp"/><img src="a.png" alt="A"/></picture><figcaption>Caption</figcaption></figure>'],
+  ["table cell align", '<table border="1" cellpadding="4"><tbody><tr><td align="center" valign="top"><p>Hi</p></td></tr></tbody></table>'],
+  ["myanmar table", '<table><tbody><tr><th><p>ခေါင်းစဉ်</p></th></tr><tr><td><p>မြန်မာ စာသား</p></td></tr></tbody></table>'],
 ]) {
   test(`Rich preserves ${label} through editing and reloading`, () => {
     const editor = createEditor(html);
@@ -64,6 +80,45 @@ test("SVG node view never mounts imported executable content", () => {
     expect(editor.getHTML()).not.toContain("<script");
     expect(editor.view.dom.textContent).toContain("SVG artwork");
   } finally { editor.destroy(); }
+});
+
+test("Cell align attributes round-trip verbatim without injected styles", () => {
+  const editor = createEditor(
+    '<table border="1" cellpadding="4"><tbody><tr><td align="center" valign="top"><p>Hi</p></td></tr></tbody></table>',
+  );
+  try {
+    // Regression: the stock cell parsed align="center" into a style
+    // ("text-align: center"), so AI-translated chapters with aligned cells
+    // failed the HTML → Rich preservation check and trapped users in HTML.
+    expect(editor.getHTML()).not.toContain("text-align");
+    expect(comparableDocument(editor.getHTML())).toBe(
+      comparableDocument(
+        '<table border="1" cellpadding="4"><tbody><tr><td align="center" valign="top"><p>Hi</p></td></tr></tbody></table>',
+      ),
+    );
+    editor.commands.setTextSelection(5);
+    expect(editor.chain().focus().addRowAfter().run()).toBe(true);
+  } finally {
+    editor.destroy();
+  }
+});
+
+test("Header/footer/caption sections stay loss-aware (no silent collapse)", () => {
+  // prosemirror-tables rewrites unknown section wrappers on every
+  // transaction, so thead/tfoot/caption intentionally do NOT round-trip:
+  // the HTML → Rich check must keep them in HTML view instead of silently
+  // collapsing them into the body. Flattening belongs to AI Fix HTML.
+  for (const html of [
+    '<table><thead><tr><th><p>H</p></th></tr></thead><tbody><tr><td><p>C</p></td></tr></tbody></table>',
+    '<table><caption>Cap</caption><tbody><tr><td><p>C</p></td></tr></tbody></table>',
+  ]) {
+    const editor = createEditor(html);
+    try {
+      expect(comparableDocument(editor.getHTML())).not.toBe(comparableDocument(html));
+    } finally {
+      editor.destroy();
+    }
+  }
 });
 
 for (const [command, query, nodeName] of [

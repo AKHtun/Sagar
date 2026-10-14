@@ -134,11 +134,15 @@ pub fn build_html_fix_prompt(html: &str) -> String {
          or reword it: keep every human-readable character exactly as-is, in the\n\
          same language and order.\n\
          \n\
-         Rules:\n\
-         - Use only these elements: p, h1, h2, h3, h4, h5, h6, ul, ol, li,\n\
-           blockquote, table, thead, tbody, tfoot, tr, td, th, strong, em, u, s,\n\
-           img, br, hr and a. Unwrap or convert any other element (div, span,\n\
-           section, article, font, etc.) without dropping its text.\n\
+          Rules:\n\
+          - Use only these elements: p, h1, h2, h3, h4, h5, h6, ul, ol, li,\n\
+            blockquote, table, tbody, tr, td, th, strong, em, u, s,\n\
+            img, br, hr and a. Unwrap or convert any other element (div, span,\n\
+            section, article, font, thead, tfoot, caption, etc.) without dropping\n\
+            its text. Merge thead/tbody/tfoot rows into a single tbody\n\
+            (keeping th versus td); convert a table caption into a plain\n\
+            paragraph before the table. The rich editor cannot preserve\n\
+            thead/tfoot/caption wrappers, so flattening them is required.\n\
          - Convert <i> to <em> and <b> to <strong>, including their closing\n\
            tags. Preserve their text, valid attributes and italic/bold meaning;\n\
            do not unwrap these elements or remove their formatting.\n\
