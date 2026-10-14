@@ -211,3 +211,20 @@ frontend lint/build and cargo formatting passed; new code is clippy-clean
 (six pre-existing clippy warnings in untouched files remain). Next unfinished
 verification: rebuilt release app on macOS finding all three tools, plus
 Windows/Linux checks.
+
+### Codex shim runtime fix — 2026-10-14
+
+After the discovery fix, Codex Check still failed with "found but reported an
+error": the only `codex` on the machine is an nvm `#!/usr/bin/env node` shim,
+and spawned children inherit the app's sparse GUI environment where `node` is
+missing (`env: node: No such file or directory`, exit 127 — reproduced with a
+sparse `PATH`; the same command succeeds with an augmented `PATH`). Spawned
+CLI children in `run_cli_output` (version/model probes) and `execute_streaming`
+(translation and HTML-fix runs) now receive an augmented `PATH` built from the
+tool's own directory plus the discovery directories, so shim runtimes resolve
+regardless of how the app launched. No shell is involved and no user input
+reaches the child environment. Two regression tests cover child-PATH ordering
+and an `env`-shebang shim resolving its runtime. Full suite (103 unit, 19
+export, 17 import), formatting and frontend lint/build passed; touched files
+are clippy-clean. Next unfinished verification: Codex Check connecting in the
+rebuilt release app, plus a real Generate run.

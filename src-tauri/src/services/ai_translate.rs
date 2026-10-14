@@ -311,6 +311,12 @@ pub(crate) fn execute_streaming(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    // Same augmented environment as the settings probes: shim-based tools
+    // (for example Codex via `node`) must resolve their runtime even when
+    // the app launched with a sparse GUI environment.
+    if let Some(path) = ai_settings::cli_child_path_env(binary) {
+        command.env("PATH", path);
+    }
     let mut child = command
         .spawn()
         .map_err(|_| failed("The translation tool could not be started."))?;

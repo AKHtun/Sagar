@@ -281,6 +281,37 @@ fn cli_available_in(directories: &[PathBuf], id: CliProviderId) -> bool {
     find_cli_binary_in(directories, id).is_some()
 }
 
+/// Builds the `PATH` value given to spawned CLI children: the tool's own
+/// directory first (so sibling runtimes resolve), then every discovery
+/// directory. Pure helper so the ordering is unit-testable.
+fn build_child_path(parent: Option<&Path>, directories: &[PathBuf]) -> Option<OsString> {
+    let mut seen = HashSet::new();
+    let mut ordered = Vec::new();
+    for directory in parent
+        .into_iter()
+        .chain(directories.iter().map(PathBuf::as_path))
+    {
+        if seen.insert(directory) {
+            ordered.push(directory.to_path_buf());
+        }
+    }
+    if ordered.is_empty() {
+        return None;
+    }
+    std::env::join_paths(ordered).ok()
+}
+
+/// Augmented `PATH` for one tool binary. Installed CLIs are often runtime
+/// shims (`codex` is a `#!/usr/bin/env node` script): the bundled app's own
+/// sparse environment would make the child fail with "interpreter not found"
+/// even though discovery resolved the tool. Same combined directories as
+/// lookup, so the child sees at least what discovery saw. Returns `None`
+/// when no value can be built, in which case callers inherit the parent
+/// environment unchanged.
+pub(crate) fn cli_child_path_env(binary: &Path) -> Option<OsString> {
+    build_child_path(binary.parent(), &search_directories())
+}
+
 /// Runs a CLI with fixed arguments and a timeout. Only caller-chosen constant
 /// arguments are ever passed; no shell is involved and no user input reaches
 /// `argv`. Errors are described generically so no filesystem paths leak into
@@ -296,6 +327,11 @@ fn run_cli_output(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    // The child must resolve its own runtime (for example `node` for the
+    // Codex shim) even when the app launched with a sparse GUI environment.
+    if let Some(path) = cli_child_path_env(binary) {
+        command.env("PATH", path);
+    }
     let child = command.spawn().map_err(|_| {
         AppError::new(
             "cli_check_failed",
@@ -1593,6 +1629,43 @@ opencode/no-adjustment
         assert_eq!(
             find_on_path_in(&fallbacks, "opencode").expect("fallback hit"),
             staged
+        );
+    }
+
+    #[test]
+    fn child_path_puts_tool_dir_first_and_dedupes() {
+        let parent = Path::new("/tmp/tools/bin");
+        let directories = vec![PathBuf::from("/usr/bin"), PathBuf::from("/tmp/tools/bin")];
+        let joined = build_child_path(Some(parent), &directories).expect("path built");
+        let parts: Vec<PathBuf> = std::env::split_paths(&joined).collect();
+        assert_eq!(
+            parts,
+            vec![PathBuf::from("/tmp/tools/bin"), PathBuf::from("/usr/bin"),]
+        );
+        assert!(build_child_path(None, &[]).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shim_tools_resolve_their_runtime_through_the_child_path() {
+        // Regression for the Codex `#!/usr/bin/env node` launcher: the child
+        // must resolve its runtime from the augmented PATH even when the
+        // app itself launched with a sparse GUI environment.
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().expect("temp dir");
+        let runtime = dir.path().join("myhelper");
+        std::fs::write(&runtime, "#!/bin/sh\necho runtime-ok\n").expect("stage runtime");
+        std::fs::set_permissions(&runtime, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod runtime");
+        let shim = dir.path().join("myshim");
+        std::fs::write(&shim, "#!/usr/bin/env myhelper\n").expect("stage shim");
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod shim");
+        let output = run_cli_output(&shim, &[], Duration::from_secs(10)).expect("shim runs");
+        assert!(output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("runtime-ok"),
+            "runtime resolved through child PATH"
         );
     }
 }
