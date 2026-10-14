@@ -787,6 +787,9 @@ fn package_images(
         let extension = match mime {
             "image/png" => "png",
             "image/jpeg" => "jpg",
+            "image/webp" => "webp",
+            "image/avif" => "avif",
+            "image/bmp" => "bmp",
             _ => "gif",
         };
         let opf_dir = opf

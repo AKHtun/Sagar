@@ -90,7 +90,12 @@ const SVG_ATTRS = [
 export function documentFragment(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const serialize = (node: Node): string => {
-    if (node.nodeType === Node.TEXT_NODE) return plainFragment(node.textContent ?? "");
+    if (node.nodeType === Node.TEXT_NODE) {
+      const escaped = plainFragment(node.textContent ?? "");
+      return node.parentElement?.closest("pre")
+        ? escaped.split("<br/>").join("\n")
+        : escaped;
+    }
     if (!(node instanceof Element)) return "";
     const tag = node.tagName.toLowerCase();
     const allowed = [
@@ -143,6 +148,8 @@ export function documentFragment(html: string): string {
       "br",
       "hr",
       "a",
+      "picture",
+      "source",
       ...SVG_TAGS,
     ];
     const children = Array.from(node.childNodes).map(serialize).join("");
@@ -154,16 +161,36 @@ export function documentFragment(html: string): string {
       "title",
       "lang",
       "dir",
+      "role",
+      "epub:type",
+      "xmlns:epub",
+      "xml:lang",
       ...(tag === "img"
-        ? ["src", "alt"]
-        : tag === "a"
-          ? ["href"]
-          : tag === "td" || tag === "th"
-            ? ["colspan", "rowspan"]
-            : tag === "ol"
-              ? ["start"]
-              : []),
-      ...(SVG_TAGS.includes(tag) ? SVG_ATTRS : []),
+        ? ["src", "srcset", "sizes", "alt", "width", "height", "loading", "decoding"]
+        : tag === "source"
+          ? ["src", "srcset", "sizes", "media", "type", "width", "height"]
+          : tag === "a"
+            ? ["href"]
+            : tag === "td" || tag === "th"
+              ? [
+                  "colspan",
+                  "rowspan",
+                  "width",
+                  "height",
+                  "align",
+                  "valign",
+                  "scope",
+                  "abbr",
+                  "headers",
+                ]
+              : tag === "table"
+                ? ["border", "cellpadding", "cellspacing", "width", "align"]
+                : tag === "ol" || tag === "ul"
+                  ? ["start", "type"]
+                  : tag === "li"
+                    ? ["value"]
+                    : []),
+      ...(SVG_TAGS.includes(tag) ? [...SVG_ATTRS, "xmlns", "xmlns:xlink"] : []),
     ].sort();
     const attributes = names
       .filter((name) => node.hasAttribute(name))
@@ -174,6 +201,7 @@ export function documentFragment(html: string): string {
         "br",
         "img",
         "hr",
+        "source",
         "image",
         "path",
         "rect",
@@ -198,7 +226,7 @@ export function comparableDocument(html: string): string {
       element.setAttribute("style", element.style.cssText);
   }
   for (const element of document.querySelectorAll(
-    "body, ul, ol, blockquote, table, thead, tbody, tfoot, tr, div, section, article, main, header, footer, aside, figure, figcaption, pre, dl, svg, g",
+    "body, ul, ol, blockquote, table, thead, tbody, tfoot, tr, div, section, article, main, header, footer, aside, figure, figcaption, dl, svg, g",
   )) {
     for (const node of Array.from(element.childNodes)) {
       if (node.nodeType === Node.TEXT_NODE && !(node.textContent ?? "").trim())

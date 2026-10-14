@@ -1,4 +1,5 @@
 import { Extension } from "@tiptap/react";
+import { bookStructureNames } from "./bookStructure";
 
 /** Retain source XHTML attributes when switching/editing in rich text. */
 export const BookAttributes = Extension.create({
@@ -7,7 +8,9 @@ export const BookAttributes = Extension.create({
     return [
       {
         types: [
+          ...bookStructureNames,
           "paragraph",
+          "hardBreak",
           "bookAnchor",
           "table",
           "tableRow",
@@ -25,9 +28,61 @@ export const BookAttributes = Extension.create({
           "italic",
           "underline",
           "strike",
+          "code",
+          "codeBlock",
         ],
         attributes: Object.fromEntries(
-          ["class", "id", "style", "title", "lang", "dir"].map((name) => [
+          [
+            "class",
+            "id",
+            "style",
+            "title",
+            "lang",
+            "dir",
+            "role",
+            "epub:type",
+            "xmlns:epub",
+            "xml:lang",
+          ].map((name) => [
+            name,
+            {
+              default: null,
+              parseHTML: (element: HTMLElement) => element.getAttribute(name),
+              renderHTML: (attributes: Record<string, unknown>) =>
+                typeof attributes[name] === "string" ? { [name]: attributes[name] } : {},
+            },
+          ]),
+        ),
+      },
+      {
+        types: ["image", "book_inline_image"],
+        attributes: Object.fromEntries(
+          ["srcset", "sizes", "width", "height", "loading", "decoding"].map((name) => [
+            name,
+            {
+              default: null,
+              parseHTML: (element: HTMLElement) => element.getAttribute(name),
+              renderHTML: (attributes: Record<string, unknown>) =>
+                typeof attributes[name] === "string" ? { [name]: attributes[name] } : {},
+            },
+          ]),
+        ),
+      },
+      {
+        types: ["table", "tableCell", "tableHeader"],
+        attributes: Object.fromEntries(
+          [
+            "width",
+            "height",
+            "align",
+            "valign",
+            "scope",
+            "abbr",
+            "headers",
+            "border",
+            "cellpadding",
+            "cellspacing",
+          ].map((name) => [
             name,
             {
               default: null,

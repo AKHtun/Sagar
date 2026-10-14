@@ -1369,6 +1369,44 @@ button {
   max-width: 100%;
   height: auto;
 }
+.chapter-editor blockquote {
+  margin: var(--space-4) 0;
+  padding-inline-start: var(--space-4);
+  border-inline-start: 3px solid var(--color-border);
+}
+.chapter-editor code {
+  font-family: ui-monospace, monospace, var(--font-book);
+  background: var(--color-surface-hover);
+  border-radius: 3px;
+  padding: 0.1em 0.25em;
+}
+.chapter-editor pre {
+  white-space: pre-wrap;
+  tab-size: 2;
+  padding: var(--space-3);
+  background: var(--color-surface-hover);
+  border: var(--border-subtle);
+  border-radius: var(--radius-control);
+  font-family: ui-monospace, monospace, var(--font-book);
+}
+.chapter-editor :where(pre) code {
+  padding: 0;
+  background: transparent;
+}
+.book-protected-content {
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  border: var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+}
+.book-protected-content.ProseMirror-selectednode {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
 .chapter-review-actions {
   display: flex;
   flex-wrap: wrap;

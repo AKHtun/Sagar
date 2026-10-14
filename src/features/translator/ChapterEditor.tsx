@@ -5,6 +5,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef } from "react";
 import { BookAnchor } from "./bookAnchor";
 import { BookAttributes } from "./bookAttributes";
+import { BookStructure } from "./bookStructure";
 import { documentFragment } from "./richText";
 import { useSlashMenu } from "./useSlashMenu";
 
@@ -32,6 +33,7 @@ export function ChapterEditor({
   const keyHandler = useRef<(event: KeyboardEvent) => boolean>(() => false);
   const editor = useEditor({
     extensions: [
+      ...BookStructure,
       BookAttributes,
       BookAnchor,
       ChapterTable.configure({ resizable: false }),
@@ -39,8 +41,7 @@ export function ChapterEditor({
       TableCell,
       TableHeader,
       StarterKit.configure({
-        code: false,
-        codeBlock: false,
+        trailingNode: false,
         link: { openOnClick: false, autolink: false },
       }),
       Image.configure({ allowBase64: true }),

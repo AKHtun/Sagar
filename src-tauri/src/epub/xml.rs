@@ -1,4 +1,5 @@
-//! Accept the inert HTML5 doctype without enabling entity declarations.
+//! Accept inert HTML5 and standard XHTML 1.1 doctypes. Never load an external
+//! DTD or accept internal entity declarations; roxmltree has no resolver here.
 pub(crate) fn parse(text: &str) -> Result<roxmltree::Document<'_>, roxmltree::Error> {
     let mut reader = quick_xml::Reader::from_str(text);
     let mut allow_dtd = false;
@@ -8,7 +9,17 @@ pub(crate) fn parse(text: &str) -> Result<roxmltree::Document<'_>, roxmltree::Er
                 if allow_dtd {
                     return Err(roxmltree::Error::DtdDetected);
                 }
-                if value.as_ref() != "html" {
+                let declaration = value
+                    .as_ref()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if declaration != "html"
+                    && declaration
+                        != r#"html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd""#
+                    && declaration
+                        != "html PUBLIC '-//W3C//DTD XHTML 1.1//EN' 'http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd'"
+                {
                     return Err(roxmltree::Error::DtdDetected);
                 }
                 allow_dtd = true;
@@ -39,5 +50,18 @@ mod tests {
         assert!(parse("<!DOCTYPE html><html/>").is_ok());
         assert!(parse("<!DOCTYPE html [<!ENTITY x 'expanded'>]><html>&x;</html>").is_err());
         assert!(parse("<!DOCTYPE html SYSTEM 'https://example.com/a.dtd'><html/>").is_err());
+    }
+
+    #[test]
+    fn accepts_inert_xhtml11_declaration_without_resolving_entities() {
+        let declaration = r#"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">"#;
+        assert!(
+            parse(&format!(
+                "{declaration}<html><p>Text &#x2019; မြန်မာ</p></html>"
+            ))
+            .is_ok()
+        );
+        assert!(parse(&format!("{declaration}<html>&nbsp;</html>")).is_err());
+        assert!(parse(r#"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd" [<!ENTITY x 'unsafe'>]><html>&x;</html>"#).is_err());
     }
 }

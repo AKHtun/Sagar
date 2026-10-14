@@ -116,13 +116,7 @@ pub fn get_chapter(
         if bytes.len() > 8 * 1024 * 1024 {
             continue;
         }
-        let mime = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-            "image/png"
-        } else if bytes.starts_with(b"\xff\xd8\xff") {
-            "image/jpeg"
-        } else if bytes.starts_with(b"GIF8") {
-            "image/gif"
-        } else {
+        let Some(mime) = crate::epub::rich_text::image_mime_from_bytes(&bytes) else {
             continue;
         };
         let src = format!(

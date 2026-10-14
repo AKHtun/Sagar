@@ -1532,3 +1532,62 @@ fn svg_cover_with_html_doctype_loads_and_exports_unchanged() {
     assert_eq!(std::fs::read(source).expect("source unchanged"), original);
     epub::inspect(&destination).expect("reopen exported epub");
 }
+
+#[test]
+fn xhtml11_doctype_imports_editable_content_and_survives_export() {
+    let dir = tempdir();
+    let data = tempdir();
+    let mut files = rich_book_files();
+    let declaration = r#"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">"#;
+    let chapter = format!(
+        "{declaration}<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Legacy</title></head><body><p id=\"text\">မြန်မာ <em>text</em> &#x2019;</p></body></html>"
+    );
+    files
+        .iter_mut()
+        .find(|(n, _)| n == "OEBPS/ch1.xhtml")
+        .expect("chapter")
+        .1 = chapter.as_bytes().to_vec();
+    let refs: Vec<_> = files
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "legacy.epub", &refs);
+    let original = std::fs::read(&source).expect("source");
+    let result = services::import::import_epub(&data, &source, false).expect("import");
+    assert!(!result.warnings.iter().any(|w| w.code == "chapter_invalid"));
+    let loaded =
+        services::workspace::get_chapter(&data, &result.project.id, &result.chapters[0].id)
+            .expect("load chapter");
+    assert!(loaded.preview_html.contains("မြန်မာ"));
+    let parsed = epub::inspect(&source).expect("inspect");
+    assert!(
+        parsed.chapters[0]
+            .blocks
+            .iter()
+            .any(|b| b.supported && b.is_translatable)
+    );
+    let destination = dir.join("output.epub");
+    services::export::export_epub(
+        &data,
+        ExportRequest {
+            project_id: result.project.id,
+            destination: destination.clone(),
+            mode: "draft".into(),
+            title: None,
+            language: None,
+            include_original: true,
+        },
+    )
+    .expect("export");
+    epub::export::validate_output(&destination).expect("validate");
+    let mut archive =
+        zip::ZipArchive::new(std::fs::File::open(destination).expect("output")).expect("archive");
+    let mut output = String::new();
+    archive
+        .by_name("OEBPS/ch1.xhtml")
+        .expect("chapter")
+        .read_to_string(&mut output)
+        .expect("read");
+    assert_eq!(output, chapter);
+    assert_eq!(std::fs::read(source).expect("source"), original);
+}

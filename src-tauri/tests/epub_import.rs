@@ -13,6 +13,21 @@ use zip::write::SimpleFileOptions;
 
 // ---------------------------------------------------------------- fixtures
 
+#[test]
+fn unpacked_epub_folder_has_actionable_error_without_creating_project_storage() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let source = temp.path().join("Book.epub");
+    std::fs::create_dir(&source).expect("create unpacked EPUB folder");
+    let data = temp.path().join("data");
+    let error = services::import::import_epub(&data, &source, false)
+        .expect_err("directories require packaging");
+    assert_eq!(error.code, "invalid_source");
+    assert!(error.message.contains("folder"));
+    assert!(error.message.contains("packaged .epub file"));
+    assert!(!data.exists());
+    assert!(source.is_dir());
+}
+
 /// Writes an EPUB file from (name, contents) pairs. `mimetype` is always
 /// stored first and uncompressed, per OCF.
 fn write_epub(dir: &Path, file_name: &str, files: &[(&str, &[u8])]) -> PathBuf {

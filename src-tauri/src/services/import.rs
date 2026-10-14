@@ -23,6 +23,12 @@ pub fn import_epub(
     allow_duplicate: bool,
 ) -> Result<ImportResult, AppError> {
     let metadata = std::fs::metadata(source_path)?;
+    if metadata.is_dir() {
+        return Err(AppError::new(
+            "invalid_source",
+            "The selected EPUB is a folder. Choose a packaged .epub file, or package this folder as an EPUB archive before importing.",
+        ));
+    }
     if !metadata.is_file() {
         return Err(AppError::new(
             "invalid_source",

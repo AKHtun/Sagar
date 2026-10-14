@@ -164,6 +164,10 @@ pub struct StartHtmlFixInput {
     pub reasoning_effort: Option<String>,
 }
 
+// Match the restricted editor's namespace context for body-inner XHTML whose
+// namespace declarations live on the source document's html element.
+const FRAGMENT_OPENING: &str = "<w xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">";
+
 /// Resume only complete top-level elements whose structure matches the source.
 /// The incomplete tail is regenerated; never insert unvalidated partial output.
 fn continuation_parts(original: &str, previous: &str) -> Result<(String, String), AppError> {
@@ -174,7 +178,7 @@ fn continuation_parts(original: &str, previous: &str) -> Result<(String, String)
         ));
     }
     let previous = strip_code_fences(previous);
-    let wrapped = format!("<w>{original}</w>");
+    let wrapped = format!("{FRAGMENT_OPENING}{original}</w>");
     let source = roxmltree::Document::parse(&wrapped).map_err(|_| {
         AppError::new(
             "proposal_structure",
@@ -207,7 +211,7 @@ fn continuation_parts(original: &str, previous: &str) -> Result<(String, String)
         let Some(node) = elements.get(count) else {
             break;
         };
-        let source_end = node.range().end - 3; // opening <w> wrapper
+        let source_end = node.range().end - FRAGMENT_OPENING.len();
         if check_skeleton(&original[..source_end], candidate).is_err() {
             break;
         }
@@ -217,7 +221,7 @@ fn continuation_parts(original: &str, previous: &str) -> Result<(String, String)
     let source_end = count
         .checked_sub(1)
         .and_then(|i| elements.get(i))
-        .map(|n| n.range().end - 3)
+        .map(|n| n.range().end - FRAGMENT_OPENING.len())
         .unwrap_or(0);
     Ok((
         previous[..end].to_string(),
@@ -440,7 +444,7 @@ fn ensure_success(result: &StreamResult) -> Result<(), AppError> {
 /// XHTML defect. Preserve every byte except the position of the closing tag.
 /// Other invalid nesting remains rejected by the restricted editor validator.
 fn normalize_trailing_rules(fragment: &str) -> Result<String, AppError> {
-    let opening = "<w xmlns=\"http://www.w3.org/1999/xhtml\">";
+    let opening = FRAGMENT_OPENING;
     let wrapped = format!("{opening}{fragment}</w>");
     let doc = roxmltree::Document::parse(&wrapped).map_err(|error| {
         AppError::new(
@@ -562,7 +566,7 @@ fn skeleton(fragment: &str) -> Result<ElementSkeleton, AppError> {
             "The chapter markup could not be compared safely. Nothing was inserted.",
         )
     };
-    let wrapped = format!("<w>{fragment}</w>");
+    let wrapped = format!("{FRAGMENT_OPENING}{fragment}</w>");
     let doc = roxmltree::Document::parse(&wrapped).map_err(|_| uncomparable())?;
     let mut elements = Vec::new();
     for node in doc
@@ -645,7 +649,7 @@ fn describe_skeleton(entry: &(usize, String, Vec<(String, String)>)) -> String {
 /// them back). Unresolvable sources stay untouched — the original files are
 /// preserved in the package, so they still resolve on export.
 fn embed_proposal_images(html: &str, snapshot_path: &Path, chapter_href: &str) -> String {
-    let wrapped = format!("<w>{html}</w>");
+    let wrapped = format!("{FRAGMENT_OPENING}{html}</w>");
     let Ok(doc) = roxmltree::Document::parse(&wrapped) else {
         return html.to_string();
     };
@@ -674,13 +678,7 @@ fn embed_proposal_images(html: &str, snapshot_path: &Path, chapter_href: &str) -
         if bytes.len() > 8 * 1024 * 1024 {
             continue;
         }
-        let mime = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-            "image/png"
-        } else if bytes.starts_with(b"\xff\xd8\xff") {
-            "image/jpeg"
-        } else if bytes.starts_with(b"GIF8") {
-            "image/gif"
-        } else {
+        let Some(mime) = crate::epub::rich_text::image_mime_from_bytes(&bytes) else {
             continue;
         };
         let data_url = format!(
@@ -1215,6 +1213,33 @@ mod tests {
                     .any(|a| a == flag)
             );
         }
+    }
+
+    #[test]
+    fn imprint_body_with_inherited_epub_namespace_can_start_and_resume() {
+        let source = r#"<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en-US">
+<head><title>Imprint</title></head><body epub:type="frontmatter"><section id="imprint" epub:type="imprint"><header><h2 epub:type="title">Imprint</h2><img src="../images/logo.png" srcset="../images/logo-2x.png 2x, ../images/logo.png 1x" alt="Logo" epub:type="z3998:publisher-logo"/></header><p>Text <a href="https://standardebooks.org/">Standard Ebooks</a></p></section><p>Next</p></body></html>"#;
+        let body = crate::epub::export::chapter_body_inner(source.as_bytes()).expect("body");
+        assert_eq!(
+            continuation_parts(&body, "").expect("start"),
+            (String::new(), body.clone())
+        );
+        let translated = body.replace("Imprint</h2>", "မြန်မာ</h2>");
+        check_skeleton(&body, &translated).expect("preserved structure");
+        let complete = translated.split("<p>Next").next().expect("section");
+        let (prefix, remaining) =
+            continuation_parts(&body, &format!("{complete}<p>unfinished")).expect("resume");
+        assert_eq!(prefix, complete);
+        assert_eq!(remaining, "<p>Next</p>");
+        assert!(
+            check_skeleton(
+                &body,
+                &translated.replace("z3998:publisher-logo", "changed")
+            )
+            .is_err()
+        );
+        assert!(continuation_parts("<p unknown:type=\"x\">Text</p>", "").is_err());
     }
 
     #[test]

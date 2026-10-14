@@ -35,6 +35,8 @@ const paths = {
   list: "M9 5h12M9 12h12M9 19h12M3 5h1M3 12h1M3 19h1",
   numbered: "M10 5h11M10 12h11M10 19h11M3 3h2v5M3 10h3v2l-3 3h3M3 18h3v4H3",
   code: "M8 6 2 12l6 6M16 6l6 6-6 6M14 3l-4 18",
+  blockquote: "M5 6h5v6H5V6Zm0 6c0 4 2 5 4 5M14 6h5v6h-5V6Zm0 6c0 4 2 5 4 5",
+  codeBlock: "M3 3h18v18H3V3Zm5 5-4 4 4 4M16 8l4 4-4 4",
   edit: "M4 20h4L20 8l-4-4L4 16v4ZM14 6l4 4",
   rowAdd: "M3 3h18v11H3V3Zm0 6h18M12 17v6M9 20h6",
   columnAdd: "M3 3h11v18H3V3Zm6 0v18M17 12h6M20 9v6",

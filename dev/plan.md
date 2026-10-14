@@ -1,5 +1,89 @@
 # Plan.md — EPUB Translation Studio
 
+### Blockquote and code authoring — 2026-10-14
+
+Enabled inline code and standard pre/code blocks in the chapter editor while
+retaining plain pre elements and imported code attributes. Formatting toolbar
+now has Blockquote, Inline code and Code block actions with icons, tooltips,
+selected states and capability-aware disabled states. Slash menu supports
+/blockquote (also /quote), /code and /inline code; applying a command removes
+its query and formats in one undoable transaction. Added theme-token styling
+for quotes/code, wrapping code lines without losing saved indentation.
+All 17 frontend tests, frontend lint/build, and 13 Rust rich-text validator tests
+passed. The build retains the existing bundle-size warning. Regression checks
+cover Myanmar text, HTML escaping, pre/code round trips, slash-query removal,
+undo, inline-code input, formatting toggles and disabled editors.
+Native light/dark, minimum-window, toolbar/slash keyboard interaction and IME
+checks remain unverified because no current running Sagar build was available.
+Next unfinished task: native verification of these controls; broader XHTML
+preservation work remains tracked below. No milestone checkboxes changed.
+
+
+### Rich XHTML preservation expansion — 2026-10-14
+
+The chapter Rich editor now retains structural containers (including imprint
+section/header IDs and classes), text-only container variants, definition lists,
+preformatted text, inline spans/b/i/code/sup/sub/ruby/rt/rp, inline images,
+EPUB semantics, xml:lang, image srcset/sizes and layout attributes. SVG and picture
+subtrees use protected nodes with inert editor placeholders and retained markup;
+they remain editable in HTML. SVG namespaces are kept during serialization.
+Disabled automatic trailing paragraphs and retained significant preformatted
+whitespace so changing views does not rewrite these structures.
+Regression coverage includes imprint markup, Myanmar text and links, inline
+semantics/images, definition lists/pre, SVG namespaces and responsive images,
+reload/edit cycles, and inert SVG node views. Frontend lint/build and all 12
+frontend tests passed; build retains the existing bundle-size warning. Rust tests
+passed (107 unit, 20 export, 18 import; performance sweep ignored).
+No running Sagar window was available: native IME, keyboard, minimum-size,
+light/dark and cross-platform verification remain unverified.
+This is an expansion, not a claim of universal EPUB XHTML support. Next unfinished
+task: deliberate models for complex table sections and mixed block/inline
+containers, followed by safe MathML/media/form preservation and native verification.
+The Rust safety policy and loss-aware view-switch guard remain in force. No
+milestone checkboxes changed and no existing unrelated edits were reverted.
+
+
+### Imprint markup comparison regression — 2026-10-14
+
+Chapter proposal comparison, continuation, normalization and image embedding now
+use the same XHTML/EPUB/XLink namespace context as the restricted editor.
+This fixes inherited epub:type declarations being lost when extracting a body.
+A synthetic imprint regression covers initial runs, partial retries, Myanmar text,
+image srcset/link preservation, changed attributes and unknown-prefix rejection.
+Rust formatting and 107 unit, 20 export and 18 import tests passed; one performance
+sweep remains ignored. Frontend build passed with the existing bundle-size warning.
+Combined frontend checks stopped on existing richText.ts formatting differences.
+Next unfinished task: verify the imprint chapter in a rebuilt native app;
+full proposal acceptance and Windows/Linux behavior remain unverified.
+No milestone checkboxes changed.
+
+
+### XHTML 1.1 import compatibility — 2026-10-14
+
+The shared XML parser accepts the standard inert XHTML 1.1 PUBLIC declaration
+without fetching a DTD; internal entity declarations and arbitrary external
+DTDs remain rejected. Synthetic coverage checks editable Myanmar content,
+preview, draft export, byte preservation and source immutability. Rust formatting
+and 106 unit, 20 export and 18 import tests passed (performance sweep ignored).
+The supplied book additionally uses named nbsp/copy entities in its verso page,
+which remain unsupported in the strict parser. A separate compatibility copy
+removes legacy declarations and replaces those references with numeric equivalents
+using XML events; all 24 chapters load, 1706 blocks are editable, and draft
+export validates. Original source files remain unchanged. Next unfinished task:
+native import/edit verification of the compatibility copy; general named-entity
+and EPUB 2/NCX compatibility remain open. No milestone checkboxes changed.
+
+### Unpacked EPUB folder import feedback — 2026-10-14
+
+Import now explains that an EPUB folder must be packaged as a .epub archive.
+A regression confirms rejection preserves the folder and creates no project
+storage. Rust formatting and 18 import tests passed (one performance sweep
+ignored). A separate archive of the supplied local folder passed Sagar's
+parser with 24 chapters and two book warnings; the source folder was unchanged.
+Next unfinished verification: import that archive in the native app and review
+its content warnings. Native/cross-platform UI and EPUBCheck remain unverified;
+no milestone checkboxes changed.
+
 ### SVG cover preview and DOCTYPE export regression — 2026-10-14
 
 Source XML parsing accepts the inert HTML5 doctype while rejecting internal

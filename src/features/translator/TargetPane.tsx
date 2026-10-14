@@ -59,16 +59,8 @@ export function TargetPane({
     setActiveEditor(null);
     setImagePicker(false);
     setImageError(null);
-    // SVG cover artwork has no rich-text representation: open those chapters
-    // in HTML so the original markup is never silently stripped by the rich
-    // editor on load. Other chapters keep the rich default.
-    const initialHtml = content?.document.html ?? "";
-    setView(initialHtml.includes("<svg") ? "html" : "rich");
-    setViewError(
-      initialHtml.includes("<svg")
-        ? "This chapter uses original SVG artwork (e.g. a cover). It is kept exactly as in the source; continue editing it here to preserve the image at export."
-        : null,
-    );
+    setView("rich");
+    setViewError(null);
     setAiOpen(false);
     setFixConfirmOpen(false);
     setFormattingOpen(false);
@@ -277,6 +269,43 @@ export function TargetPane({
             <Icon name={mark} size={16} />
           </button>
         ))}
+        <span className="editor-toolbar__divider" />
+        <button
+          type="button"
+          aria-label="Inline code"
+          className="icon-button"
+          title="Inline code (Cmd/Ctrl + E)"
+          aria-pressed={canEdit && activeEditor.isActive("code")}
+          disabled={!canEdit || !activeEditor.can().toggleCode()}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => activeEditor?.chain().focus().toggleCode().run()}
+        >
+          <Icon name="code" size={17} />
+        </button>
+        <button
+          type="button"
+          aria-label="Blockquote"
+          className="icon-button"
+          title="Blockquote"
+          aria-pressed={canEdit && activeEditor.isActive("blockquote")}
+          disabled={!canEdit || !activeEditor.can().toggleBlockquote()}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => activeEditor?.chain().focus().toggleBlockquote().run()}
+        >
+          <Icon name="blockquote" size={17} />
+        </button>
+        <button
+          type="button"
+          aria-label="Code block"
+          className="icon-button"
+          title="Code block"
+          aria-pressed={canEdit && activeEditor.isActive("codeBlock")}
+          disabled={!canEdit || !activeEditor.can().toggleCodeBlock()}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => activeEditor?.chain().focus().toggleCodeBlock().run()}
+        >
+          <Icon name="codeBlock" size={17} />
+        </button>
         <span className="editor-toolbar__divider" />
         <button
           type="button"

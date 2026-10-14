@@ -3,7 +3,16 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon, type IconName } from "../../components/Icon";
 
-type CommandId = "text" | "h1" | "h2" | "h3" | "table" | "image";
+type CommandId =
+  | "text"
+  | "h1"
+  | "h2"
+  | "h3"
+  | "table"
+  | "image"
+  | "blockquote"
+  | "code"
+  | "inlineCode";
 const commands: {
   id: CommandId;
   label: string;
@@ -22,6 +31,27 @@ const commands: {
   { id: "h2", label: "H2", detail: "Medium heading", keywords: "heading 2" },
   { id: "h3", label: "H3", detail: "Small heading", keywords: "heading 3" },
   {
+    id: "blockquote",
+    label: "Blockquote",
+    detail: "Quote a passage",
+    keywords: "quote quotation",
+    icon: "blockquote",
+  },
+  {
+    id: "code",
+    label: "Code block",
+    detail: "Preformatted code with preserved line breaks",
+    keywords: "pre monospace codeblock",
+    icon: "codeBlock",
+  },
+  {
+    id: "inlineCode",
+    label: "Inline code",
+    detail: "Format the next text as code",
+    keywords: "inline code monospace",
+    icon: "code",
+  },
+  {
     id: "table",
     label: "Table",
     detail: "Insert a 3 × 3 table",
@@ -36,6 +66,28 @@ const commands: {
     icon: "image",
   },
 ];
+
+/** One transaction removes the slash query and applies formatting, including undo. */
+export function runSlashCommand(
+  editor: Editor,
+  id: CommandId,
+  range: { from: number; to: number },
+  onImage: () => void,
+) {
+  if (!editor.isEditable || editor.isDestroyed) return false;
+  const chain = editor.chain().focus().deleteRange(range);
+  if (id === "text") return chain.setParagraph().run();
+  if (id === "h1" || id === "h2" || id === "h3")
+    return chain.setHeading({ level: Number(id[1]) as 1 | 2 | 3 }).run();
+  if (id === "blockquote") return chain.toggleBlockquote().run();
+  if (id === "code") return chain.setCodeBlock().run();
+  if (id === "inlineCode") return chain.toggleCode().run();
+  if (id === "table")
+    return chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+  const applied = chain.run();
+  if (applied) onImage();
+  return applied;
+}
 type Menu = {
   from: number;
   to: number;
@@ -66,16 +118,7 @@ export function useSlashMenu(
     const value = current.current;
     if (!editor || !value || !editor.isEditable || editor.isDestroyed) return;
     publish(null);
-    const chain = editor.chain().focus().deleteRange({ from: value.from, to: value.to });
-    if (id === "text") chain.setParagraph().run();
-    else if (id === "h1" || id === "h2" || id === "h3")
-      chain.setHeading({ level: Number(id[1]) as 1 | 2 | 3 }).run();
-    else if (id === "table")
-      chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-    else {
-      chain.run();
-      onImage();
-    }
+    runSlashCommand(editor, id, { from: value.from, to: value.to }, onImage);
   };
   keyHandler.current = (event) => {
     const value = current.current;

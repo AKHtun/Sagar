@@ -9,14 +9,17 @@ pub fn image_bytes(src: &str) -> Result<(&'static str, Vec<u8>), AppError> {
     let invalid = || {
         AppError::new(
             "invalid_image",
-            "Choose a PNG, JPEG or GIF image under 8 MB.",
+            "Choose a PNG, JPEG, GIF, WebP, AVIF or BMP image under 8 MB.",
         )
     };
     let (header, payload) = src.split_once(',').ok_or_else(invalid)?;
-    let (mime, signature): (&str, &[u8]) = match header {
-        "data:image/png;base64" => ("image/png", b"\x89PNG\r\n\x1a\n"),
-        "data:image/jpeg;base64" => ("image/jpeg", b"\xff\xd8\xff"),
-        "data:image/gif;base64" => ("image/gif", b"GIF8"),
+    let mime: &'static str = match header {
+        "data:image/png;base64" => "image/png",
+        "data:image/jpeg;base64" => "image/jpeg",
+        "data:image/gif;base64" => "image/gif",
+        "data:image/webp;base64" => "image/webp",
+        "data:image/avif;base64" => "image/avif",
+        "data:image/bmp;base64" => "image/bmp",
         _ => return Err(invalid()),
     };
     if payload.len() > 12 * 1024 * 1024 {
@@ -25,7 +28,23 @@ pub fn image_bytes(src: &str) -> Result<(&'static str, Vec<u8>), AppError> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(payload)
         .map_err(|_| invalid())?;
-    if bytes.len() > 8 * 1024 * 1024 || !bytes.starts_with(signature) {
+    if bytes.len() > 8 * 1024 * 1024 {
+        return Err(invalid());
+    }
+    let signature_ok = match mime {
+        "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+        "image/jpeg" => bytes.starts_with(b"\xff\xd8\xff"),
+        "image/gif" => bytes.starts_with(b"GIF8"),
+        "image/webp" => bytes.len() >= 12 && bytes.starts_with(b"RIFF") && bytes[8..12] == *b"WEBP",
+        "image/avif" => {
+            bytes.len() >= 12
+                && bytes[4..8] == *b"ftyp"
+                && (bytes[8..12] == *b"avif" || bytes[8..12] == *b"avis")
+        }
+        "image/bmp" => bytes.starts_with(b"BM"),
+        _ => false,
+    };
+    if !signature_ok {
         return Err(invalid());
     }
     Ok((mime, bytes))
@@ -92,6 +111,8 @@ fn is_xhtml_document_tag(tag: &str) -> bool {
             | "ruby"
             | "rt"
             | "rp"
+            | "picture"
+            | "source"
     )
 }
 
@@ -152,6 +173,8 @@ fn is_xhtml_inline(tag: &str) -> bool {
             | "ruby"
             | "rt"
             | "rp"
+            | "picture"
+            | "source"
     )
 }
 
@@ -173,6 +196,56 @@ fn is_svg_tag(tag: &str) -> bool {
             | "text"
             | "tspan"
     )
+}
+
+/// Detects a book image mime from magic bytes. Used for editor display
+/// (data URLs) so WebP/AVIF/BMP books behave like PNG/JPEG/GIF instead of
+/// showing broken images in chapters that contain them.
+pub fn image_mime_from_bytes(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(b"\xff\xd8\xff") {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF8") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && bytes[8..12] == *b"WEBP" {
+        Some("image/webp")
+    } else if bytes.len() >= 12
+        && bytes[4..8] == *b"ftyp"
+        && (bytes[8..12] == *b"avif" || bytes[8..12] == *b"avis")
+    {
+        Some("image/avif")
+    } else if bytes.starts_with(b"BM") {
+        Some("image/bmp")
+    } else {
+        None
+    }
+}
+
+/// Validates an <img>/<source> srcset value: every candidate URL must stay
+/// inside the book (relative) or be a supported data URL. Descriptors
+/// (`1x`, `400w`) are ignored. Rejects external/network URLs so drafts can
+/// never fetch.
+fn validate_srcset(value: &str) -> Result<(), AppError> {
+    if value.trim().is_empty() {
+        return Err(invalid_detail("An image srcset is empty.".to_string()));
+    }
+    for candidate in value.split(',') {
+        let url = candidate.split_whitespace().next().unwrap_or("").trim();
+        if url.is_empty() {
+            return Err(invalid_detail(
+                "An image srcset entry is empty.".to_string(),
+            ));
+        }
+        if url.trim_start().starts_with("data:") {
+            image_bytes(url)?;
+        } else if !is_relative_resource(url) {
+            return Err(invalid_detail(format!(
+                "Unsupported image srcset URL \"{url}\": use book-relative images."
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Relative resource references that stay inside the book archive.
@@ -391,6 +464,16 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                     "<li> must appear inside <ul> or <ol>.".to_string(),
                 ));
             }
+            if tag == "source" && parent != "picture" {
+                return Err(invalid_detail(
+                    "<source> must appear inside <picture>.".to_string(),
+                ));
+            }
+            if parent == "picture" && !matches!(tag, "source" | "img") {
+                return Err(invalid_detail(format!(
+                    "Only <source> or <img> can appear inside <picture>, found <{tag}>."
+                )));
+            }
             if matches!(parent, "table")
                 && !matches!(tag, "caption" | "thead" | "tbody" | "tfoot" | "tr")
                 || matches!(parent, "thead" | "tbody" | "tfoot") && tag != "tr"
@@ -467,8 +550,11 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
             }
             let per_tag_ok = matches!(
                 (tag, attr_name),
-                ("img", "src" | "alt")
-                    | ("image", "href" | "alt")
+                (
+                    "img",
+                    "src" | "alt" | "srcset" | "sizes" | "loading" | "decoding"
+                ) | ("image", "href" | "alt")
+                    | ("source", "src" | "srcset" | "sizes" | "media" | "type")
                     | ("a", "href")
                     | ("ol", "start")
                     | ("td" | "th", "colspan" | "rowspan")
@@ -573,7 +659,68 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                     image_bytes(value)?;
                 } else if !is_relative_resource(value) {
                     return Err(invalid_detail(format!(
-                        "Unsupported <img src=\"{value}\">: use a book-relative image or a PNG/JPEG/GIF data URL under 8 MB."
+                        "Unsupported <img src=\"{value}\">: use a book-relative image or a PNG/JPEG/GIF/WebP/AVIF/BMP data URL under 8 MB."
+                    )));
+                }
+            }
+            if (tag == "img" || tag == "source") && attr_name == "srcset" {
+                validate_srcset(attr.value())?;
+            }
+            if (tag == "img" || tag == "source") && attr_name == "sizes" {
+                let value = attr.value();
+                if value.contains("javascript:")
+                    || value.contains("data:")
+                    || value.contains("vbscript:")
+                    || value.contains('<')
+                    || value.contains('>')
+                {
+                    return Err(invalid_detail(format!(
+                        "Unsupported sizes value on <{tag}>."
+                    )));
+                }
+            }
+            if tag == "source" && attr_name == "media" {
+                let value = attr.value();
+                if value.contains("javascript:")
+                    || value.contains("data:")
+                    || value.contains("vbscript:")
+                    || value.contains('<')
+                    || value.contains('>')
+                {
+                    return Err(invalid_detail(
+                        "Unsupported media value on <source>.".to_string(),
+                    ));
+                }
+            }
+            if tag == "source" && attr_name == "type" {
+                let value = attr.value().trim().to_ascii_lowercase();
+                if !(value.starts_with("image/") || value.is_empty()) {
+                    return Err(invalid_detail(format!(
+                        "Unsupported <source type=\"{}\">: only image types are preserved.",
+                        attr.value()
+                    )));
+                }
+            }
+            if tag == "img" && matches!(attr_name, "loading" | "decoding") {
+                let value = attr.value().trim().to_ascii_lowercase();
+                let ok = match attr_name {
+                    "loading" => matches!(value.as_str(), "lazy" | "eager" | "auto"),
+                    _ => matches!(value.as_str(), "async" | "sync" | "auto"),
+                };
+                if !ok {
+                    return Err(invalid_detail(format!(
+                        "Unsupported <img {attr_name}=\"{}\">.",
+                        attr.value()
+                    )));
+                }
+            }
+            if tag == "source" && attr_name == "src" {
+                let value = attr.value();
+                if value.trim_start().starts_with("data:") {
+                    image_bytes(value)?;
+                } else if !is_relative_resource(value) {
+                    return Err(invalid_detail(format!(
+                        "Unsupported <source src=\"{value}\">: use a book-relative image."
                     )));
                 }
             }
@@ -628,7 +775,13 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
         if tag == "img" && node.attribute("src").is_none() {
             return Err(invalid_detail("<img> needs a src attribute.".to_string()));
         }
-        if matches!(tag, "img" | "br" | "hr")
+        if tag == "source" && node.attribute("src").is_none() && node.attribute("srcset").is_none()
+        {
+            return Err(invalid_detail(
+                "<source> needs a src or srcset attribute.".to_string(),
+            ));
+        }
+        if matches!(tag, "img" | "br" | "hr" | "source")
             || (is_svg
                 && matches!(
                     tag,
@@ -648,7 +801,7 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
             html.push_str("/>");
             if tag == "br" {
                 plain.push('\n');
-            } else if tag == "img" || (is_svg && tag == "image") {
+            } else if tag == "img" || tag == "source" || (is_svg && tag == "image") {
                 plain.push_str("[image]");
             }
         } else {
@@ -741,6 +894,31 @@ mod document_tests {
                 err.message
             );
         }
+    }
+    #[test]
+    fn responsive_images_and_modern_formats_round_trip() {
+        // Image chapters commonly use <picture>/<source>/srcset and WebP.
+        // Preserving them must not block AI translation.
+        let html = "<figure><picture><source srcset=\"images/a.webp\" type=\"image/webp\"/><img src=\"images/a.jpg\" srcset=\"images/a.jpg 1x, images/a@2x.jpg 2x\" sizes=\"100vw\" loading=\"lazy\" decoding=\"async\" alt=\"A\"/></picture><figcaption>Cap</figcaption></figure>";
+        let (saved, text) = validate_document(html).expect("responsive images");
+        assert!(saved.contains("srcset"), "{saved}");
+        assert!(saved.contains("<picture>"), "{saved}");
+        assert!(text.contains("[image]"), "{text}");
+        // External srcset URLs and misplaced <source> still fail.
+        assert!(
+            validate_document("<picture><img src=\"https://example.com/a.jpg\"/></picture>")
+                .is_err()
+        );
+        assert!(
+            validate_document("<p><source srcset=\"a.jpg\"/></p>").is_err(),
+            "source outside picture"
+        );
+        // WebP/AVIF/BMP data URLs validate by magic bytes.
+        let mut webp_bytes = b"RIFF".to_vec();
+        webp_bytes.extend_from_slice(&[0, 0, 0, 0]);
+        webp_bytes.extend_from_slice(b"WEBP");
+        assert!(image_mime_from_bytes(&webp_bytes) == Some("image/webp"));
+        assert!(image_mime_from_bytes(b"BMxxxx") == Some("image/bmp"));
     }
 }
 

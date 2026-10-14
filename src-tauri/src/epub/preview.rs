@@ -115,6 +115,8 @@ fn serialize_safe(
             | "th"
             | "pre"
             | "code"
+            | "picture"
+            | "source"
     ) {
         return;
     }
