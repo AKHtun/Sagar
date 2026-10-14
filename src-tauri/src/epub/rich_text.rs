@@ -194,6 +194,42 @@ fn is_relative_resource(value: &str) -> bool {
     true
 }
 
+fn is_safe_external_link(value: &str) -> bool {
+    // Book-preserved outbound links. Preview never fetches them (rewritten
+    // inert); export keeps the original reference. Active schemes stay
+    // rejected so drafts can never execute script or exfiltrate.
+    let lower = value.trim_start().to_ascii_lowercase();
+    (lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("mailto:"))
+        && !lower.starts_with("javascript:")
+        && !lower.starts_with("data:")
+        && !lower.starts_with("vbscript:")
+}
+
+/// Presentational attributes real EPUBs carry on tables/cells/images.
+/// Inert strings only; event handlers, URLs and positioning CSS are handled
+/// separately. Values are escaped on serialization.
+fn is_preserved_layout_attr(tag: &str, name: &str) -> bool {
+    matches!(
+        (tag, name),
+        (
+            "table",
+            "border" | "cellpadding" | "cellspacing" | "width" | "align"
+        ) | (
+            "td" | "th",
+            "width" | "height" | "align" | "valign" | "scope" | "abbr" | "headers"
+        ) | ("img", "width" | "height" | "align")
+            | ("ol" | "ul", "type")
+            | ("li", "value")
+    )
+}
+
+fn invalid_detail(why: String) -> AppError {
+    AppError::new(
+        "invalid_translation",
+        format!("The translation contains unsupported formatting or an invalid image. {why}"),
+    )
+}
+
 fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), AppError> {
     let invalid = || {
         AppError::new(
@@ -244,14 +280,8 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
         depth: usize,
         document: bool,
     ) -> Result<(), AppError> {
-        let invalid = || {
-            AppError::new(
-                "invalid_translation",
-                "The translation contains unsupported formatting or an invalid image.",
-            )
-        };
         if depth > 32 {
-            return Err(invalid());
+            return Err(invalid_detail("Content is nested too deeply.".to_string()));
         }
         if node.is_text() {
             let text = node.text().unwrap_or("");
@@ -274,7 +304,9 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
             return Ok(());
         }
         if !node.is_element() {
-            return Err(invalid());
+            return Err(invalid_detail(
+                "Only text and known elements are supported.".to_string(),
+            ));
         }
         let tag = node.tag_name().name();
         let ns = node.tag_name().namespace();
@@ -292,7 +324,17 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
             false
         };
         if !allowed {
-            return Err(invalid());
+            let ns_label: String = match ns {
+                Some(SVG_NS) => " (SVG namespace)".to_string(),
+                Some(XHTML_NS) => String::new(),
+                Some(other) => format!(" (namespace {other})"),
+                None => " (no namespace)".to_string(),
+            };
+            // This is the rejection the AI dialog surfaces. Name the element
+            // so Retry can drop/convert exactly this tag.
+            return Err(invalid_detail(format!(
+                "Unsupported <{tag}>{ns_label}> element."
+            )));
         }
         if document {
             let (parent_tag, parent_ns) = node
@@ -303,7 +345,9 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
             // SVG subtrees stay SVG-only: book XHTML must not appear inside
             // a drawing, and drawings behave like blocks in running text.
             if parent_ns == Some(SVG_NS) && !is_svg && !node.is_text() {
-                return Err(invalid());
+                return Err(invalid_detail(format!(
+                    "A <{tag}> element cannot appear inside SVG <{parent}>."
+                )));
             }
             let is_block = (is_xhtml && is_xhtml_block(tag)) || is_svg && tag == "svg";
             if matches!(
@@ -338,10 +382,14 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                 ));
             }
             if matches!(parent, "ul" | "ol") && tag != "li" {
-                return Err(invalid());
+                return Err(invalid_detail(format!(
+                    "Only <li> can appear inside <{parent}>, found <{tag}>."
+                )));
             }
             if tag == "li" && !matches!(parent, "ul" | "ol") {
-                return Err(invalid());
+                return Err(invalid_detail(
+                    "<li> must appear inside <ul> or <ol>.".to_string(),
+                ));
             }
             if matches!(parent, "table")
                 && !matches!(tag, "caption" | "thead" | "tbody" | "tfoot" | "tr")
@@ -357,7 +405,9 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                 || tag == "tr" && !matches!(parent, "table" | "thead" | "tbody" | "tfoot")
                 || matches!(tag, "thead" | "tbody" | "tfoot" | "caption") && parent != "table"
             {
-                return Err(invalid());
+                return Err(invalid_detail(format!(
+                    "A <{tag}> element is in the wrong table position (parent <{parent}>)."
+                )));
             }
             if tag == "table" {
                 let rows = node
@@ -378,27 +428,42 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                     .skip(1)
                     .any(|n| n.has_tag_name((XHTML_NS, "a")))
             {
-                return Err(invalid());
+                return Err(invalid_detail(
+                    "Links cannot be nested inside another link.".to_string(),
+                ));
             }
             if is_svg && tag == "image" && node.children().next().is_some() {
-                return Err(invalid());
+                return Err(invalid_detail(
+                    "An SVG <image> must stay empty.".to_string(),
+                ));
             }
         }
-        // Attribute policy: unprefixed book attributes plus the two
-        // namespaced attributes originals rely on (SVG image references and
-        // EPUB semantics). Everything else — event handlers, scripts, network
+        // Attribute policy: unprefixed book attributes plus the namespaced
+        // attributes originals rely on (SVG image references, EPUB semantics
+        // and xml:lang). Everything else — event handlers, scripts, network
         // CSS — stays rejected.
         for attr in node.attributes() {
             let attr_ns = attr.namespace();
             let attr_name = attr.name();
             let namespaced_ok = document
                 && ((attr_ns == Some(XLINK_NS) && attr_name == "href" && is_svg && tag == "image")
-                    || (attr_ns == Some(EPUB_NS) && attr_name == "type" && is_xhtml));
+                    || (attr_ns == Some(EPUB_NS) && attr_name == "type" && is_xhtml)
+                    || (attr_ns == Some("http://www.w3.org/XML/1998/namespace")
+                        && attr_name == "lang"));
             if namespaced_ok {
                 continue;
             }
             if attr_ns.is_some() {
-                return Err(invalid());
+                return Err(invalid_detail(format!(
+                    "Unsupported attribute '{}' on <{tag}>.",
+                    attr.name()
+                )));
+            }
+            // Event-handler attributes are never book formatting.
+            if attr_name.len() > 1 && attr_name.to_ascii_lowercase().starts_with("on") {
+                return Err(invalid_detail(format!(
+                    "Event attribute '{attr_name}' on <{tag}> is not supported."
+                )));
             }
             let per_tag_ok = matches!(
                 (tag, attr_name),
@@ -438,12 +503,16 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                 ));
             if !(per_tag_ok
                 || document
-                    && matches!(
+                    && (matches!(
                         attr_name,
-                        "class" | "id" | "style" | "title" | "lang" | "dir"
-                    ))
+                        "class" | "id" | "style" | "title" | "lang" | "dir" | "role"
+                    ) || attr_name.starts_with("aria-")
+                        || attr_name == "xml:lang"
+                        || is_preserved_layout_attr(tag, attr_name)))
             {
-                return Err(invalid());
+                return Err(invalid_detail(format!(
+                    "Unsupported attribute '{attr_name}' on <{tag}>."
+                )));
             }
         }
         // Serialize with self-contained namespaces: an <svg> root carries
@@ -479,6 +548,10 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                 ));
                 continue;
             }
+            if attr_ns == Some("http://www.w3.org/XML/1998/namespace") && attr_name == "lang" {
+                html.push_str(&format!(" xml:lang=\"{}\"", escape_html_text(attr.value())));
+                continue;
+            }
             if matches!(attr_name, "colspan" | "rowspan")
                 && attr
                     .value()
@@ -499,19 +572,29 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                 if value.trim_start().starts_with("data:") {
                     image_bytes(value)?;
                 } else if !is_relative_resource(value) {
-                    return Err(invalid());
+                    return Err(invalid_detail(format!(
+                        "Unsupported <img src=\"{value}\">: use a book-relative image or a PNG/JPEG/GIF data URL under 8 MB."
+                    )));
                 }
             }
             if is_svg && tag == "image" && attr_name == "href" {
                 svg_image_href = Some(attr.value().to_string());
                 continue;
             }
-            if tag == "a" && attr_name == "href" && !is_relative_resource(attr.value()) {
-                // In-chapter anchors are relative too ("#note"); anything
-                // else with a scheme or absolute path stays rejected.
+            if tag == "a" && attr_name == "href" {
+                // Book-relative links and in-chapter anchors ("#note") always
+                // travel. Preserved outbound http(s)/mailto links are kept so
+                // a correctly-translated proposal is not rejected; preview
+                // keeps them inert and export carries the original reference.
+                // Anything else with a scheme or absolute path stays rejected.
                 let value = attr.value();
-                if !(value.starts_with('#') && !value.contains(':')) {
-                    return Err(invalid());
+                if !is_relative_resource(value)
+                    && !(value.starts_with('#') && !value.contains(':'))
+                    && !(document && is_safe_external_link(value))
+                {
+                    return Err(invalid_detail(format!(
+                        "Unsupported <a href=\"{value}\">: use a book-relative link, an in-chapter #anchor, or http(s)/mailto."
+                    )));
                 }
             }
             // The xmlns declarations themselves are namespace bindings, not
@@ -526,13 +609,15 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
             ));
         }
         if is_svg && tag == "image" {
-            let href = svg_image_href
-                .filter(|v| !v.is_empty())
-                .ok_or_else(invalid)?;
+            let href = svg_image_href.filter(|v| !v.is_empty()).ok_or_else(|| {
+                invalid_detail("An SVG <image> needs an href to a book-relative image.".to_string())
+            })?;
             if href.trim_start().starts_with("data:") {
                 image_bytes(&href)?;
             } else if !is_relative_resource(&href) {
-                return Err(invalid());
+                return Err(invalid_detail(format!(
+                    "Unsupported SVG image href \"{href}\": use a book-relative image."
+                )));
             }
             let escaped = escape_html_text(&href);
             html.push_str(&format!(" href=\"{escaped}\" xlink:href=\"{escaped}\""));
@@ -541,7 +626,7 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
             html.push_str(" xmlns:epub=\"http://www.idpf.org/2007/ops\"");
         }
         if tag == "img" && node.attribute("src").is_none() {
-            return Err(invalid());
+            return Err(invalid_detail("<img> needs a src attribute.".to_string()));
         }
         if matches!(tag, "img" | "br" | "hr")
             || (is_svg
@@ -558,7 +643,7 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                 ))
         {
             if node.children().next().is_some() {
-                return Err(invalid());
+                return Err(invalid_detail(format!("<{tag}> must stay empty.")));
             }
             html.push_str("/>");
             if tag == "br" {
@@ -629,6 +714,32 @@ mod document_tests {
             "<a href=\"x\"><a href=\"y\">bad</a></a>",
         ] {
             assert!(validate_document(html).is_err(), "{html}");
+        }
+    }
+    #[test]
+    fn preserved_book_links_layout_attrs_and_xml_lang_round_trip() {
+        // Real books carry outbound links, xml:lang and table presentational
+        // attributes. A proposal that preserves them must not be rejected.
+        let html = "<p xml:lang=\"en\">See <a href=\"https://example.com/page\">site</a> and <a href=\"mailto:a@example.com\">mail</a></p><table border=\"1\" cellpadding=\"4\"><tbody><tr><td align=\"center\" valign=\"top\" scope=\"col\">Hi</td></tr></tbody></table>";
+        let (saved, _) = validate_document(html).expect("preserved book attrs");
+        assert!(saved.contains("https://example.com/page"), "{saved}");
+        assert!(saved.contains("xml:lang=\"en\""), "{saved}");
+        assert!(saved.contains("border=\"1\""), "{saved}");
+        // Active schemes and handlers still fail, with a named reason.
+        for bad in [
+            "<p><a href=\"javascript:alert(1)\">x</a></p>",
+            "<p onclick=\"evil()\">x</p>",
+            "<p><font>old</font></p>",
+        ] {
+            let err = validate_document(bad).expect_err(bad);
+            assert!(
+                err.message.contains("unsupported formatting")
+                    && (err.message.contains("<font>")
+                        || err.message.contains("href")
+                        || err.message.contains("onclick")),
+                "{bad}: {}",
+                err.message
+            );
         }
     }
 }

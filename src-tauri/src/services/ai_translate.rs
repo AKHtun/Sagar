@@ -595,10 +595,47 @@ fn check_skeleton(original: &str, proposal: &str) -> Result<(), AppError> {
     if expected == actual {
         Ok(())
     } else {
+        // Name the first divergence so Retry can fix exactly one thing.
+        let hint = expected
+            .iter()
+            .zip(actual.iter())
+            .enumerate()
+            .find(|(_, (a, b))| a != b)
+            .map(|(i, (a, b))| {
+                format!(
+                    " First difference at element {}: expected <{}> but found <{}>.",
+                    i + 1,
+                    describe_skeleton(a),
+                    describe_skeleton(b)
+                )
+            })
+            .unwrap_or_else(|| {
+                format!(
+                    " Expected {} elements but found {}.",
+                    expected.len(),
+                    actual.len()
+                )
+            });
         Err(AppError::new(
             "proposal_structure_changed",
-            "The tool changed the chapter structure (tags or attributes). Nothing was inserted.",
+            format!(
+                "The tool changed the chapter structure (tags or attributes).{hint} Nothing was inserted."
+            ),
         ))
+    }
+}
+
+fn describe_skeleton(entry: &(usize, String, Vec<(String, String)>)) -> String {
+    let attrs = entry
+        .2
+        .iter()
+        .map(|(k, v)| format!("{k}=\"{v}\""))
+        .collect::<Vec<_>>()
+        .join(" ");
+    if attrs.is_empty() {
+        entry.1.clone()
+    } else {
+        format!("{} {}", entry.1, attrs)
     }
 }
 
