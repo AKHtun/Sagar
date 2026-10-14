@@ -76,14 +76,22 @@ pub fn build_translation_prompt(
     format!(
         "Translate this book chapter from {source} into language \"{target}\".\n\
          \n\
-         The text below is the chapter's HTML. Translate ONLY the human-readable\n\
+         The text below is the chapter's XHTML. Translate ONLY the human-readable\n\
          text between the tags.\n\
          \n\
          Rules:\n\
          - Keep every tag, attribute, id, href, src, class and entity exactly\n\
            as-is. Do not add, remove, reorder or rename any element.\n\
          - Tables, images, links and formatting must round-trip unchanged.\n\
-         - Output only the translated HTML fragment: no explanations, no\n\
+         - Return valid, well-formed XHTML suitable for the body of an EPUB\n\
+           XHTML document, never Markdown or plain text.\n\
+         - Close every element, nest tags correctly, quote all attribute values,\n\
+           and self-close void elements (for example <br/> and <img .../>).\n\
+         - Escape literal & and < in translated text as &amp; and &lt;. Use\n\
+           XML predefined entities or numeric character references; do not\n\
+           introduce HTML-only named entities such as &nbsp;. Preserve Unicode.\n\
+         - Check the complete output for XHTML well-formedness before returning it.\n\
+         - Output only the translated XHTML body fragment: no explanations, no\n\
            commentary, no code fences, and no <html>, <head> or <body> wrapper.\n\
          \n\
          HTML to translate:\n\
@@ -1186,6 +1194,17 @@ mod tests {
         assert!(prompt.contains(body), "{prompt}");
         assert!(prompt.contains("Keep every tag"), "{prompt}");
         assert!(prompt.contains("no code fences"), "{prompt}");
+        assert!(
+            prompt.contains("Return valid, well-formed XHTML"),
+            "{prompt}"
+        );
+        assert!(prompt.contains("quote all attribute values"), "{prompt}");
+        assert!(prompt.contains("self-close void elements"), "{prompt}");
+        assert!(prompt.contains("&amp; and &lt;"), "{prompt}");
+        assert!(
+            prompt.contains("introduce HTML-only named entities"),
+            "{prompt}"
+        );
     }
 
     #[test]

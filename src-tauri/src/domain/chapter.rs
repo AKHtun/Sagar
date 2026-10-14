@@ -30,6 +30,8 @@ pub struct ChapterContent {
     pub resource_href: String,
     pub blocks: Vec<BlockView>,
     pub source_document: String,
+    pub source_prefix: String,
+    pub source_suffix: String,
     pub preview_html: String,
     pub images: Vec<ChapterImage>,
     pub document: ChapterDocument,

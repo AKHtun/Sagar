@@ -814,6 +814,39 @@ pub(crate) fn chapter_body_inner(original: &[u8]) -> Result<String, AppError> {
     Ok(source[start..end].to_string())
 }
 
+/// Read-only document context for HTML authoring; original bytes are retained.
+pub(crate) fn chapter_document_shell(original: &[u8]) -> Result<(String, String), AppError> {
+    let invalid = || {
+        AppError::new(
+            "invalid_epub",
+            "The chapter document wrapper could not be read.",
+        )
+    };
+    let source = std::str::from_utf8(original).map_err(|_| invalid())?;
+    let doc = roxmltree::Document::parse(source).map_err(|_| invalid())?;
+    let body = doc
+        .descendants()
+        .find(|n| n.has_tag_name(("http://www.w3.org/1999/xhtml", "body")))
+        .ok_or_else(invalid)?;
+    let range = body.range();
+    let mut reader = quick_xml::Reader::from_str(&source[range.clone()]);
+    match reader.read_event().map_err(|_| invalid())? {
+        quick_xml::events::Event::Start(_) => {
+            let start = range.start + reader.buffer_position() as usize;
+            let end = range.start + source[range.clone()].rfind('<').ok_or_else(invalid)?;
+            Ok((source[..start].to_owned(), source[end..].to_owned()))
+        }
+        quick_xml::events::Event::Empty(element) => {
+            let name = element.name().as_ref().to_owned();
+            Ok((
+                format!("{}>", &source[..range.end - 2]),
+                format!("</{name}>{}", &source[range.end..]),
+            ))
+        }
+        _ => Err(invalid()),
+    }
+}
+
 /// Replace the authored chapter body, preserving its outer attributes, head,
 /// source resources and old anchor IDs so existing navigation remains resolvable.
 fn replace_chapter_body(original: &[u8], html: &str) -> Result<Vec<u8>, AppError> {
@@ -880,11 +913,39 @@ fn replace_chapter_body(original: &[u8], html: &str) -> Result<Vec<u8>, AppError
 mod chapter_document_tests {
     use super::*;
     #[test]
+    fn translated_body_preserves_document_head_stylesheets_and_body_class() {
+        let source = r#"<?xml version='1.0' encoding='utf-8'?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+  <head>
+    <title>Synthetic book</title>
+    <meta name="generator" content="fixture"/>
+    <link rel="stylesheet" type="text/css" href="stylesheet.css"/>
+    <link rel="stylesheet" type="text/css" href="page_styles.css"/>
+  </head>
+  <body class="calibre"><p class="calibre1">Original</p></body>
+</html>"#;
+        let translated = "<p class=\"calibre1\">မင်္ဂလာပါ</p>";
+        let output = replace_chapter_body(source.as_bytes(), translated).expect("replace");
+        let expected = source.replace("<p class=\"calibre1\">Original</p>", translated);
+        assert_eq!(output, expected.as_bytes());
+        let (prefix, suffix) = chapter_document_shell(source.as_bytes()).expect("shell");
+        assert_eq!(format!("{prefix}{translated}{suffix}"), expected);
+    }
+
+    #[test]
     fn replaces_prefixed_and_empty_bodies_without_losing_attributes() {
         for source in [
             r#"<x:html xmlns:x="http://www.w3.org/1999/xhtml"><x:head><x:title>T</x:title></x:head><x:body id="chapter"><x:p id="anchor">Original</x:p></x:body></x:html>"#,
             r#"<html xmlns="http://www.w3.org/1999/xhtml"><head><title>T</title></head><body id="chapter"/></html>"#,
         ] {
+            let (prefix, suffix) = chapter_document_shell(source.as_bytes()).expect("shell");
+            let displayed = format!("{prefix}<p>မြန်မာ</p>{suffix}");
+            let displayed_doc = roxmltree::Document::parse(&displayed).expect("display xml");
+            assert!(
+                displayed_doc
+                    .descendants()
+                    .any(|node| node.attribute("id") == Some("chapter"))
+            );
             let output = replace_chapter_body(source.as_bytes(), "<h2>New</h2><p>Free text</p>")
                 .expect("replace");
             let text = std::str::from_utf8(&output).expect("utf8");

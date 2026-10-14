@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Icon } from "./Icon";
 
 export type NoticeKind = "loading" | "success" | "error" | "info";
 
@@ -43,6 +44,7 @@ export function StatusNotice({
             {action}
             {onRetry ? (
               <button type="button" className="btn" onClick={onRetry}>
+                <Icon name="book" />
                 {retryLabel}
               </button>
             ) : null}

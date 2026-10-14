@@ -3,6 +3,7 @@ import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table
 import { type Editor, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef } from "react";
+import { BookAnchor } from "./bookAnchor";
 import { BookAttributes } from "./bookAttributes";
 import { documentFragment } from "./richText";
 import { useSlashMenu } from "./useSlashMenu";
@@ -32,6 +33,7 @@ export function ChapterEditor({
   const editor = useEditor({
     extensions: [
       BookAttributes,
+      BookAnchor,
       ChapterTable.configure({ resizable: false }),
       TableRow,
       TableCell,
@@ -44,6 +46,7 @@ export function ChapterEditor({
       Image.configure({ allowBase64: true }),
     ],
     content: html || "<p></p>",
+    parseOptions: { preserveWhitespace: true },
     editable: !disabled,
     editorProps: {
       handleKeyDown: (_view, event) => keyHandler.current(event),

@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/react";
+import { Icon } from "../../components/Icon";
 import type { BlockView } from "../../types/chapter";
 import { RichBlockEditor } from "./RichBlockEditor";
 import { hasContent, plainFragment } from "./richText";
@@ -70,6 +71,7 @@ export function BlockEditorRow({
             }}
             disabled={state?.conflict ?? false}
           >
+            <Icon name="copy" />
             {block.sourceEditorHtml !== null ? "Copy original" : "Copy text only"}
           </button>
           <button
@@ -83,6 +85,7 @@ export function BlockEditorRow({
                 : "Enter a translation first"
             }
           >
+            <Icon name="check" />
             Mark reviewed
           </button>
           {status === "skipped" ? (
@@ -91,6 +94,7 @@ export function BlockEditorRow({
               className="btn btn--small"
               onClick={() => onTranslateAgain(block.id, block.sourcePlainText)}
             >
+              <Icon name="edit" />
               Translate instead
             </button>
           ) : (
@@ -101,6 +105,7 @@ export function BlockEditorRow({
               disabled={state?.conflict ?? false}
               title="Keep the original text for this block in the exported book"
             >
+              <Icon name="keep" />
               Keep original
             </button>
           )}
@@ -127,6 +132,7 @@ export function BlockEditorRow({
             className="btn btn--small"
             onClick={onReloadAfterConflict}
           >
+            <Icon name="refresh" />
             Reload saved content
           </button>
         </div>
@@ -138,6 +144,7 @@ export function BlockEditorRow({
             className="btn btn--small"
             onClick={() => onRetry(block.id)}
           >
+            <Icon name="refresh" />
             Retry
           </button>
         </div>

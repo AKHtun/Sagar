@@ -318,6 +318,7 @@ export function WorkspaceFrame({
               className="btn"
               onClick={() => setWarningsVisible(false)}
             >
+              <Icon name="close" />
               Dismiss
             </button>
           </div>
@@ -423,6 +424,7 @@ export function WorkspaceFrame({
             onClick={() => setLangOpen(true)}
             title="Show and change the translation languages"
           >
+            <Icon name="languages" />
             {formatDirection(project.sourceLanguage, project.targetLanguage)}
           </button>
         ) : null}
@@ -487,6 +489,7 @@ function ExportOutcomePanel({
             Export {outcome.mode === "completed" ? "completed" : "draft"} finished
           </h2>
           <button type="button" className="btn" onClick={onDismiss}>
+            <Icon name="close" />
             Close
           </button>
         </div>

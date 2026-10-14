@@ -27,6 +27,8 @@ export type ChapterContent = {
   resourceHref: string;
   blocks: BlockView[];
   sourceDocument: string;
+  sourcePrefix: string;
+  sourceSuffix: string;
   previewHtml: string;
   images: { src: string; alt: string }[];
   document: {

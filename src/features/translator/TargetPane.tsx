@@ -81,7 +81,9 @@ export function TargetPane({
       if (currentHtml.current !== html || destination.isDestroyed) return;
       const wrapper = document.createElement("div");
       wrapper.innerHTML = validated;
-      const parsed = ProseMirrorParser.fromSchema(destination.schema).parse(wrapper);
+      const parsed = ProseMirrorParser.fromSchema(destination.schema).parse(wrapper, {
+        preserveWhitespace: true,
+      });
       const roundTrip = document.createElement("div");
       roundTrip.append(
         DOMSerializer.fromSchema(destination.schema).serializeFragment(parsed.content),
@@ -96,7 +98,9 @@ export function TargetPane({
         );
         return;
       }
-      destination.commands.setContent(validated || "<p></p>", { emitUpdate: false });
+      // Apply the exact document that passed the preservation check, rather
+      // than parsing the HTML a second time with different whitespace options.
+      destination.commands.setContent(parsed.toJSON(), { emitUpdate: false });
       setView("rich");
     } catch (error) {
       if (currentHtml.current !== html || destination.isDestroyed) return;
@@ -280,7 +284,7 @@ export function TargetPane({
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => activeEditor?.chain().focus().setHeading({ level }).run()}
           >
-            H{level}
+            <Icon name="richText" />H{level}
           </button>
         ))}
         <span className="editor-toolbar__divider" />
@@ -441,6 +445,7 @@ export function TargetPane({
               className="btn btn--small"
               onClick={() => setImagePicker(false)}
             >
+              <Icon name="close" />
               Close
             </button>
           </div>
@@ -449,6 +454,7 @@ export function TargetPane({
             className="btn"
             onClick={() => fileInput.current?.click()}
           >
+            <Icon name="upload" />
             Import image from computer…
           </button>
           <p className="dialog__muted">Images from this chapter</p>
@@ -460,6 +466,7 @@ export function TargetPane({
                   key={image.src}
                   onClick={() => insertImage(image.src, image.alt)}
                 >
+                  <Icon name="image" />
                   <img src={image.src} alt={image.alt} />
                   <span>{image.alt || "Chapter image"}</span>
                 </button>
@@ -552,7 +559,9 @@ export function TargetPane({
             setFixConfirmOpen(false);
             setViewError(null);
             editor.setHtml(formatChapterHtml(fixedHtml));
-            setView("rich");
+            // Keep the corrected code visible. Rich conversion remains an
+            // explicit action with the usual validation/preservation checks.
+            setView("html");
           }}
           onClose={() => setFixConfirmOpen(false)}
         />

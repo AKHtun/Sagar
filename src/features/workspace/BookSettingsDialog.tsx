@@ -167,6 +167,7 @@ export function BookSettingsDialog({
             aria-pressed={tab === "metadata"}
             onClick={() => setTab("metadata")}
           >
+            <Icon name="book" />
             Metadata
           </button>
           <button
@@ -175,6 +176,7 @@ export function BookSettingsDialog({
             aria-pressed={tab === "instructions"}
             onClick={() => setTab("instructions")}
           >
+            <Icon name="sparkles" />
             AI instructions
           </button>
         </fieldset>
@@ -239,6 +241,7 @@ export function BookSettingsDialog({
                       disabled={saving || readingCover}
                       onClick={() => setSettings({ ...settings, customCover: null })}
                     >
+                      <Icon name="keep" />
                       Use original cover
                     </button>
                   ) : null}
@@ -311,6 +314,7 @@ export function BookSettingsDialog({
                 disabled={saving || readingCover}
                 onClick={onClose}
               >
+                <Icon name="close" />
                 Cancel
               </button>
               <button
@@ -318,6 +322,7 @@ export function BookSettingsDialog({
                 className="btn btn--primary"
                 disabled={saving || readingCover}
               >
+                <Icon name="save" />
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>

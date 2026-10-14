@@ -190,6 +190,7 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
               className="btn btn--primary"
               onClick={() => onOpenProject(duplicate.existing.id, [])}
             >
+              <Icon name="book" />
               Continue “{duplicate.existing.title}”
             </button>
             <button
@@ -197,9 +198,11 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
               className="btn"
               onClick={() => void importPath(duplicate.path, duplicate.fileName, true)}
             >
+              <Icon name="upload" />
               Import as separate project
             </button>
             <button type="button" className="btn" onClick={() => setDuplicate(null)}>
+              <Icon name="close" />
               Cancel
             </button>
           </div>
@@ -395,6 +398,7 @@ function ConfirmRemoveDialog({
         </p>
         <div className="button-row dialog__actions">
           <button type="button" className="btn" onClick={onCancel} ref={cancelRef}>
+            <Icon name="close" />
             Cancel
           </button>
           <button
@@ -457,7 +461,10 @@ function ProjectRow({
           )}
         </span>
         <span className="project-row__main">
-          <span className="project-row__title">{project.title}</span>
+          <span className="project-row__title">
+            <Icon name="book" />
+            {project.title}
+          </span>
           <span className="project-row__meta">
             {project.author ?? "Unknown author"}{" "}
             <span className="project-row__language">

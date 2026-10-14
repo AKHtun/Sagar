@@ -94,6 +94,7 @@ export function ChapterSidebar({
               setFocusId(null);
             }}
           >
+            <Icon name="refresh" />
             Clear filters
           </button>
         </div>
@@ -115,7 +116,10 @@ export function ChapterSidebar({
                     {String(chapter.spineIndex + 1).padStart(2, "0")}
                   </span>
                   <span>
-                    <span className="chapter-list__title">{chapter.title}</span>
+                    <span className="chapter-list__title">
+                      <Icon name="book" />
+                      {chapter.title}
+                    </span>
                     <span className="chapter-list__status">
                       {statusLabel(chapter, isActive ? chapterStatusOverride : null)}
                     </span>

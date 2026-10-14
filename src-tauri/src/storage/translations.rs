@@ -85,6 +85,8 @@ pub fn get_chapter_content(
     }
 
     Ok(ChapterContent {
+        source_prefix: String::new(),
+        source_suffix: String::new(),
         chapter_id: chapter_id.to_string(),
         title: chapter.0,
         resource_href: chapter.1,

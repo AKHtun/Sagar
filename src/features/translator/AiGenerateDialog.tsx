@@ -431,6 +431,7 @@ export function AiGenerateDialog({
                     disabled={!consent || editor.draft?.conflict === true}
                     onClick={() => void handleGenerate()}
                   >
+                    <Icon name="refresh" />
                     {phase === "failed" ? "Retry" : "Generate"}
                   </button>
                 </div>
@@ -440,6 +441,7 @@ export function AiGenerateDialog({
             {running ? (
               <div className="button-row">
                 <button type="button" className="btn" onClick={handleCancel}>
+                  <Icon name="close" />
                   Cancel run
                 </button>
               </div>
@@ -487,9 +489,11 @@ export function AiGenerateDialog({
                     disabled={!editor.draft || editor.draft.conflict}
                     onClick={handleInsert}
                   >
+                    <Icon name="check" />
                     {confirmInsert ? "Confirm replace draft" : "Insert into draft"}
                   </button>
                   <button type="button" className="btn" onClick={handleCopy}>
+                    <Icon name="copy" />
                     {copied ? "Copied" : "Copy text"}
                   </button>
                 </div>

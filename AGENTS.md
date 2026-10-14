@@ -143,6 +143,7 @@ outside the agreed product scope.
 - Use consistent alignment, spacing, typography, borders, radii, and control heights from `src/styles/tokens.css` and existing shared styles. Extend a shared pattern instead of adding conflicting CSS overrides for individual screens.
 
 **Controls and icons**
+- Every button with visible text must pair its label with a relevant icon from the shared `Icon` component. Text-only buttons are not allowed; icon-only buttons are allowed with accessible names and tooltips. Apply this consistently to primary/secondary actions, tabs, pickers and list buttons. Use an X icon-only button for dialog-header dismissal, and use “Save” as the save action label (with “Saving…” while pending).
 - Use the shared `Icon` component and `icon-button` pattern for compact toolbar actions. Default pane-header icon buttons are 34 × 34 px with 18 px icons; match sizes within each group. Avoid mixing text buttons with different heights or padding for equivalent toolbar actions.
 - Use recognizable icons for Reader/Rich text, HTML, AI, formatting, paragraph (¶), review, and settings. Keep clear text labels for consequential primary actions such as Save and Export, and for form fields or ambiguous choices.
 - Every icon-only button must have an action-specific accessible name and tooltip. Show selected views with `aria-pressed`, disclosures with `aria-expanded` and `aria-controls`, and a visible active style.

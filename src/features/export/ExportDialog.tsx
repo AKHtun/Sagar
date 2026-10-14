@@ -1,5 +1,6 @@
 // biome-ignore-all lint/a11y/noNoninteractiveTabindex: the scrollable chapter region must support keyboard scrolling.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
 import {
   exportEpub,
@@ -176,8 +177,15 @@ export function ExportDialog({
           <h2 className="panel__heading" id="export-dialog-title">
             Export EPUB
           </h2>
-          <button type="button" className="btn" disabled={exporting} onClick={onClose}>
-            Cancel
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Close"
+            title="Close"
+            disabled={exporting}
+            onClick={onClose}
+          >
+            <Icon name="close" />
           </button>
         </div>
 
@@ -340,6 +348,7 @@ export function ExportDialog({
                       : "Finish reviewing every chapter to enable a completed export"
                   }
                 >
+                  <Icon name="download" />
                   Export completed EPUB
                 </button>
                 <button
@@ -358,6 +367,7 @@ export function ExportDialog({
                       : undefined
                   }
                 >
+                  <Icon name="download" />
                   Export draft…
                 </button>
               </div>

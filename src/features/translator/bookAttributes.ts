@@ -8,6 +8,7 @@ export const BookAttributes = Extension.create({
       {
         types: [
           "paragraph",
+          "bookAnchor",
           "table",
           "tableRow",
           "tableCell",

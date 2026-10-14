@@ -1,5 +1,50 @@
 # Plan.md — EPUB Translation Studio
 
+### HTML view simplification — 2026-10-14
+
+The user's latest preference supersedes displaying the read-only document
+wrapper: HTML view shows only editable chapter content, with no wrapper
+explanation. Original head, stylesheet links and body attributes remain
+preserved by export. Native verification remains pending on a current build.
+
+### Button consistency — 2026-10-14
+
+All visible text buttons pair their labels with shared icons; icon-only actions
+remain supported. Language and export dialog header dismissal uses an accessible
+X button, and language saving uses Save/Saving…. Shared tab, heading and language
+control spacing accommodates icon/text groups. AGENTS.md records this convention.
+Frontend lint/build and all four tests passed; a source audit found no remaining
+text-only buttons. The running native app still shows an older build, so current
+native light/dark, minimum-size and keyboard verification remains unfinished.
+Next task: verify the updated buttons in a rebuilt desktop app. No milestones
+are advanced.
+
+### Full XHTML authoring context — 2026-10-14
+
+Translation HTML view shows the original XML declaration, document head,
+stylesheet links and opening body above the editable chapter body, followed
+by the original closing wrapper. The wrapper is read-only and comes from
+namespace-aware source parsing in Rust, with original bytes retained for
+ordinary bodies. Empty bodies are displayed with expanded opening/closing
+tags. Saved drafts remain body content; export retains the source wrapper.
+Regression tests verify stylesheet/head/body-class preservation and prefixed
+and empty bodies. Frontend lint/build and four tests, Rust formatting and
+the Rust suite passed (large-book sweep remains ignored). Next unfinished task:
+restart the desktop development build and verify this view at normal/minimum
+sizes in both themes, with keyboard and Myanmar IME checks. Milestones remain
+unchanged.
+
+### EPUB anchor preservation — 2026-10-14
+
+Rich chapter editing now represents empty `a[id]` navigation targets as inline
+nodes and preserves paragraph whitespace when loading or converting XHTML.
+HTML-to-Rich applies the exact parsed document that passed the existing loss
+check. A synthetic Myanmar regression fixture covers anchors, links, trailing
+spaces, edits and reloads; the supplied chapter also passed a local round-trip
+check. Native IME, minimum-window, light/dark and cross-OS checks remain open.
+No milestone checkboxes are advanced. Next unfinished task: verify this
+conversion and Myanmar composition in the running desktop build.
+
 **Status:** Milestones 0–4 implemented and verified on macOS (import → translate → autosave → export). Milestone 5 is partially done: polish/docs verified on macOS; installers and cross-OS checks remain open (see docs/release-checklist.md).  
 **Target:** Windows, macOS and Linux  
 **Phase 1:** Manual side-by-side EPUB translation and EPUB export  

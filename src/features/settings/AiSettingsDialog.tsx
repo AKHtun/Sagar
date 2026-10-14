@@ -311,6 +311,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
             className="tab"
             onClick={() => setTab("appearance")}
           >
+            <Icon name="sun" />
             Appearance
           </button>
           <button
@@ -323,6 +324,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
             className="tab"
             onClick={() => setTab("providers")}
           >
+            <Icon name="sparkles" />
             Providers
           </button>
           <button
@@ -335,6 +337,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
             className="tab"
             onClick={() => setTab("translation")}
           >
+            <Icon name="sparkles" />
             Translation Model
           </button>
         </div>
@@ -408,6 +411,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                             disabled={isChecking}
                             onClick={() => void handleCheck(provider.id)}
                           >
+                            <Icon name="refresh" />
                             {isChecking ? "Checking…" : "Check"}
                           </button>
                         </div>
@@ -458,6 +462,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                               disabled={isTesting}
                               onClick={() => void handleTest(provider.id)}
                             >
+                              <Icon name="refresh" />
                               {isTesting ? "Testing…" : "Test"}
                             </button>
                             <button
@@ -465,6 +470,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                               className="btn"
                               onClick={() => openEditForm(provider)}
                             >
+                              <Icon name="edit" />
                               Edit
                             </button>
                             <button
@@ -475,6 +481,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                               disabled={busyDelete}
                               onClick={() => void handleDelete(provider.id)}
                             >
+                              <Icon name="trash" />
                               {confirmDelete === provider.id
                                 ? "Confirm delete"
                                 : "Delete"}
@@ -485,6 +492,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                                 className="btn"
                                 onClick={() => setConfirmDelete(null)}
                               >
+                                <Icon name="close" />
                                 Cancel
                               </button>
                             ) : null}
@@ -501,6 +509,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                       className="btn btn--primary"
                       onClick={openAddForm}
                     >
+                      <Icon name="plus" />
                       Add custom provider
                     </button>
                   </div>
@@ -595,6 +604,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                         setFormOpen(false);
                       }}
                     >
+                      <Icon name="close" />
                       Cancel
                     </button>
                     <button
@@ -603,11 +613,8 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                       disabled={form.saving}
                       onClick={() => void handleSaveForm()}
                     >
-                      {form.saving
-                        ? "Saving…"
-                        : form.editingId
-                          ? "Save changes"
-                          : "Add provider"}
+                      <Icon name="save" />
+                      {form.saving ? "Saving…" : form.editingId ? "Save" : "Add provider"}
                     </button>
                   </div>
                 </section>

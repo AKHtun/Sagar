@@ -301,6 +301,7 @@ export function AiFixHtmlDialog({
                     disabled={!consent}
                     onClick={() => void handleFix()}
                   >
+                    <Icon name="refresh" />
                     {phase === "failed" ? "Retry repair" : "Yes, fix with AI"}
                   </button>
                 </div>
@@ -310,6 +311,7 @@ export function AiFixHtmlDialog({
             {running ? (
               <div className="button-row">
                 <button type="button" className="btn" onClick={handleCancelRun}>
+                  <Icon name="close" />
                   Cancel run
                 </button>
               </div>
@@ -356,6 +358,7 @@ export function AiFixHtmlDialog({
                     className="btn btn--primary"
                     onClick={() => onApply(fixed)}
                   >
+                    <Icon name="check" />
                     Apply fixed HTML
                   </button>
                 </div>

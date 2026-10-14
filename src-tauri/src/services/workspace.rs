@@ -62,6 +62,8 @@ pub fn get_chapter(
     let bytes = archive.read_entry(&base_resource)?;
     content.source_document = String::from_utf8(bytes)
         .map_err(|_| AppError::new("invalid_epub", "The chapter is not UTF-8 XHTML."))?;
+    (content.source_prefix, content.source_suffix) =
+        epub::export::chapter_document_shell(content.source_document.as_bytes())?;
     let doc = roxmltree::Document::parse(&content.source_document)
         .map_err(|_| AppError::new("invalid_epub", "The chapter XHTML could not be read."))?;
     if let Some(body) = doc

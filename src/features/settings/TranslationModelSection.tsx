@@ -356,6 +356,7 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
           disabled={saving || loading || draft.trim() === ""}
           onClick={() => void handleSave()}
         >
+          <Icon name="save" />
           {saving ? "Saving…" : "Save"}
         </button>
       </div>

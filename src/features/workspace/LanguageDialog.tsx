@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
 import { formatDirection, languageSuggestions } from "../../lib/languages";
 import { getProject, updateProjectMetadata } from "../../lib/tauri/commands";
@@ -111,8 +112,15 @@ export function LanguageDialog({ project, onClose, onSaved }: LanguageDialogProp
           <h2 className="panel__heading" id="language-dialog-title">
             Translation languages
           </h2>
-          <button type="button" className="btn" disabled={saving} onClick={onClose}>
-            Cancel
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Close"
+            title="Close"
+            disabled={saving}
+            onClick={onClose}
+          >
+            <Icon name="close" />
           </button>
         </div>
 
@@ -190,7 +198,8 @@ export function LanguageDialog({ project, onClose, onSaved }: LanguageDialogProp
             disabled={saving}
             onClick={() => void handleSave()}
           >
-            {saving ? "Saving…" : "Save languages"}
+            <Icon name="save" />
+            {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>
