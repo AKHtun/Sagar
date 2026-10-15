@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatChapterHtml } from "../../lib/html/format";
+import { appendAiSelectionResults } from "../../lib/tauri/aiSelection";
 import { saveChapterDocument } from "../../lib/tauri/commands";
 import type { BlockStatus, ChapterContent } from "../../types/chapter";
 import type { SaveIndicator } from "./useTranslationEditor";
@@ -20,6 +21,9 @@ export function useChapterEditor(content: ChapterContent | null) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inflight = useRef<Promise<boolean> | null>(null);
   const [saving, setSaving] = useState(false);
+  const externalWrite = useRef(false);
+  const pendingAppend = useRef<Promise<void> | null>(null);
+  const [appending, setAppending] = useState(false);
   const publish = useCallback((next: Draft | null) => {
     latest.current = next;
     setDraft(next);
@@ -102,7 +106,8 @@ export function useChapterEditor(content: ChapterContent | null) {
   const setHtml = useCallback(
     (html: string) => {
       const current = latest.current;
-      if (!current || current.conflict || current.html === html) return;
+      if (!current || externalWrite.current || current.conflict || current.html === html)
+        return;
       publish({
         ...current,
         html,
@@ -119,7 +124,7 @@ export function useChapterEditor(content: ChapterContent | null) {
     },
     [publish, save],
   );
-  const flushAll = useCallback(async (): Promise<boolean> => {
+  const flushPending = useCallback(async (): Promise<boolean> => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     if (latest.current?.error) return false;
@@ -130,10 +135,14 @@ export function useChapterEditor(content: ChapterContent | null) {
     }
     return true;
   }, [save]);
+  const flushAll = useCallback(async (): Promise<boolean> => {
+    if (pendingAppend.current) await pendingAppend.current;
+    return flushPending();
+  }, [flushPending]);
   const setStatus = useCallback(
     (status: BlockStatus) => {
       const current = latest.current;
-      if (!current || current.conflict) return;
+      if (!current || externalWrite.current || current.conflict) return;
       publish({
         ...current,
         status,
@@ -153,9 +162,64 @@ export function useChapterEditor(content: ChapterContent | null) {
     publish({ ...current, error: null });
     void save();
   }, [publish, save]);
+  const appendProposals = useCallback(
+    async (input: {
+      proposalIds: string[];
+      requestId: string;
+      allowAgain: boolean;
+      confirmOutOfOrder: boolean;
+    }) => {
+      if (externalWrite.current) throw new Error("An append is already being saved.");
+      externalWrite.current = true;
+      setAppending(true);
+      let finishAppend = () => {};
+      pendingAppend.current = new Promise<void>((resolve) => {
+        finishAppend = resolve;
+      });
+      try {
+        if (!(await flushPending()))
+          throw new Error(
+            "Save the current chapter successfully before appending results.",
+          );
+        const snapshot = latest.current;
+        if (!snapshot || snapshot.conflict)
+          throw new Error("Reload the current chapter before appending.");
+        const result = await appendAiSelectionResults({
+          ...input,
+          chapterId: snapshot.chapterId,
+          expectedRevision: snapshot.revision,
+        });
+        const current = latest.current;
+        if (
+          current?.chapterId !== snapshot.chapterId ||
+          current.version !== snapshot.version
+        ) {
+          throw new Error(
+            "The chapter changed while appending. Reopen it to load the saved result.",
+          );
+        }
+        publish({
+          ...current,
+          html: formatChapterHtml(result.html ?? ""),
+          revision: result.revision,
+          version: current.version + 1,
+          status: "draft",
+          dirty: false,
+          error: null,
+          conflict: false,
+        });
+      } finally {
+        externalWrite.current = false;
+        setAppending(false);
+        pendingAppend.current = null;
+        finishAppend();
+      }
+    },
+    [flushPending, publish],
+  );
   const indicator: SaveIndicator = draft?.error
     ? "error"
-    : saving
+    : saving || appending
       ? "saving"
       : draft?.dirty
         ? "unsaved"
@@ -167,5 +231,15 @@ export function useChapterEditor(content: ChapterContent | null) {
       : draft.status === "draft"
         ? "in_progress"
         : "not_started";
-  return { draft, setHtml, setStatus, retry, flushAll, indicator, chapterStatus };
+  return {
+    draft,
+    setHtml,
+    setStatus,
+    retry,
+    flushAll,
+    indicator,
+    chapterStatus,
+    appendProposals,
+    appending,
+  };
 }

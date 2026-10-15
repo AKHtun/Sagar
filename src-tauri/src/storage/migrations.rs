@@ -142,6 +142,28 @@ const MIGRATIONS: &[(i64, &str)] = &[
         "ALTER TABLE projects ADD COLUMN original_source_path TEXT;",
     ),
     (9, "ALTER TABLE projects ADD COLUMN custom_cover TEXT;"),
+    (10, "CREATE TABLE ai_selection_units (
+        id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+        source_order INTEGER NOT NULL, locator TEXT NOT NULL, fingerprint TEXT NOT NULL,
+        data TEXT NOT NULL, UNIQUE(chapter_id,locator));
+      CREATE TABLE ai_selection_runs (
+        id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+        config TEXT NOT NULL, state TEXT NOT NULL, message TEXT, budget INTEGER NOT NULL DEFAULT 4096,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE ai_selection_items (
+        id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES ai_selection_runs(id) ON DELETE CASCADE,
+        unit_id TEXT NOT NULL REFERENCES ai_selection_units(id) ON DELETE CASCADE,
+        state TEXT NOT NULL, proposal TEXT, UNIQUE(run_id,unit_id));
+      CREATE TABLE ai_selection_parts (
+        id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES ai_selection_items(id) ON DELETE CASCADE,
+        part_order INTEGER NOT NULL, node_index INTEGER NOT NULL, start_byte INTEGER NOT NULL,
+        end_byte INTEGER NOT NULL, source TEXT NOT NULL, output TEXT, state TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0, failed_output TEXT);
+      CREATE TABLE ai_selection_appends (
+        request_id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+        proposal_ids TEXT NOT NULL, revision INTEGER NOT NULL, created_at TEXT NOT NULL);
+      CREATE INDEX ai_selection_runs_chapter ON ai_selection_runs(chapter_id,created_at);
+      CREATE INDEX ai_selection_parts_item ON ai_selection_parts(item_id,part_order);"),
 ];
 
 /// Highest defined schema version. Currently asserted on by tests; production
@@ -187,6 +209,29 @@ mod tests {
             );
             previous = *version;
         }
+    }
+
+    #[test]
+    fn selection_upgrade_preserves_saved_chapter_and_source_identity() {
+        let conn = rusqlite::Connection::open_in_memory().expect("db");
+        for (version, script) in MIGRATIONS.iter().filter(|(version, _)| *version <= 9) {
+            conn.execute_batch(script).expect("prior migration");
+            conn.pragma_update(None, "user_version", version)
+                .expect("version");
+        }
+        conn.execute_batch("INSERT INTO projects(id,source_sha256,source_snapshot_path,title,created_at,updated_at) VALUES('p','immutable-hash','projects/p/source.epub','T','t','t'); INSERT INTO chapters(id,project_id,spine_index,manifest_item_id,resource_href,title) VALUES('c','p',0,'c','c.xhtml','C'); INSERT INTO chapter_documents(chapter_id,html,status,revision,authored) VALUES('c','<p>မြန်မာစာ</p>','reviewed',5,1);").expect("saved v9 project");
+        apply(&conn).expect("upgrade");
+        apply(&conn).expect("idempotent");
+        let row:(String,String,i64,String)=conn.query_row("SELECT p.source_sha256,d.html,d.revision,d.status FROM projects p JOIN chapters c ON c.project_id=p.id JOIN chapter_documents d ON d.chapter_id=c.id",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).expect("preserved");
+        assert_eq!(
+            row,
+            (
+                "immutable-hash".into(),
+                "<p>မြန်မာစာ</p>".into(),
+                5,
+                "reviewed".into()
+            )
+        );
     }
 }
 

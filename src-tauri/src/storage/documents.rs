@@ -69,6 +69,21 @@ pub fn save(
     status: &str,
     revision: i64,
 ) -> Result<SaveResult, AppError> {
+    let tx = conn.unchecked_transaction()?;
+    let result = save_in_transaction(&tx, chapter_id, html, status, revision)?;
+    tx.commit()?;
+    Ok(result)
+}
+
+/// Caller owns the transaction so an advanced append and its receipt commit
+/// together. Normal chapter saves use the same validation/revision rules.
+pub(crate) fn save_in_transaction(
+    conn: &Connection,
+    chapter_id: &str,
+    html: Option<String>,
+    status: &str,
+    revision: i64,
+) -> Result<SaveResult, AppError> {
     if !matches!(status, "draft" | "reviewed" | "skipped") {
         return Err(AppError::new("invalid_status", "Invalid chapter status."));
     }
@@ -80,8 +95,8 @@ pub fn save(
             "Write a translation first, or choose Keep original chapter.",
         ));
     }
-    let tx = conn.unchecked_transaction()?;
-    let current = load(&tx, chapter_id)?;
+    let tx = conn;
+    let current = load(tx, chapter_id)?;
     if current.revision != revision {
         return Err(AppError::new(
             "revision_conflict",
@@ -117,7 +132,6 @@ pub fn save(
         "UPDATE projects SET updated_at=?1 WHERE id=(SELECT project_id FROM chapters WHERE id=?2)",
         rusqlite::params![now, chapter_id],
     )?;
-    tx.commit()?;
     Ok(SaveResult {
         block_id: chapter_id.into(),
         revision: revision + 1,

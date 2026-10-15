@@ -1,5 +1,26 @@
 # Plan.md — EPUB Translation Studio
 
+### Borderless table styles in Rich text — 2026-10-15
+
+Milestone 2 compatibility follow-up: the translation validator now permits
+allowlisted inline table borders, spacing, padding, sizing and alignment styles,
+while retaining URL/function/positioning restrictions. Rich tables derive an
+editor-only border hint from parsed CSS (including shorthand precedence) or
+legacy border="0". Borderless layout/verse tables omit default cell borders and
+padding; explicit cell styles, regular grids and selection feedback remain.
+Protected table previews derive the same hint without mounting imported CSS.
+Saved/exported XHTML retains styles, classes and EPUB semantics, excluding the
+editor hint. Book stylesheets are still not applied inside the Rich editor.
+
+The supplied verse fixture covers normalization, Myanmar typing, reload,
+external draft insertion, HTML/Rich switching, save/export/reopen and unchanged
+source bytes. All 50 frontend tests, lint/build and the full Rust suite passed;
+the existing bundle-size warning and ignored probes remain. Browser component checks cover
+light/dark appearance at 1280×800 and 960×640, empty/typed/restored content and
+Myanmar text. Native IME, current desktop rebuild and Windows/Linux checks remain
+open. Next unfinished task: rebuild/restart Sagar and verify the affected chapter
+in the desktop app. No milestone checkboxes advanced.
+
 ### Rich text normalization and book compatibility — 2026-10-14
 
 Supersedes preserving every empty decoration below. Conversion now removes
@@ -1195,3 +1216,22 @@ large bundle warning. No running development build was available for rendered
 light/dark, minimum-window, keyboard or native interaction verification.
 Next unfinished task: verify both layouts in the desktop app at 1280×800 and
 960×640 in both themes; Windows/Linux release checks remain open.
+
+### Selected-content translation — 2026-10-15 (explicitly authorized)
+
+The AI dialog retains Whole chapter as its default and adds Selected paragraphs
+with durable text/table/figure/image selections, bounded sequential requests,
+preview, and explicit append into the independent chapter draft. Migration 10
+stores stable source identities, configuration snapshots, checkpoints and atomic,
+idempotent append receipts. Images and source markup are reconstructed locally;
+image bytes and paths are excluded from provider requests. Unsupported image
+structures remain visible with reasons. See [AI follow-ups](later-ai-translation.md)
+for implementation and verification details. No release milestone is advanced.
+
+Verification: 47 frontend tests and 206 Rust tests passed (four existing ignored
+tests); lint, TypeScript, production build and Rust formatting passed. Rendered
+synthetic-fixture checks covered both themes at 1280×800 and 960×640, preview
+images, Myanmar text, keyboard focus and Escape. Native IME, live providers,
+Windows/Linux and EPUBCheck remain unverified. Next unfinished task: rebuild and
+restart the native app, then verify consented generation, cancellation, retry,
+append and export/reopen with Myanmar IME and real book assets.

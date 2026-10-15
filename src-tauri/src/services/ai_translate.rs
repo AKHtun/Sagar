@@ -784,13 +784,16 @@ impl ProviderJsonStream {
     }
 }
 
-enum TranslationProvider {
+pub(super) enum TranslationProvider {
     Cli(CliProviderId, PathBuf),
     Custom(crate::storage::ai_providers::CustomSecret),
 }
 
 impl TranslationProvider {
-    fn prepare(data_dir: &Path, agent: &ai_settings::TranslationAgent) -> Result<Self, AppError> {
+    pub(super) fn prepare(
+        data_dir: &Path,
+        agent: &ai_settings::TranslationAgent,
+    ) -> Result<Self, AppError> {
         match agent {
             ai_settings::TranslationAgent::Cli(id) => {
                 let binary = ai_settings::find_cli_binary(*id).ok_or_else(|| {
@@ -817,7 +820,7 @@ impl TranslationProvider {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn execute(
+    pub(super) fn execute(
         &self,
         model: &str,
         prompt: &str,
@@ -1170,7 +1173,7 @@ fn stderr_tail(stderr: &[u8]) -> String {
     format!("\n\nTool output:\n{tail}")
 }
 
-fn create_work_dir(job_id: &str) -> Result<PathBuf, AppError> {
+pub(super) fn create_work_dir(job_id: &str) -> Result<PathBuf, AppError> {
     let dir = std::env::temp_dir().join(format!("sagar-ai-{job_id}"));
     std::fs::create_dir_all(&dir)
         .map_err(|_| AppError::new("task_failed", "The translation job could not start."))?;
@@ -1258,7 +1261,7 @@ where
     if body_html.chars().count() > MAX_SOURCE_CHARS {
         return Err(AppError::new(
             "chapter_too_long",
-            "This chapter is too long for a single proposal.",
+            "This chapter is too long for one request. Switch to Selected paragraphs.",
         ));
     }
     let (prefix, remaining) =

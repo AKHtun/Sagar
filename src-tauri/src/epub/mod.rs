@@ -311,3 +311,4 @@ mod tests {
         assert_eq!(percent_decode_path("%41%42"), "AB");
     }
 }
+pub mod selection;

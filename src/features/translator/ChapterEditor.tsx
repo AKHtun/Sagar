@@ -5,7 +5,8 @@ import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState } from "react";
 import { BookAnchor } from "./bookAnchor";
 import { BookAttributes } from "./bookAttributes";
-import { BookStructure, BookTableCell, BookTableHeader } from "./bookStructure";
+import { bookImageView } from "./bookImages";
+import { BookTableCell, BookTableHeader, createBookStructure } from "./bookStructure";
 import { documentFragment, normalizeRichDocument } from "./richText";
 import { useSlashMenu } from "./useSlashMenu";
 
@@ -22,6 +23,7 @@ export function ChapterEditor({
   onReady,
   onImage,
   active,
+  imageBase = "",
 }: {
   html: string;
   disabled: boolean;
@@ -29,12 +31,13 @@ export function ChapterEditor({
   onReady: (editor: Editor) => void;
   onImage: () => void;
   active: boolean;
+  imageBase?: string;
 }) {
   const keyHandler = useRef<(event: KeyboardEvent) => boolean>(() => false);
   const [initialHtml] = useState(() => normalizeRichDocument(html) || "<p></p>");
   const editor = useEditor({
     extensions: [
-      ...BookStructure,
+      ...createBookStructure(imageBase),
       BookAttributes,
       BookAnchor,
       ChapterTable.configure({ resizable: false }),
@@ -45,7 +48,9 @@ export function ChapterEditor({
         trailingNode: false,
         link: { openOnClick: false, autolink: false },
       }),
-      Image.configure({ allowBase64: true }),
+      Image.extend({ addNodeView: () => bookImageView(imageBase) }).configure({
+        allowBase64: true,
+      }),
     ],
     content: initialHtml,
     parseOptions: { preserveWhitespace: true },

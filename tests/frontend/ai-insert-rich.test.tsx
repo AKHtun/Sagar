@@ -135,6 +135,7 @@ for (const proposal of [
   '<h1 class="title">မြန်မာပုံပြင်</h1><h3 class="subtitle"><em></em></h3><p>Body with မြန်မာစာ။</p>',
   '<div>Body with <small>မြန်မာ</small><p>Paragraph</p>Loose text</div><ul><li>Text</li></ul>',
   '<p>Body with table</p><table><caption>ဇယား</caption><thead><tr><th>ခေါင်းစဉ်</th></tr></thead><tbody><tr><td>စာသား</td></tr></tbody></table><p>After</p>',
+  '<p>Body with verse</p>' + await Bun.file(new URL("../fixtures/editor/borderless-table.xhtml", import.meta.url)).text(),
   (await Bun.file(new URL("../fixtures/ai/link-target.xhtml", import.meta.url)).text())
     .replace("<header/>", "<header></header>")
     .replace("<footer/>", "<footer></footer>"),
@@ -203,6 +204,13 @@ for (const proposal of [
       await settle(window);
       expect(richButton?.getAttribute("aria-pressed")).toBe("true");
       expect(container.querySelector('textarea[aria-label="Translation HTML code"]')).toBeNull();
+      if (proposal.includes('class="simplelist"')) {
+        expect(richEditor?.querySelector('table[data-book-borderless="true"]')).not.toBeNull();
+        await act(async () => { expect(await api?.flushAll()).toBe(true); });
+        expect(lastSavedHtml).toContain('class="simplelist"');
+        expect(lastSavedHtml).toMatch(/style="border: 0(?:px)?;\s*"/);
+        expect(lastSavedHtml).not.toContain("data-book-borderless");
+      }
     } finally {
       await act(async () => root.unmount());
       container.remove();

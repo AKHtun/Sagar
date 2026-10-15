@@ -879,6 +879,59 @@ fn book_semantics_and_table_sections_save_export_and_reopen() {
 }
 
 #[test]
+fn borderless_table_styles_save_export_and_reopen() {
+    let dir = tempdir();
+    let data_dir = dir.join("data");
+    let files = rich_book_files();
+    let refs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "source.epub", &refs);
+    let original = std::fs::read(&source).expect("source");
+    let book = import_rich_book(&data_dir, &source);
+    let html = include_str!("../../tests/fixtures/editor/borderless-table.xhtml").trim();
+    let (validated, _) = epub::rich_text::validate_document(html).expect("validate styled table");
+    services::workspace::save_chapter_document(
+        &data_dir,
+        &book.chapter_ids[0],
+        Some(html.into()),
+        "draft",
+        0,
+    )
+    .expect("save styled table");
+    let loaded =
+        services::workspace::get_chapter(&data_dir, &book.project_id, &book.chapter_ids[0])
+            .expect("reload styled table");
+    assert_eq!(loaded.document.html.as_deref(), Some(validated.as_str()));
+    let destination = dir.join("borderless.epub");
+    services::export::export_epub(
+        &data_dir,
+        ExportRequest {
+            project_id: book.project_id,
+            destination: destination.clone(),
+            mode: "draft".into(),
+            title: None,
+            language: None,
+            include_original: true,
+        },
+    )
+    .expect("export styled table");
+    let mut archive =
+        zip::ZipArchive::new(std::fs::File::open(&destination).expect("file")).expect("zip");
+    let mut output = String::new();
+    archive
+        .by_name("OEBPS/ch1.xhtml")
+        .expect("chapter")
+        .read_to_string(&mut output)
+        .expect("read");
+    assert!(output.contains(&validated));
+    assert!(!output.contains("data-book-borderless"));
+    epub::inspect(&destination).expect("reopen exported EPUB");
+    assert_eq!(std::fs::read(source).expect("unchanged source"), original);
+}
+
+#[test]
 fn authored_tables_save_reload_export_and_reopen() {
     let dir = tempdir();
     let data_dir = tempdir();

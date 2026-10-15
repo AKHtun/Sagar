@@ -43,7 +43,7 @@ bun run version:set -- 0.1.4   # bump files without committing/tagging
 bun run hooks:install          # reinstall the pre-push guard (auto-runs on bun install)
 ```
 
-There is no git hook for tag *creation*, so the `pre-push` hook validates
+There is no git hook for tag creation, so the `pre-push` hook validates
 the tagged commit itself and blocks mismatched tags before they reach CI.
 
 ## How it works
@@ -76,6 +76,30 @@ re-validated before the app reports success.
 WebView's local storage, separate from translations.
 
 ## Translate using AI
+
+The AI dialog supports two workflows:
+
+- **Whole**** ****chapter** keeps the original Generate/Retry workflow for short chapters.
+- **Selected**** ****paragraphs** lets you choose passages, whole tables, and standalone
+images. Text is translated in small sequential requests; long paragraphs and
+tables are reconstructed locally. Preview completed results and choose
+**Append**** ****selected**** ****results** to add them to the end of your current draft.
+
+Images are included in previews, the draft, and EPUB export without sending
+their bytes to the translation provider. Figures keep their captions; captions
+are translated as text. Unsupported or missing resources are shown explicitly.
+
+Selected-mode proposals and completed parts are saved locally. A failed batch
+pauses the queue: Retry the failed batch, Retry with smaller batches, or Skip and
+continue. Resume uses the saved run's original model, language direction and
+instructions. Changing these settings starts a new run. Closing cancels active
+work, and restarting never resumes a provider request automatically.
+
+Appending preserves existing writing, saves a chapter draft, and does not mark
+it reviewed. Insertion history covers selected mode only; it does not infer
+what you subsequently edit or delete. Unselected source content is not copied
+into the authored chapter, so review completeness and links before exporting.
+
 Use your own subscription instead of using Token.
 Sagar is supporting 
 - Codex

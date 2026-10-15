@@ -945,7 +945,8 @@ mod document_tests {
     }
 }
 
-/// Permit book typography without network fetches, overlays or active CSS.
+/// Permit book typography and table presentation without network fetches,
+/// overlays or active CSS.
 pub fn validate_style(style: &str) -> Result<(), AppError> {
     for declaration in style.split(';').filter(|part| !part.trim().is_empty()) {
         let Some((property, value)) = declaration.split_once(':') else {
@@ -983,13 +984,47 @@ pub fn validate_style(style: &str) -> Result<(), AppError> {
                 | "text-indent"
                 | "letter-spacing"
                 | "word-spacing"
+                | "border"
+                | "border-width"
+                | "border-style"
+                | "border-color"
+                | "border-top"
+                | "border-right"
+                | "border-bottom"
+                | "border-left"
+                | "border-top-width"
+                | "border-right-width"
+                | "border-bottom-width"
+                | "border-left-width"
+                | "border-top-style"
+                | "border-right-style"
+                | "border-bottom-style"
+                | "border-left-style"
+                | "border-top-color"
+                | "border-right-color"
+                | "border-bottom-color"
+                | "border-left-color"
+                | "border-collapse"
+                | "border-spacing"
+                | "table-layout"
+                | "caption-side"
+                | "empty-cells"
+                | "vertical-align"
+                | "width"
+                | "height"
+                | "max-width"
+                | "padding"
+                | "padding-top"
+                | "padding-right"
+                | "padding-bottom"
+                | "padding-left"
         ) || value.contains(['@', '\\', '<', '>'])
             || value.contains(['(', ')']) && !color_function
         {
             return Err(AppError::new(
                 "invalid_translation",
                 format!(
-                    "The inline CSS property {} or its value is not supported. Use text typography styles without URLs or positioning.",
+                    "The inline CSS property {} or its value is not supported. Use typography or table styles without URLs or positioning.",
                     property.trim()
                 ),
             ));
@@ -1001,6 +1036,29 @@ pub fn validate_style(style: &str) -> Result<(), AppError> {
 #[cfg(test)]
 mod copied_document_tests {
     use super::*;
+    #[test]
+    fn borderless_table_and_safe_presentation_styles_round_trip() {
+        let input = include_str!("../../../tests/fixtures/editor/borderless-table.xhtml").trim();
+        let (saved, _) = validate_document(input).expect("borderless verse table");
+        assert!(saved.contains("style=\"border: 0; \""));
+        assert!(saved.contains("class=\"simplelist\""));
+        assert!(saved.contains("epub:type=\"list\""));
+        assert!(saved.contains("&quot;Ach! du lieber Augustin,"));
+        assert_eq!(validate_document(&saved).expect("reload").0, saved);
+        validate_style("border: none; border-width: 0px; border-bottom: 1px solid red; border-collapse: collapse; border-spacing: 0; padding: 0 1em; width: 80%; vertical-align: top; table-layout: auto;")
+            .expect("safe table presentation");
+        for style in [
+            "border: url(https://example.com/border)",
+            "border-image: url(https://example.com/border)",
+            "width: expression(alert(1))",
+            "padding: var(--untrusted)",
+            "border: 0; position: fixed",
+            "border: 0; @import: evil",
+            "border: \\75rl(remote)",
+        ] {
+            assert!(validate_style(style).is_err(), "{style}");
+        }
+    }
     #[test]
     fn common_book_inline_semantics_and_protected_tables_are_export_safe() {
         let input = include_str!("../../../tests/fixtures/editor/book-compatibility.xhtml").trim();

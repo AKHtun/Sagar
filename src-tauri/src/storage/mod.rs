@@ -2,6 +2,7 @@
 //! issues SQL; it goes through commands → services → this module.
 
 pub mod ai_providers;
+pub mod ai_selection;
 pub mod ai_translate;
 pub mod documents;
 pub mod migrations;

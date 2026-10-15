@@ -795,6 +795,83 @@ button {
   font-size: var(--text-sm);
 }
 
+.ai-mode {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.dialog--selection > .panel__header {
+  position: sticky;
+  top: calc(-1 * var(--space-4));
+  z-index: 3;
+  background: var(--color-surface);
+  padding-block: var(--space-3);
+}
+.ai-selection__actions {
+  position: sticky;
+  bottom: calc(-1 * var(--space-6));
+  z-index: 2;
+  background: var(--color-surface);
+  border-top: var(--border-subtle);
+  padding-block: var(--space-3);
+}
+.ai-selection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.ai-selection__list {
+  max-height: 340px;
+  overflow: auto;
+  border: var(--border-subtle);
+  border-radius: var(--radius-control);
+}
+.ai-selection__item {
+  padding: var(--space-3);
+  border-bottom: var(--border-subtle);
+  overflow-wrap: anywhere;
+}
+.ai-selection__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+.ai-selection__choice input {
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.ai-selection__choice small {
+  display: block;
+  color: var(--color-text-muted);
+}
+.ai-selection__preview {
+  font-family: var(--font-book);
+  line-height: var(--leading-book);
+  overflow: auto;
+  max-height: 420px;
+  padding: var(--space-2);
+}
+.ai-selection__preview img,
+.book-protected-content img {
+  max-width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+}
+.ai-selection__preview table {
+  border-collapse: collapse;
+}
+.ai-selection__preview td,
+.ai-selection__preview th {
+  border: var(--border-subtle);
+  padding: var(--space-2);
+}
+.ai-selection textarea,
+.ai-selection select {
+  max-width: 100%;
+}
+
 .dialog__actions {
   justify-content: flex-end;
 }
@@ -1996,6 +2073,28 @@ button {
 .chapter-editor th {
   font-weight: 600;
   background: var(--color-bg);
+}
+/* Layout/verse tables must not acquire the authored grid's presentation.
+   Inline cell styles still take precedence; nested grids keep their borders. */
+.chapter-editor table[data-book-borderless] {
+  width: auto;
+  table-layout: auto;
+}
+.chapter-editor
+  table[data-book-borderless]
+  > :is(thead, tbody, tfoot)
+  > tr
+  > :is(td, th) {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.chapter-editor
+  table[data-book-borderless]
+  > :is(thead, tbody, tfoot)
+  > tr
+  > th:not(.selectedCell) {
+  background: transparent;
 }
 .chapter-editor :is(td, th) :where(p) {
   margin: 0;

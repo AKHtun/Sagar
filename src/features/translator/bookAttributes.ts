@@ -1,11 +1,22 @@
 import { Extension } from "@tiptap/react";
 import { bookStructureNames } from "./bookStructure";
+import { tableAppearanceAttributes } from "./tableAppearance";
 
 /** Retain source XHTML attributes when switching/editing in rich text. */
 export const BookAttributes = Extension.create({
   name: "bookAttributes",
   addGlobalAttributes() {
     return [
+      {
+        types: ["table"],
+        attributes: {
+          bookTableAppearance: {
+            default: null,
+            parseHTML: () => null,
+            renderHTML: tableAppearanceAttributes,
+          },
+        },
+      },
       {
         types: [
           ...bookStructureNames,

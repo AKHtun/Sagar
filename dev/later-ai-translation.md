@@ -1,10 +1,53 @@
 # Later — AI translation (explicitly NOT Phase 1)
 
-**Status:** Deferred — requires explicit user authorization; outside product Phase 1  
+**Status:** Explicitly authorized slices implemented below; broader roadmap remains deferred, outside product Phase 1
 **Source:** [Master plan](plan.md)  
 **Repository rules:** [AGENTS.md](../AGENTS.md)
 
 This file covers a deferred roadmap track. It does not authorize implementation or change the MVP scope.
+
+### Whole-chapter and selected-content translation — 2026-10-15
+
+The explicitly requested selected-content workflow is implemented alongside the
+existing Whole chapter default. Selection begins empty; users can select available
+or untranslated units, preview saved proposals, and explicitly append accepted
+results. Tables and figures are complete units. Standalone images require no
+provider call; inline images remain at their source positions. Repeated resource
+uses have distinct source identities. Source assets remain unchanged; SVG,
+responsive/unsupported structures and missing resources show actionable reasons.
+
+Rust owns namespace-aware selection, Unicode sentence/word/grapheme splitting,
+text-range reconstruction and validation. Original markup, attributes, links,
+image references and table structure stay local. Ancestor wrappers and ordered
+list numbering survive noncontiguous selections. Requests run sequentially with
+a 4 KiB selected-XHTML budget, 24 KiB complete-prompt limit, up to 512 UTF-8 bytes
+of neighboring context on each side, and 64 KiB output limit per part. Smaller
+retry halves the source budget down to 512 bytes without discarding checkpoints.
+Indivisible oversized fragments are reported without truncation.
+
+Migration 10 preserves existing drafts and stores source units, runs,
+configuration snapshots, parts and append receipts without credentials or
+duplicating image bytes. Failures pause the queue; retry, smaller retry, skip,
+cancel and explicit consented resume retain completed work. Interrupted runs
+recover paused. Append flushes edits, prevents competing writes, checks revision
+and source identity, validates duplicate IDs, and commits the draft and receipt
+in one transaction. Repeated request IDs are idempotent. Accepted results update
+the mounted Rich editor through its loss-aware path and remain Draft. Local image
+URLs are resolved only for display; serialized XHTML retains source references.
+
+Verification: `bun run check`, 47 frontend tests, Rust formatting and 206 Rust
+tests passed, with four existing ignored tests. Tests cover local HTTP provider
+failures, restart checkpoints, selection identity, Unicode, tables, image
+placement, append conflicts/idempotency and export/reopen with unchanged image
+bytes and source/snapshot hashes. Clippy reports existing warnings in unrelated
+code; the production build retains its bundle-size warning.
+
+Rendered synthetic-fixture checks covered 1280×800 and 960×640 in light/dark,
+loaded image/table previews, readable Myanmar text, focus wrapping and Escape.
+These do not verify native IME or live provider behavior. Next unfinished task:
+rebuild/restart native Sagar and smoke-test consented generation, cancel/retry,
+append and export/reopen with real assets and Myanmar IME. Windows/Linux and
+EPUBCheck checks remain open. Broader roadmap checkboxes below remain unchanged.
 
 ## Prerequisites
 

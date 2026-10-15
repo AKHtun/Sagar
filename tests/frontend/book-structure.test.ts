@@ -6,6 +6,7 @@ import Image from "@tiptap/extension-image";
 import { Table, TableRow } from "@tiptap/extension-table";
 import {
   BookStructure,
+  createBookStructure,
   BookTableCell,
   BookTableHeader,
 } from "../../src/features/translator/bookStructure";
@@ -13,6 +14,7 @@ import { BookAttributes } from "../../src/features/translator/bookAttributes";
 import { BookAnchor } from "../../src/features/translator/bookAnchor";
 import { comparableDocument, documentFragment, normalizeRichDocument } from "../../src/features/translator/richText";
 import { runSlashCommand } from "../../src/features/translator/useSlashMenu";
+import { bookImageView } from "../../src/features/translator/bookImages";
 
 const window = new Window();
 Object.assign(globalThis, {
@@ -42,6 +44,84 @@ function createEditor(html: string) {
     parseOptions: { preserveWhitespace: true },
   });
 }
+
+test("Borderless verse tables keep styles and EPUB semantics through typing and reload", async () => {
+  const source = await Bun.file(new URL("../fixtures/editor/borderless-table.xhtml", import.meta.url)).text();
+  const normalized = normalizeRichDocument(source);
+  const editor = createEditor(normalized);
+  try {
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(normalized));
+    expect(editor.view.dom.querySelector("table")?.getAttribute("data-book-borderless")).toBe("true");
+    let firstText = 0;
+    editor.state.doc.descendants((node, position) => {
+      if (node.isText && !firstText) firstText = position;
+    });
+    editor.commands.insertContentAt(firstText, "မင်္ဂလာပါ ");
+    const saved = documentFragment(editor.getHTML());
+    expect(saved).toMatch(/style="border: 0(?:px)?;"/);
+    expect(saved).toContain('class="simplelist"');
+    expect(saved).toContain('epub:type="list"');
+    expect(saved).toContain("မင်္ဂလာပါ ");
+    expect(saved).not.toContain("data-book-borderless");
+    editor.commands.setContent(saved, { parseOptions: { preserveWhitespace: true } });
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(saved));
+    expect(editor.view.dom.querySelector("table[data-book-borderless]")).not.toBeNull();
+    // Normal table editing remains available on these imported layout tables.
+    editor.commands.setTextSelection(firstText);
+    expect(editor.commands.addRowAfter()).toBe(true);
+    expect(editor.view.dom.querySelector("table[data-book-borderless]")).not.toBeNull();
+  } finally { editor.destroy(); }
+});
+
+test("Border hints respect CSS precedence, legacy borders, protected and nested tables", () => {
+  for (const [attributes, borderless] of [
+    ['style="border: none"', true],
+    ['style="border-width: 0px"', true],
+    ['style="border-style: hidden"', true],
+    ['border="0"', true],
+    ['border="0" style="border: 1px solid red"', false],
+    ['style="border: 0; border-bottom: 1px solid red"', false],
+    ['style="border: 1px solid red; border-width: 0"', true],
+    ['', false],
+  ] as const) {
+    const editor = createEditor(`<table ${attributes}><tbody><tr><td><p>Text</p></td></tr></tbody></table>`);
+    try {
+      expect(editor.view.dom.querySelector("table")?.hasAttribute("data-book-borderless")).toBe(borderless);
+    } finally { editor.destroy(); }
+  }
+  const html = '<table style="border:0"><caption>Verse</caption><tbody><tr><td><p>မြန်မာ</p><table><tbody><tr><td><p>Grid</p></td></tr></tbody></table></td></tr></tbody></table>';
+  const editor = createEditor(html);
+  try {
+    const tables = editor.view.dom.querySelectorAll("table");
+    expect(tables[0].hasAttribute("data-book-borderless")).toBe(true);
+    expect(tables[1].hasAttribute("data-book-borderless")).toBe(false);
+    expect(editor.view.dom.querySelector("[style]")).toBeNull();
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(html));
+  } finally { editor.destroy(); }
+});
+
+test("local inline, standalone and protected-table images display without changing saved resource references", () => {
+  const html = '<p>မြန်မာ <img src="images/river.png" alt="Inline"/> စာ</p><img src="images/river.png" alt="Standalone"/><table><caption>Table</caption><tbody><tr><td><img src="images/river.png" alt="Table image"/></td></tr></tbody></table>';
+  const base = "epubres://p/OEBPS/chapter.xhtml";
+  const editor = new Editor({
+    extensions: [...createBookStructure(base), BookAttributes, BookAnchor,
+      ChapterTable.configure({ resizable: false }), TableRow, BookTableCell, BookTableHeader,
+      StarterKit.configure({ trailingNode: false, link: { openOnClick: false, autolink: false } }),
+      Image.extend({ addNodeView: () => bookImageView(base) }).configure({ allowBase64: true })],
+    content: html, parseOptions: { preserveWhitespace: true },
+  });
+  try {
+    const images = [...editor.view.dom.querySelectorAll("img")];
+    expect(images.length).toBe(3);
+    expect(images.map((img) => img.alt)).toEqual(["Inline", "Standalone", "Table image"]);
+    for (const image of images) expect(image.getAttribute("src")).toContain("p/OEBPS/images/river.png");
+    const saved = editor.getHTML();
+    expect(saved.match(/src="images\/river.png"/g)?.length).toBe(3);
+    expect(saved).not.toContain("epubres://");
+    expect(saved).not.toContain("epubres.localhost");
+    expect(comparableDocument(saved)).toBe(comparableDocument(html));
+  } finally { editor.destroy(); }
+});
 
 test("Rich normalization drops empty decoration but preserves anchors, semantics and whitespace", () => {
   const input = '<h3 class="subtitle"><em></em></h3><div class="empty"><span></span></div><p>မြန်မာ <em>စာ</em>။</p>';

@@ -620,7 +620,7 @@ export function TargetPane({
                 <HtmlCodeEditor
                   key={content.chapterId}
                   value={editor.draft?.html ?? content.document.html ?? ""}
-                  disabled={editor.draft?.conflict ?? false}
+                  disabled={(editor.draft?.conflict ?? false) || editor.appending}
                   onChange={(value) => {
                     setViewError(null);
                     editor.setHtml(value);
@@ -630,9 +630,10 @@ export function TargetPane({
             ) : null}
             <div hidden={view === "html"}>
               <ChapterEditor
+                imageBase={`epubres://${projectId}/${content.resourceHref}`}
                 key={content.chapterId}
                 html={editor.draft?.html ?? content.document.html ?? ""}
-                disabled={editor.draft?.conflict ?? false}
+                disabled={(editor.draft?.conflict ?? false) || editor.appending}
                 onChange={editor.setHtml}
                 onReady={handleEditorReady}
                 onImage={() => setImagePicker(true)}

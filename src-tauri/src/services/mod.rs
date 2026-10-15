@@ -2,6 +2,7 @@
 //! both Tauri plumbing and JSX concerns.
 
 pub mod ai;
+pub mod ai_selection;
 pub mod ai_translate;
 pub mod book_settings;
 mod codex_stream;

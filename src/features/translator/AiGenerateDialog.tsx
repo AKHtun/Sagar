@@ -18,6 +18,7 @@ import type {
 } from "../../types/ai";
 import type { ProjectSummary } from "../../types/project";
 import { agentLabel } from "../settings/TranslationModelSection";
+import { AiSelectionPanel } from "./AiSelectionPanel";
 import { ApiRequestDetails } from "./ApiRequestDetails";
 import { hasContent } from "./richText";
 import type { useChapterEditor } from "./useChapterEditor";
@@ -67,6 +68,10 @@ export function AiGenerateDialog({
   const [elapsed, setElapsed] = useState(0);
   const [stalledSecs, setStalledSecs] = useState(0);
   const [eventsDead, setEventsDead] = useState(false);
+  const [mode, setMode] = useState<"whole" | "selected">("whole");
+  const [selectedBusy, setSelectedBusy] = useState(false);
+  const appendPending = useRef(false);
+  appendPending.current = editor.appending ?? false;
   const lastOutputAt = useRef<number>(Date.now());
   const jobId = useRef<string | null>(null);
   const starting = useRef(false);
@@ -91,6 +96,7 @@ export function AiGenerateDialog({
   }, []);
 
   const handleClose = useCallback(() => {
+    if (appendPending.current) return;
     closed.current = true;
     // Closing mid-run cancels the job; the draft is always untouched.
     if (jobId.current) {
@@ -110,7 +116,7 @@ export function AiGenerateDialog({
       if (event.key === "Tab") {
         const controls = Array.from(
           dialogRef.current?.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]',
+            'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), summary, [tabindex="0"]',
           ) ?? [],
         );
         const first = controls[0];
@@ -355,7 +361,7 @@ export function AiGenerateDialog({
   return (
     <div className="dialog-backdrop">
       <div
-        className="dialog"
+        className={mode === "selected" ? "dialog dialog--selection" : "dialog"}
         role="dialog"
         aria-modal="true"
         aria-labelledby="ai-generate-title"
@@ -369,15 +375,59 @@ export function AiGenerateDialog({
           <button
             type="button"
             className="icon-button"
-            aria-label={running ? "Cancel and close" : "Close"}
-            title={running ? "Cancel and close" : "Close"}
+            aria-label={
+              !editor.appending && (running || selectedBusy)
+                ? "Cancel and close"
+                : "Close"
+            }
+            title={
+              editor.appending
+                ? "Wait for results to finish saving"
+                : running || selectedBusy
+                  ? "Cancel and close"
+                  : "Close"
+            }
+            disabled={editor.appending}
             onClick={handleClose}
           >
             <Icon name="close" />
           </button>
         </div>
 
-        {loadError ? (
+        <fieldset className="button-row ai-mode" aria-label="Translation mode">
+          <button
+            type="button"
+            className={mode === "whole" ? "btn btn--primary" : "btn"}
+            aria-pressed={mode === "whole"}
+            disabled={running || selectedBusy || editor.appending}
+            onClick={() => setMode("whole")}
+          >
+            <Icon name="book" />
+            Whole chapter
+          </button>
+          <button
+            type="button"
+            className={mode === "selected" ? "btn btn--primary" : "btn"}
+            aria-pressed={mode === "selected"}
+            disabled={running || selectedBusy || editor.appending}
+            onClick={() => setMode("selected")}
+          >
+            <Icon name="paragraph" />
+            Selected paragraphs
+          </button>
+        </fieldset>
+
+        {mode === "selected" ? (
+          <AiSelectionPanel
+            chapterId={chapterId}
+            selection={selection}
+            bookInstructions={bookInstructions}
+            currentInstructions={currentInstructions}
+            onInstructions={setCurrentInstructions}
+            editor={editor}
+            onBusy={setSelectedBusy}
+          />
+        ) : loadError ? (
           <StatusNotice kind="error">{loadError}</StatusNotice>
         ) : !providers ? (
           <StatusNotice kind="loading">Loading AI settings…</StatusNotice>

@@ -14,6 +14,50 @@ use crate::services::{self, HealthReport};
 use crate::storage::translations::SaveInput;
 
 #[tauri::command]
+pub async fn get_ai_selection_state(
+    app: AppHandle,
+    chapter_id: String,
+) -> Result<services::ai_selection::SelectionState, AppError> {
+    let dir = app_data_dir(&app)?;
+    run_blocking(move || services::ai_selection::load(&dir, &chapter_id)).await
+}
+
+#[tauri::command]
+pub async fn prepare_ai_selection_run(
+    app: AppHandle,
+    input: services::ai_selection::PrepareInput,
+) -> Result<String, AppError> {
+    let dir = app_data_dir(&app)?;
+    run_blocking(move || services::ai_selection::prepare(&dir, input)).await
+}
+
+#[tauri::command]
+pub async fn control_ai_selection_run(
+    app: AppHandle,
+    run_id: String,
+    action: String,
+    consent: bool,
+) -> Result<String, AppError> {
+    let dir = app_data_dir(&app)?;
+    let emitter = app.clone();
+    run_blocking(move || {
+        services::ai_selection::control(&dir, &run_id, &action, consent, move |event| {
+            let _ = emitter.emit("ai-selection-event", event);
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn append_ai_selection_results(
+    app: AppHandle,
+    input: services::ai_selection::AppendInput,
+) -> Result<services::ai_selection::AppendResult, AppError> {
+    let dir = app_data_dir(&app)?;
+    run_blocking(move || services::ai_selection::append(&dir, input)).await
+}
+
+#[tauri::command]
 pub fn health_check(app: AppHandle) -> Result<HealthReport, AppError> {
     services::health_check(&app)
 }
