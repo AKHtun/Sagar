@@ -1,5 +1,31 @@
 # Plan.md — EPUB Translation Studio
 
+### Rich text normalization and book compatibility — 2026-10-14
+
+Supersedes preserving every empty decoration below. Conversion now removes
+empty decorative headings/formatting/wrappers when only class attributes remain,
+retaining IDs, EPUB/ARIA semantics, styles, meaningful whitespace and assets.
+XHTML self-closing containers are parsed as XML before HTML conversion. Mixed
+inline/block containers, bare list items, quotations and plain table cells gain
+paragraph wrappers; only inter-block indentation is discarded. Cleanup enters
+the existing draft/autosave service after successful validation and preservation
+checks, with stale-result protection. Normal typing/composition does not reload
+or normalize the editor. Eight common inline semantic tags and ARIA attributes
+now round-trip. Tables with caption/thead/tfoot remain intact as protected,
+readable content in Rich view; surrounding prose remains editable, and HTML
+view owns edits to those tables. Their preview mounts no imported URLs/images/
+CSS. Basic authored tables retain existing editing tools.
+
+`bun run check`, all 41 frontend tests, Rust formatting and full Rust suite
+passed (existing ignored probes unchanged). Coverage includes cleanup persistence,
+HTML/Rich switching, Myanmar edits, whitespace/anchor preservation, mixed/list/
+table structures, protected table assets and save/export/reopen/source immutability.
+Existing bundle warning remains. The running desktop app was inspected and still
+showed its old conversion failure; it has not been rebuilt/restarted with this
+change. Updated native light/dark/minimum-size, keyboard/IME and Windows/Linux
+verification remain open. Next unfinished task: rebuild/restart and verify Rich
+conversion and cleanup in the desktop app. No milestone checkboxes advanced.
+
 ### Empty subtitle formatting in Rich text — 2026-10-14
 
 The supplied chapter failed HTML → Rich because Tiptap marks dropped the empty

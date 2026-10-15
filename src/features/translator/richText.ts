@@ -263,7 +263,26 @@ export function normalizeRichDocument(html: string): string {
       element.remove();
   }
   const blocks =
-    "p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,hr,table,div,section,article,main,header,footer,aside,figure,figcaption,pre,dl,dt,dd,svg,picture";
+    "p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,hr,table,thead,tbody,tfoot,tr,td,th,caption,div,section,article,main,header,footer,aside,figure,figcaption,pre,dl,dt,dd,svg,picture";
+  for (const parent of Array.from(
+    doc.querySelectorAll(
+      "body,ul,ol,table,thead,tbody,tfoot,tr,div,section,article,main,header,footer,aside,figure,figcaption,dd,li,blockquote,td,th",
+    ),
+  )) {
+    if (Array.from(parent.children).some((child) => child.matches(blocks))) {
+      for (const child of Array.from(parent.childNodes)) {
+        const besideInline = [child.previousSibling, child.nextSibling].some(
+          (sibling) => sibling instanceof Element && !sibling.matches(blocks),
+        );
+        if (
+          child.nodeType === Node.TEXT_NODE &&
+          !besideInline &&
+          /^[\t\r\n ]*$/.test(child.textContent ?? "")
+        )
+          child.remove();
+      }
+    }
+  }
   for (const parent of Array.from(
     doc.querySelectorAll(
       "body,div,section,article,main,header,footer,aside,figure,figcaption,dd,li,blockquote,td,th",

@@ -48,6 +48,7 @@ test("Rich normalization drops empty decoration but preserves anchors, semantics
   const cleaned = normalizeRichDocument(input);
   expect(cleaned).toBe('<p>မြန်မာ <em>စာ</em>။</p>');
   expect(normalizeRichDocument(cleaned)).toBe(cleaned);
+  expect(normalizeRichDocument('<header/><h1>Title</h1><footer/>')).toBe('<h1>Title</h1>');
   for (const retained of [
     '<h3 id="note"></h3>', '<h3 epub:type="subtitle"></h3>',
     '<h3 role="heading"></h3>', '<h3 aria-label="Subtitle"></h3>',
@@ -61,6 +62,7 @@ test("Rich normalization drops empty decoration but preserves anchors, semantics
 test("Rich normalizes mixed book containers, bare lists and plain table cells", () => {
   const examples = [
     '<div>Before <em>မြန်မာ</em><p>Middle</p>After <strong>စာ</strong></div>',
+    '<div><span>မြန်မာ</span> <strong>စာ</strong><p>Paragraph</p></div>',
     '<ul><li>မြန်မာ <small>စာ</small></li><li>Two</li></ul>',
     '<blockquote>Quoted <cite>မြန်မာစာ</cite></blockquote>',
     '<table><tbody><tr><td>မြန်မာ <abbr title="Meaning">စာ</abbr></td></tr></tbody></table>',

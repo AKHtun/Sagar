@@ -146,8 +146,7 @@ export function TargetPane({
       // Apply the exact document that passed the preservation check, rather
       // than parsing the HTML a second time with different whitespace options.
       destination.commands.setContent(parsed.toJSON(), { emitUpdate: false });
-      if (normalizeRichDocument(html) !== html && validated !== html)
-        editor.setHtml(validated);
+      if (validated !== html) editor.setHtml(validated);
       setView("rich");
     } catch (error) {
       if (currentHtml.current !== html || destination.isDestroyed) return;
