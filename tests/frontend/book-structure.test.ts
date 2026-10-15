@@ -11,7 +11,7 @@ import {
 } from "../../src/features/translator/bookStructure";
 import { BookAttributes } from "../../src/features/translator/bookAttributes";
 import { BookAnchor } from "../../src/features/translator/bookAnchor";
-import { comparableDocument, documentFragment } from "../../src/features/translator/richText";
+import { comparableDocument, documentFragment, normalizeRichDocument } from "../../src/features/translator/richText";
 import { runSlashCommand } from "../../src/features/translator/useSlashMenu";
 
 const window = new Window();
@@ -42,6 +42,116 @@ function createEditor(html: string) {
     parseOptions: { preserveWhitespace: true },
   });
 }
+
+test("Rich normalization drops empty decoration but preserves anchors, semantics and whitespace", () => {
+  const input = '<h3 class="subtitle"><em></em></h3><div class="empty"><span></span></div><p>မြန်မာ <em>စာ</em>။</p>';
+  const cleaned = normalizeRichDocument(input);
+  expect(cleaned).toBe('<p>မြန်မာ <em>စာ</em>။</p>');
+  expect(normalizeRichDocument(cleaned)).toBe(cleaned);
+  for (const retained of [
+    '<h3 id="note"></h3>', '<h3 epub:type="subtitle"></h3>',
+    '<h3 role="heading"></h3>', '<h3 aria-label="Subtitle"></h3>',
+    '<h3 style="margin:1em"></h3>', '<h3> </h3>', '<p></p>',
+    '<a id="anchor"></a>', '<pre>  \n </pre>', '<p><img src="book.png"/></p>',
+  ]) {
+    expect(normalizeRichDocument(retained)).toContain(retained);
+  }
+});
+
+test("Rich normalizes mixed book containers, bare lists and plain table cells", () => {
+  const examples = [
+    '<div>Before <em>မြန်မာ</em><p>Middle</p>After <strong>စာ</strong></div>',
+    '<ul><li>မြန်မာ <small>စာ</small></li><li>Two</li></ul>',
+    '<blockquote>Quoted <cite>မြန်မာစာ</cite></blockquote>',
+    '<table><tbody><tr><td>မြန်မာ <abbr title="Meaning">စာ</abbr></td></tr></tbody></table>',
+    '<p aria-describedby="note">Text <small>small</small> <kbd>key</kbd><samp>output</samp><var>x</var><dfn>term</dfn><mark>mark</mark></p>',
+  ];
+  for (const html of examples) {
+    const cleaned = normalizeRichDocument(html);
+    expect(normalizeRichDocument(cleaned)).toBe(cleaned);
+    const before = new DOMParser().parseFromString(html, "text/html");
+    const after = new DOMParser().parseFromString(cleaned, "text/html");
+    expect(after.body.textContent).toBe(before.body.textContent);
+    const editor = createEditor(cleaned);
+    try {
+      expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(cleaned));
+      const saved = documentFragment(editor.getHTML());
+      editor.commands.setContent(saved, { parseOptions: { preserveWhitespace: true } });
+      expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(cleaned));
+    } finally { editor.destroy(); }
+  }
+});
+
+test("Protected tables retain assets and links without mounting them in the editor", () => {
+  const html = '<p>Before</p><table><caption>Caption</caption><thead><tr><th id="heading">မြန်မာ</th></tr></thead><tbody><tr><td><a href="https://example.com">Link</a><img src="image.png" alt="Asset"/></td></tr></tbody><tfoot><tr><td>Foot</td></tr></tfoot></table><p>After</p>';
+  const editor = createEditor(html);
+  try {
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(html));
+    expect(editor.view.dom.querySelector("img,a[href],script")).toBeNull();
+    expect(editor.view.dom.textContent).toContain("မြန်မာ");
+    editor.commands.insertContentAt(1, "မင်္ဂလာပါ ");
+    expect(editor.getHTML()).toContain("မင်္ဂလာပါ Before");
+    const saved = documentFragment(editor.getHTML());
+    editor.commands.setContent(saved);
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(saved));
+    expect(saved).toContain('src="image.png"');
+    expect(saved).toContain('id="heading"');
+  } finally { editor.destroy(); }
+});
+
+test("Translated titlepage links remain editable without added paragraphs", async () => {
+  // Rust serializes empty XHTML containers with explicit closing tags.
+  const html = (await Bun.file(new URL("../fixtures/ai/link-target.xhtml", import.meta.url)).text())
+    .replace("<header/>", "<header></header>")
+    .replace("<footer/>", "<footer></footer>");
+  const editor = createEditor(html);
+  try {
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(html));
+    expect(editor.view.dom.querySelector("a[href]")).toBeNull();
+    const saved = documentFragment(editor.getHTML());
+    expect(saved).not.toContain("target=");
+    expect(saved).toContain('href="https://example.com/book"');
+    expect(saved).toContain('class="link"');
+    let position = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === "book_block_link") position = pos + 1;
+    });
+    expect(position).toBeGreaterThan(0);
+    editor.commands.insertContentAt(position, "မြန်မာ ");
+    expect(editor.getHTML()).toContain("မြန်မာ Book website");
+    const edited = documentFragment(editor.getHTML());
+    editor.commands.setContent(edited, { parseOptions: { preserveWhitespace: true } });
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(edited));
+  } finally {
+    editor.destroy();
+  }
+});
+
+test("Empty subtitle formatting survives Rich parsing, typing and reload", async () => {
+  const html = await Bun.file(new URL("../fixtures/editor/empty-subtitle.xhtml", import.meta.url)).text();
+  const editor = createEditor(html);
+  try {
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(html));
+    expect(editor.getHTML()).toContain('<h3 class="subtitle"><em></em></h3>');
+    let textPosition = 0;
+    editor.state.doc.descendants((node, position) => {
+      if (node.isText && textPosition === 0) textPosition = position;
+    });
+    editor.commands.insertContentAt(textPosition, "မင်္ဂလာပါ ");
+    const saved = documentFragment(editor.getHTML());
+    expect(saved).toContain("မင်္ဂလာပါ မြန်မာပုံပြင်");
+    expect(saved).toContain('<h3 class="subtitle"><em></em></h3>');
+    editor.commands.setContent(saved, { parseOptions: { preserveWhitespace: true } });
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(saved));
+    for (const tag of ["em", "strong", "u", "s", "code"]) {
+      const fragment = `<p>မြန်မာ<${tag} id="note" class="empty" title="Anchor"></${tag}>စာ <${tag}>text</${tag}></p>`;
+      editor.commands.setContent(fragment);
+      expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(fragment));
+    }
+  } finally {
+    editor.destroy();
+  }
+});
 
 for (const [label, html] of [
   ["imprint", '<section class="imprint" id="imprint" epub:type="imprint" xmlns:epub="http://www.idpf.org/2007/ops"><header><h2 epub:type="title">ထုတ်ဝေမှု</h2><img src="logo.png" srcset="logo-2x.png 2x, logo.png 1x" sizes="100vw" alt="Logo"/></header><p>မြန်မာ <a href="uncopyright.xhtml">စာ</a></p></section>'],
@@ -103,18 +213,17 @@ test("Cell align attributes round-trip verbatim without injected styles", () => 
   }
 });
 
-test("Header/footer/caption sections stay loss-aware (no silent collapse)", () => {
-  // prosemirror-tables rewrites unknown section wrappers on every
-  // transaction, so thead/tfoot/caption intentionally do NOT round-trip:
-  // the HTML → Rich check must keep them in HTML view instead of silently
-  // collapsing them into the body. Flattening belongs to AI Fix HTML.
+test("Table sections remain intact as protected content while surrounding text is editable", () => {
   for (const html of [
     '<table><thead><tr><th><p>H</p></th></tr></thead><tbody><tr><td><p>C</p></td></tr></tbody></table>',
     '<table><caption>Cap</caption><tbody><tr><td><p>C</p></td></tr></tbody></table>',
   ]) {
     const editor = createEditor(html);
     try {
-      expect(comparableDocument(editor.getHTML())).not.toBe(comparableDocument(html));
+      expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(html));
+      expect(editor.view.dom.textContent).toContain("Table preserved");
+      expect(editor.view.dom.querySelector(".book-protected-content table")).not.toBeNull();
+      expect(editor.isActive("table")).toBe(false);
     } finally {
       editor.destroy();
     }

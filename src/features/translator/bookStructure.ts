@@ -19,9 +19,149 @@ const containers = [
 ];
 const blockSelector =
   "p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,hr,table,div,section,article,main,header,footer,aside,figure,figcaption,pre,dl,dt,dd,svg,picture,img";
-const inline = ["span", "b", "i", "sup", "sub", "ruby", "rt", "rp"];
+const inline = [
+  "span",
+  "b",
+  "i",
+  "sup",
+  "sub",
+  "ruby",
+  "rt",
+  "rp",
+  "small",
+  "abbr",
+  "cite",
+  "dfn",
+  "kbd",
+  "samp",
+  "var",
+  "mark",
+];
 
 export const BookStructure = [
+  Node.create({
+    name: "book_preserved_table",
+    group: "block",
+    atom: true,
+    addAttributes: () => ({ original: { default: "", rendered: false } }),
+    parseHTML: () => [
+      {
+        tag: "table",
+        priority: 130,
+        getAttrs: (element) =>
+          element.querySelector("thead,tfoot,caption")
+            ? { original: documentFragment(element.outerHTML) }
+            : false,
+      },
+    ],
+    renderHTML: ({ node }) => {
+      const holder = document.createElement("div");
+      holder.innerHTML = node.attrs.original as string;
+      return holder.firstElementChild ?? document.createElement("table");
+    },
+    addNodeView:
+      () =>
+      ({ node }) => {
+        const dom = document.createElement("div");
+        dom.className = "book-protected-content";
+        dom.contentEditable = "false";
+        const label = document.createElement("p");
+        label.textContent = "Table preserved — edit in HTML view.";
+        dom.append(label);
+        const source = new DOMParser().parseFromString(
+          node.attrs.original as string,
+          "text/html",
+        );
+        const copy = (parent: HTMLElement, child: globalThis.Node) => {
+          if (child.nodeType === globalThis.Node.TEXT_NODE) {
+            parent.append(document.createTextNode(child.textContent ?? ""));
+          } else if (child instanceof Element) {
+            const tag = child.tagName.toLowerCase();
+            // Build an inert text/table preview, without links, images, CSS or
+            // imported attributes that could fetch or execute in the WebView.
+            const safe = document.createElement(
+              [
+                "table",
+                "thead",
+                "tbody",
+                "tfoot",
+                "tr",
+                "td",
+                "th",
+                "caption",
+                "p",
+                "em",
+                "strong",
+                "br",
+              ].includes(tag)
+                ? tag
+                : "span",
+            );
+            for (const name of ["colspan", "rowspan"]) {
+              const value = child.getAttribute(name);
+              if (value && /^\d+$/.test(value) && Number(value) <= 100)
+                safe.setAttribute(name, value);
+            }
+            for (const nested of Array.from(child.childNodes)) copy(safe, nested);
+            parent.append(safe);
+          }
+        };
+        for (const child of Array.from(source.body.childNodes)) copy(dom, child);
+        return { dom };
+      },
+  }),
+  // Marks cannot represent empty elements. Keep empty source formatting as
+  // inline nodes instead, including IDs and other book attributes.
+  ...["em", "strong", "u", "s", "code"].map((tag) =>
+    Node.create({
+      name: `book_empty_${tag}`,
+      group: "inline",
+      inline: true,
+      atom: true,
+      selectable: false,
+      parseHTML: () => [
+        {
+          tag,
+          priority: 120,
+          getAttrs: (element) => (element.childNodes.length === 0 ? {} : false),
+        },
+      ],
+      renderHTML: ({ HTMLAttributes }) => [tag, HTMLAttributes],
+    }),
+  ),
+  // EPUB containers can mix paragraphs and standalone links. Keep those
+  // links as blocks so parsing does not silently add a paragraph wrapper.
+  Node.create({
+    name: "book_block_link",
+    group: "block",
+    content: "inline*",
+    defining: true,
+    addAttributes: () => ({
+      href: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("href"),
+      },
+    }),
+    parseHTML: () => [
+      {
+        tag: "a[href]",
+        priority: 120,
+        getAttrs: (element) =>
+          element.parentElement?.matches(containers.join(",")) &&
+          Array.from(element.parentElement.children).some((child) =>
+            child.matches(blockSelector),
+          )
+            ? {}
+            : false,
+      },
+    ],
+    renderHTML: ({ HTMLAttributes }) => ["a", HTMLAttributes, 0],
+    // Preserve the URL in serialized XHTML, but never navigate from the editor.
+    addNodeView: () => () => {
+      const dom = document.createElement("a");
+      return { dom, contentDOM: dom };
+    },
+  }),
   Image.extend({
     name: "book_inline_image",
     parseHTML: () => [
@@ -154,11 +294,9 @@ export const BookStructure = [
  * The original `align`/`style` attributes are preserved verbatim by the
  * global BookAttributes instead; there is no cell-alignment UI to keep.
  *
- * NOTE: <thead>/<tfoot>/<caption> are intentionally NOT modeled as nodes.
- * Separate section nodes preserve wrappers but prosemirror-tables'
- * auto-fix rewrites them on every transaction (even typing), corrupting
- * rows. Those tables stay in HTML view by design (loss-aware trap) until
- * flattened via AI Fix HTML; see `build_html_fix_prompt`.
+ * Tables with thead/tfoot/caption use the protected table node above:
+ * prosemirror-tables would rewrite their sections on ordinary transactions.
+ * They remain intact in Rich view while other chapter text stays editable.
  */
 export const BookTableCell = TableCell.extend({
   addAttributes() {

@@ -10,7 +10,7 @@ import type { ChapterContent } from "../../types/chapter";
 import { AiFixHtmlDialog } from "./AiFixHtmlDialog";
 import { AiGenerateDialog } from "./AiGenerateDialog";
 import { ChapterEditor } from "./ChapterEditor";
-import { comparableDocument, hasContent } from "./richText";
+import { comparableDocument, hasContent, normalizeRichDocument } from "./richText";
 import type { useChapterEditor } from "./useChapterEditor";
 
 /** Local validation normally resolves in milliseconds. Bound it so a hung
@@ -122,7 +122,7 @@ export function TargetPane({
     setSwitching(true);
     setViewError(null);
     try {
-      const validated = await validateChapterHtmlTimed(html);
+      const validated = normalizeRichDocument(await validateChapterHtmlTimed(html));
       if (currentHtml.current !== html || destination.isDestroyed) return;
       const wrapper = document.createElement("div");
       wrapper.innerHTML = validated;
@@ -146,6 +146,8 @@ export function TargetPane({
       // Apply the exact document that passed the preservation check, rather
       // than parsing the HTML a second time with different whitespace options.
       destination.commands.setContent(parsed.toJSON(), { emitUpdate: false });
+      if (normalizeRichDocument(html) !== html && validated !== html)
+        editor.setHtml(validated);
       setView("rich");
     } catch (error) {
       if (currentHtml.current !== html || destination.isDestroyed) return;
@@ -158,7 +160,7 @@ export function TargetPane({
     } finally {
       setSwitching(false);
     }
-  }, [activeEditor]);
+  }, [activeEditor, editor.setHtml]);
   useEffect(() => {
     if (view !== "rich" || !activeEditor || activeEditor.isDestroyed) return;
     const displayed = activeEditor.getHTML();

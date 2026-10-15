@@ -121,13 +121,14 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
     catalog?.agent === agent
       ? catalog.models.find((model) => model.id === draft.trim())
       : undefined;
-  const effortOptions =
-    selectedModel?.reasoningEfforts ??
-    (agent === "codex"
-      ? ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
-      : agent === "agy"
-        ? ["low", "medium", "high"]
-        : []);
+  const effortOptions = agent.startsWith("custom:")
+    ? ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
+    : (selectedModel?.reasoningEfforts ??
+      (agent === "codex"
+        ? ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
+        : agent === "agy"
+          ? ["low", "medium", "high"]
+          : []));
   const effortOrder = [
     "none",
     "minimal",
@@ -334,7 +335,7 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
             setSaveError(null);
           }}
         >
-          <option value="">Default (CLI setting)</option>
+          <option value="">Default (provider setting)</option>
           {orderedEfforts.map((value) => (
             <option key={value} value={value}>
               {effortLabel(value)}
@@ -343,9 +344,11 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
         </select>
       </label>
       <p className="dialog__muted" id="reasoning-effort-help">
-        {effortOptions.length === 0
-          ? "No adjustable effort levels are listed for this model. The CLI default will be used."
-          : "Higher effort can take longer and use more tokens. Available levels depend on the model and CLI version."}
+        {agent.startsWith("custom:")
+          ? "Send the selected reasoning effort to your API provider. Available choices are overrides, not detected model capabilities. If the provider rejects a value, choose another level or Default to use its own setting."
+          : effortOptions.length === 0
+            ? "No adjustable effort levels are listed for this model. The provider default will be used."
+            : "Higher effort can take longer and use more tokens. Available levels depend on the model and provider."}
       </p>
 
       {saveError ? <StatusNotice kind="error">{saveError}</StatusNotice> : null}

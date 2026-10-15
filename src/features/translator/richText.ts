@@ -132,6 +132,14 @@ export function documentFragment(html: string): string {
       "dt",
       "dd",
       "span",
+      "small",
+      "abbr",
+      "cite",
+      "dfn",
+      "kbd",
+      "samp",
+      "var",
+      "mark",
       "b",
       "i",
       "code",
@@ -192,6 +200,11 @@ export function documentFragment(html: string): string {
                     : []),
       ...(SVG_TAGS.includes(tag) ? [...SVG_ATTRS, "xmlns", "xmlns:xlink"] : []),
     ].sort();
+    names.push(
+      ...Array.from(node.attributes, (attr) => attr.name).filter((name) =>
+        name.startsWith("aria-"),
+      ),
+    );
     const attributes = names
       .filter((name) => node.hasAttribute(name))
       .map((name) => ` ${name}="${plainFragment(node.getAttribute(name) ?? "")}"`)
@@ -216,6 +229,79 @@ export function documentFragment(html: string): string {
     return `<${tag}${attributes}>${children}</${tag}>`;
   };
   return Array.from(doc.body.childNodes).map(serialize).join("");
+}
+
+/** Prepare validated XHTML for Rich editing without changing readable content.
+ * Run on conversion only: never during typing or IME composition. */
+export function normalizeRichDocument(html: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  // XHTML permits self-closing containers; the HTML parser would treat
+  // <header/> as an opening tag and swallow the following chapter into it.
+  const xml = parser.parseFromString(
+    `<w xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xmlns:xlink="http://www.w3.org/1999/xlink">${html}</w>`,
+    "application/xhtml+xml",
+  );
+  if (!xml.querySelector("parsererror")) {
+    doc.body.replaceChildren(
+      ...Array.from(xml.documentElement.childNodes, (node) => doc.importNode(node, true)),
+    );
+  }
+  const emptyDecorations =
+    "em,strong,u,s,code,b,i,span,h1,h2,h3,h4,h5,h6,div,header,footer";
+  for (const element of Array.from(
+    doc.body.querySelectorAll(emptyDecorations),
+  ).reverse()) {
+    // Class names alone do not give an empty decoration content. IDs, language,
+    // role, EPUB semantics, styles, labels and all other attributes protect it.
+    if (
+      element.children.length === 0 &&
+      /^[\t\r\n ]*$/.test(element.textContent ?? "") &&
+      Array.from(element.attributes).every((attr) => attr.name === "class") &&
+      !element.closest("pre,svg,picture,table")
+    )
+      element.remove();
+  }
+  const blocks =
+    "p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,hr,table,div,section,article,main,header,footer,aside,figure,figcaption,pre,dl,dt,dd,svg,picture";
+  for (const parent of Array.from(
+    doc.querySelectorAll(
+      "body,div,section,article,main,header,footer,aside,figure,figcaption,dd,li,blockquote,td,th",
+    ),
+  )) {
+    if (
+      parent.closest("svg,picture") ||
+      parent.closest("table")?.querySelector("thead,tfoot,caption")
+    )
+      continue;
+    const needsBlocks =
+      parent.matches("body,li,blockquote,td,th") ||
+      Array.from(parent.children).some((child) => child.matches(blocks));
+    if (!needsBlocks) continue;
+    let run: ChildNode[] = [];
+    const wrap = () => {
+      if (
+        run.some(
+          (node) =>
+            node.nodeType === Node.ELEMENT_NODE ||
+            !/^[\t\r\n ]*$/.test(node.textContent ?? ""),
+        )
+      ) {
+        const paragraph = doc.createElement("p");
+        run[0].before(paragraph);
+        paragraph.append(...run);
+      } else {
+        for (const node of run) node.remove();
+      }
+      run = [];
+    };
+    for (const child of Array.from(parent.childNodes)) {
+      if (child instanceof Element && child.matches(blocks)) wrap();
+      else run.push(child);
+    }
+    wrap();
+  }
+  return documentFragment(doc.body.innerHTML);
 }
 
 /** Compare structural content without code indentation between block elements. */

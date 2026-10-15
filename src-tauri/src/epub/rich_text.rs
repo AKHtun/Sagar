@@ -113,6 +113,14 @@ fn is_xhtml_document_tag(tag: &str) -> bool {
             | "rp"
             | "picture"
             | "source"
+            | "small"
+            | "abbr"
+            | "cite"
+            | "dfn"
+            | "kbd"
+            | "samp"
+            | "var"
+            | "mark"
     )
 }
 
@@ -445,6 +453,14 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                     | "ruby"
                     | "rt"
                     | "rp"
+                    | "small"
+                    | "abbr"
+                    | "cite"
+                    | "dfn"
+                    | "kbd"
+                    | "samp"
+                    | "var"
+                    | "mark"
             ) && (is_block || is_svg)
             {
                 return Err(AppError::new(
@@ -588,6 +604,8 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                         | "version"
                 ));
             if !(per_tag_ok
+                // Accept old/book targets, then omit them on serialization.
+                || document && is_xhtml && tag == "a" && attr_name == "target"
                 || document
                     && (matches!(
                         attr_name,
@@ -622,6 +640,11 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
         for attr in node.attributes() {
             let attr_ns = attr.namespace();
             let attr_name = attr.name();
+            // Browsing-context targets are unnecessary in translated books.
+            // Normalize them away, including when reopening an older draft.
+            if document && is_xhtml && tag == "a" && attr_ns.is_none() && attr_name == "target" {
+                continue;
+            }
             if attr_ns == Some(XLINK_NS) && attr_name == "href" {
                 svg_image_href = Some(attr.value().to_string());
                 continue;
@@ -978,6 +1001,52 @@ pub fn validate_style(style: &str) -> Result<(), AppError> {
 #[cfg(test)]
 mod copied_document_tests {
     use super::*;
+    #[test]
+    fn common_book_inline_semantics_and_protected_tables_are_export_safe() {
+        let input = include_str!("../../../tests/fixtures/editor/book-compatibility.xhtml").trim();
+        let (saved, text) = validate_document(input).expect("book formatting");
+        assert_eq!(saved, input);
+        assert!(text.contains("မြန်မာပုံပြင်"));
+        for tag in ["small", "abbr", "cite", "dfn", "kbd", "samp", "var", "mark"] {
+            assert!(validate_document(&format!("<{tag}><p>invalid block</p></{tag}>")).is_err());
+            assert!(
+                validate_document(&format!("<p><{tag} onclick=\"bad()\">text</{tag}></p>"))
+                    .is_err()
+            );
+        }
+    }
+    #[test]
+    fn translated_titlepage_removes_link_target_and_preserves_myanmar() {
+        let input = include_str!("../../../tests/fixtures/ai/link-target.xhtml").trim();
+        let (html, text) = validate_document(input).expect("translated titlepage");
+        assert!(!html.contains("target="));
+        assert!(html.contains("href=\"https://example.com/book\""));
+        assert!(text.contains("မြန်မာပုံပြင်များ"));
+        let (again, _) = validate_document(&html).expect("saved draft");
+        assert_eq!(again, html);
+        let preview = crate::epub::preview::sanitize_fragment(
+            &html,
+            "body",
+            "chapter.xhtml",
+            "epubres://test",
+        );
+        assert!(!preview.contains("target=\"_top\""));
+        assert!(preview.contains("href=\"\""));
+        for target in ["_self", "_blank", "_parent", "book-window"] {
+            let link =
+                format!("<p><a href=\"chapter.xhtml#note\" target=\"{target}\">note</a></p>");
+            let (normalized, _) = validate_document(&link).expect("normalized link");
+            assert!(!normalized.contains("target="));
+            assert!(normalized.contains("chapter.xhtml#note"));
+        }
+        for bad in [
+            "<p target=\"_top\">text</p>",
+            "<a href=\"javascript:alert(1)\" target=\"_top\">text</a>",
+            "<a href=\"https://example.com\" target=\"_top\" onclick=\"evil()\">text</a>",
+        ] {
+            assert!(validate_document(bad).is_err(), "{bad}");
+        }
+    }
     #[test]
     fn accepts_complete_original_toc_document_and_retains_attributes_links() {
         let input = "<?xml version='1.0' encoding='utf-8'?><html xmlns=\"http://www.w3.org/1999/xhtml\"><head><link rel=\"stylesheet\" href=\"stylesheet.css\"/></head><body><p class=\"border1\" style=\"color:#000000\">Contents</p><p class=\"toc2\"><a href=\"174.html#section\">Chapter 174</a></p></body></html>";

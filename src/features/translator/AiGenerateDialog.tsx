@@ -18,6 +18,7 @@ import type {
 } from "../../types/ai";
 import type { ProjectSummary } from "../../types/project";
 import { agentLabel } from "../settings/TranslationModelSection";
+import { ApiRequestDetails } from "./ApiRequestDetails";
 import { hasContent } from "./richText";
 import type { useChapterEditor } from "./useChapterEditor";
 
@@ -59,6 +60,7 @@ export function AiGenerateDialog({
   const [phase, setPhase] = useState<Phase>("idle");
   const [proposal, setProposal] = useState<string | null>(null);
   const [streamed, setStreamed] = useState("");
+  const [apiTrace, setApiTrace] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmInsert, setConfirmInsert] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -108,7 +110,7 @@ export function AiGenerateDialog({
       if (event.key === "Tab") {
         const controls = Array.from(
           dialogRef.current?.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+            'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]',
           ) ?? [],
         );
         const first = controls[0];
@@ -169,6 +171,14 @@ export function AiGenerateDialog({
       }
       if (payload.kind === "started") {
         // The worker is alive; the elapsed ticker shows progress.
+        return;
+      }
+      if (payload.kind === "status") {
+        setApiTrace((messages) =>
+          messages.length < 20
+            ? [...messages, payload.message]
+            : [...messages.slice(0, 3), ...messages.slice(-16), payload.message],
+        );
         return;
       }
       if (payload.kind === "stream") {
@@ -267,6 +277,7 @@ export function AiGenerateDialog({
     lastOutputAt.current = Date.now();
     setStalledSecs(0);
     setPhase("running");
+    setApiTrace([]);
     setNotice(null);
     setProposal(null);
     const previousOutput = streamed;
@@ -427,8 +438,11 @@ export function AiGenerateDialog({
                   />
                   <span>
                     I understand this chapter&apos;s text will be sent to{" "}
-                    {agentLabel(selection.agent, providers.cli, providers.custom)} on this
-                    computer to generate a proposal.
+                    {agentLabel(selection.agent, providers.cli, providers.custom)}
+                    {selection.agent.startsWith("custom:")
+                      ? " at its configured API endpoint"
+                      : " through its installed tool"}{" "}
+                    to generate a proposal.
                   </span>
                 </label>
                 {phase === "failed" && streamed ? (
@@ -475,10 +489,14 @@ export function AiGenerateDialog({
             ) : null}
             {running && stalledSecs >= STALL_WARNING_AFTER_SECS ? (
               <StatusNotice kind="info">
-                No output for {stalledSecs}s — still running. Slow connections can stall
-                for minutes; your draft is safe. You can wait or Cancel.
+                No answer text for {stalledSecs}s. Your draft is safe. You can wait or
+                Cancel.
+                {selection.agent.startsWith("custom:")
+                  ? " Open API request details below to check the response and reasoning activity."
+                  : " The tool has not returned more answer text yet."}
               </StatusNotice>
             ) : null}
+            <ApiRequestDetails messages={apiTrace} />
             {running || streamed !== "" ? (
               <textarea
                 ref={streamRef}

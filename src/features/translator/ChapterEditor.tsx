@@ -2,11 +2,11 @@ import Image from "@tiptap/extension-image";
 import { Table, TableRow } from "@tiptap/extension-table";
 import { type Editor, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BookAnchor } from "./bookAnchor";
 import { BookAttributes } from "./bookAttributes";
 import { BookStructure, BookTableCell, BookTableHeader } from "./bookStructure";
-import { documentFragment } from "./richText";
+import { documentFragment, normalizeRichDocument } from "./richText";
 import { useSlashMenu } from "./useSlashMenu";
 
 const ChapterTable = Table.extend({
@@ -31,6 +31,7 @@ export function ChapterEditor({
   active: boolean;
 }) {
   const keyHandler = useRef<(event: KeyboardEvent) => boolean>(() => false);
+  const [initialHtml] = useState(() => normalizeRichDocument(html) || "<p></p>");
   const editor = useEditor({
     extensions: [
       ...BookStructure,
@@ -46,7 +47,7 @@ export function ChapterEditor({
       }),
       Image.configure({ allowBase64: true }),
     ],
-    content: html || "<p></p>",
+    content: initialHtml,
     parseOptions: { preserveWhitespace: true },
     editable: !disabled,
     editorProps: {

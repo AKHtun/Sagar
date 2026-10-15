@@ -169,7 +169,7 @@ pub struct AiTranslationStart {
 pub struct AiTranslationEvent {
     pub job_id: String,
     pub chapter_id: String,
-    /// `started` | `stream` | `done` | `failed` | `cancelled`.
+    /// `started` | `status` | `stream` | `done` | `failed` | `cancelled`.
     pub kind: String,
     pub proposal_html: Option<String>,
     /// Full-so-far translated text for `stream` events; text
@@ -195,7 +195,7 @@ pub struct AiHtmlFixStart {
 pub struct AiHtmlFixEvent {
     pub job_id: String,
     pub chapter_id: String,
-    /// `started` | `stream` | `done` | `failed` | `cancelled`.
+    /// `started` | `status` | `stream` | `done` | `failed` | `cancelled`.
     pub kind: String,
     pub fixed_html: Option<String>,
     /// Full-so-far translated text for `stream` events; text

@@ -2378,3 +2378,42 @@ button {
 .project-list--grid .project-item > .project-row__remove {
   grid-column: 3;
 }
+
+.chapter-list__row {
+  display: flex;
+  align-items: center;
+}
+.chapter-list__row > .chapter-list__select {
+  min-width: 0;
+  flex: 1;
+}
+.chapter-list__toggle {
+  flex: none;
+}
+.chapter-list__group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.chapter-list__children {
+  list-style: none;
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--color-border);
+}
+
+.chapter-picker__option-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.chapter-picker__context {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}

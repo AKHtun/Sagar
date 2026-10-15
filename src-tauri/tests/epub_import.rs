@@ -732,3 +732,107 @@ fn delete_project_removes_rows_snapshot_and_keeps_source() {
         .expect_err("deleting a missing project errors");
     assert_eq!(error.code, "project_not_found");
 }
+
+#[test]
+fn reopened_projects_derive_nested_navigation_from_immutable_snapshot() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let mut files = multi_chapter_files();
+    let nav = r#"<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol>
+      <li><a href="text/c1.xhtml">Volume 1</a><ol>
+        <li><a href="text/c10.xhtml">Chapter 1</a></li>
+        <li><span>Part Two</span><ol><li><a href="text/c2.xhtml#start">Chapter 2</a></li></ol></li>
+      </ol></li></ol></nav></body></html>"#;
+    files
+        .iter_mut()
+        .find(|(name, _)| name == "OEBPS/nav.xhtml")
+        .expect("nav fixture")
+        .1 = nav.as_bytes().to_vec();
+    let refs: Vec<_> = files
+        .iter()
+        .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
+        .collect();
+    let source = write_epub(temp.path(), "volumes.epub", &refs);
+    let original = std::fs::read(&source).expect("source bytes");
+    let data = temp.path().join("data");
+    let imported = services::import::import_epub(&data, &source, false).expect("import");
+    std::fs::remove_file(&source).expect("remove original to exercise snapshot");
+    let chapters = services::projects::list_chapters(&data, &imported.project.id).expect("reopen");
+    assert_eq!(
+        chapters
+            .iter()
+            .map(|chapter| chapter.spine_index)
+            .collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+    assert_eq!(chapters[1].navigation_groups[0].title, "Volume 1");
+    assert_eq!(chapters[2].navigation_groups[1].title, "Part Two");
+    assert_eq!(chapters[2].id, imported.chapters[2].id);
+    assert_eq!(
+        std::fs::read(
+            data.join("projects")
+                .join(&imported.project.id)
+                .join("source.epub")
+        )
+        .expect("snapshot bytes"),
+        original
+    );
+}
+
+#[test]
+fn existing_epub2_project_gets_ncx_volume_groups_without_reimport() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let mut files = multi_chapter_files();
+    let opf = opf("<itemref idref=\"c1\"/><itemref idref=\"c10\"/><itemref idref=\"c2\"/>",
+        "<item id=\"c1\" href=\"text/c1.xhtml\" media-type=\"application/xhtml+xml\"/><item id=\"c10\" href=\"text/c10.xhtml\" media-type=\"application/xhtml+xml\"/><item id=\"c2\" href=\"text/c2.xhtml\" media-type=\"application/xhtml+xml\"/>")
+        .replace("version=\"3.0\"", "version=\"2.0\"")
+        .replace("<spine>", "<spine toc=\"ncx\">")
+        .replace("<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/>",
+            "<item id=\"ncx\" href=\"toc.ncx\" media-type=\"application/x-dtbncx+xml\"/>");
+    files
+        .iter_mut()
+        .find(|(name, _)| name == "OEBPS/content.opf")
+        .expect("OPF")
+        .1 = opf.into_bytes();
+    files.push(("OEBPS/toc.ncx".into(), br#"<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><navMap>
+      <navPoint id="volume"><navLabel><text>Volume 1</text></navLabel><content src="text/c1.xhtml"/>
+        <navPoint id="chapter"><navLabel><text>Chapter 1</text></navLabel><content src="text/c10.xhtml"/></navPoint>
+        <navPoint id="chapter2"><navLabel><text>Chapter 2</text></navLabel><content src="text/c2.xhtml"/></navPoint>
+      </navPoint></navMap></ncx>"#.to_vec()));
+    let refs: Vec<_> = files
+        .iter()
+        .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
+        .collect();
+    let source = write_epub(temp.path(), "legacy.epub", &refs);
+    let data = temp.path().join("data");
+    let imported = services::import::import_epub(&data, &source, false).expect("import");
+    let reopened = services::projects::list_chapters(&data, &imported.project.id).expect("reopen");
+    assert!(reopened[0].navigation_groups.is_empty());
+    assert_eq!(reopened[1].navigation_groups[0].title, "Volume 1");
+    assert_eq!(
+        reopened[2].navigation_groups[0].resource.as_deref(),
+        Some("OEBPS/text/c1.xhtml")
+    );
+    assert_eq!(reopened[1].id, imported.chapters[1].id);
+}
+
+#[test]
+#[ignore = "read-only local project verification"]
+fn local_project_navigation_probe() {
+    let data = std::env::var_os("SAGAR_NAV_PROBE_DATA").expect("data directory");
+    let id = std::env::var("SAGAR_NAV_PROBE_ID").expect("project ID");
+    let chapters = services::projects::list_chapters(Path::new(&data), &id).expect("chapter list");
+    assert!(!chapters.is_empty());
+    assert!(
+        chapters
+            .iter()
+            .any(|chapter| !chapter.navigation_groups.is_empty())
+    );
+    println!(
+        "Verified {} chapters with {} grouped chapters",
+        chapters.len(),
+        chapters
+            .iter()
+            .filter(|chapter| !chapter.navigation_groups.is_empty())
+            .count()
+    );
+}

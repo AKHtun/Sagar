@@ -36,6 +36,7 @@ pub struct ParsedOpf {
     pub spine_items: Vec<ManifestItem>,
     /// ZIP path of the EPUB 3 navigation document.
     pub nav_href: Option<String>,
+    pub ncx_href: Option<String>,
     /// ZIP path of the cover image, when declared.
     pub cover_href: Option<String>,
     pub warnings: Vec<ImportWarning>,
@@ -178,11 +179,20 @@ pub fn parse_opf(bytes: &[u8], opf_path: &str) -> Result<ParsedOpf, AppError> {
         }
     }
 
+    let ncx_href = package
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "spine")
+        .and_then(|node| node.attribute("toc"))
+        .and_then(|id| manifest.get(id))
+        .filter(|item| item.media_type == "application/x-dtbncx+xml")
+        .map(|item| item.href.clone());
+
     Ok(ParsedOpf {
         metadata,
         manifest,
         spine_items,
         nav_href,
+        ncx_href,
         cover_href,
         warnings,
     })

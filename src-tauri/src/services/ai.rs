@@ -1134,6 +1134,17 @@ pub fn claude_efforts(model: &str) -> Vec<String> {
     levels.iter().map(|v| v.to_string()).collect()
 }
 
+/// User-selectable API effort overrides, independent of provider/model identity.
+/// The endpoint decides which values it accepts; Default omits the parameter.
+fn custom_reasoning_efforts() -> Vec<String> {
+    [
+        "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+    ]
+    .iter()
+    .map(|value| value.to_string())
+    .collect()
+}
+
 /// Validate at both save and execution boundaries. Default passes no override.
 pub fn validate_reasoning_effort(
     data_dir: &Path,
@@ -1163,6 +1174,10 @@ pub fn validate_reasoning_effort(
             .into_iter()
             .find(|entry| entry.id == model)
             .and_then(|entry| entry.reasoning_efforts)
+    } else if let Some(TranslationAgent::Custom(id)) = TranslationAgent::parse(agent) {
+        let conn = open_settings_db(data_dir)?;
+        let _ = ai_providers::get_secret(&conn, &id)?;
+        Some(custom_reasoning_efforts())
     } else {
         return Err(invalid());
     };
@@ -1390,12 +1405,17 @@ pub fn list_translation_models(
         TranslationAgent::Custom(id) => {
             let secret = ai_providers::get_secret(&conn, &id)?;
             match fetch_openai_models(&secret.base_url, &secret.api_key) {
-                Ok(models) if !models.is_empty() => Ok(TranslationModelList {
-                    agent: format!("custom:{id}"),
-                    source: "live".to_string(),
-                    models,
-                    message: "Live list from the provider.".to_string(),
-                }),
+                Ok(mut models) if !models.is_empty() => {
+                    for model in &mut models {
+                        model.reasoning_efforts = Some(custom_reasoning_efforts());
+                    }
+                    Ok(TranslationModelList {
+                        agent: format!("custom:{id}"),
+                        source: "live".to_string(),
+                        models,
+                        message: "Live list from the provider.".to_string(),
+                    })
+                }
                 _ => {
                     let fallback = clean_model_id(&secret.model);
                     Ok(TranslationModelList {
@@ -1406,7 +1426,7 @@ pub fn list_translation_models(
                                 id: id.clone(),
                                 label: id,
                                 detail: Some("Saved model".to_string()),
-                                reasoning_efforts: None,
+                                reasoning_efforts: Some(custom_reasoning_efforts()),
                             })
                             .into_iter()
                             .collect(),
@@ -1481,6 +1501,48 @@ mod tests {
             saved.agent
         );
         assert!(validate_reasoning_effort(dir.path(), "agy", "m", Some("xhigh")).is_err());
+    }
+
+    #[test]
+    fn custom_effort_works_for_any_provider_and_model() {
+        let dir = tempfile::tempdir().unwrap();
+        for base_url in [
+            "https://api.z.ai/api/paas/v4",
+            "https://compatible.example/v1",
+            "http://localhost:1234/v1",
+        ] {
+            let provider = save_ai_custom_provider(
+                dir.path(),
+                SaveCustomInput {
+                    id: None,
+                    name: "Custom".into(),
+                    base_url: base_url.into(),
+                    api_key: Some("synthetic".into()),
+                    model: "saved-model".into(),
+                },
+            )
+            .unwrap();
+            let agent = format!("custom:{}", provider.id);
+            for model in ["glm-5.3", "glm-5.3-flash", "arbitrary-manual-model"] {
+                for effort in custom_reasoning_efforts() {
+                    let saved = set_translation_selection(dir.path(), &agent, model, Some(&effort))
+                        .unwrap();
+                    assert_eq!(saved.reasoning_effort.as_deref(), Some(effort.as_str()));
+                    assert_eq!(
+                        validate_reasoning_effort(dir.path(), &agent, model, Some(&effort))
+                            .unwrap(),
+                        Some(effort)
+                    );
+                }
+                assert_eq!(
+                    validate_reasoning_effort(dir.path(), &agent, model, None).unwrap(),
+                    None
+                );
+                assert!(
+                    validate_reasoning_effort(dir.path(), &agent, model, Some("invalid")).is_err()
+                );
+            }
+        }
     }
 
     #[test]
