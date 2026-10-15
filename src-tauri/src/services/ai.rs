@@ -45,29 +45,32 @@ fn open_settings_db(data_dir: &Path) -> Result<rusqlite::Connection, AppError> {
 // ------------------------------------------------------------ CLI lookup
 
 /// File names tried for one binary. Windows installers (including npm shims)
-/// use executable extensions; other systems use the bare name plus the
-/// platform executable suffix.
+/// use executable extensions. Never select npm's extensionless POSIX shim
+/// on Windows: it can exist beside the runnable `.cmd` launcher.
 fn candidate_file_names(binary: &str) -> Vec<OsString> {
-    let mut names = vec![OsString::from(binary)];
-    let exe_suffix = std::env::consts::EXE_SUFFIX;
-    if !exe_suffix.is_empty() {
-        names.push(OsString::from(format!("{binary}{exe_suffix}")));
-    }
-    if cfg!(windows) {
-        for extension in [".cmd", ".bat"] {
-            let candidate = format!("{binary}{extension}");
-            if !names.iter().any(|name| name.to_string_lossy() == candidate) {
-                names.push(OsString::from(candidate));
-            }
-        }
-    }
-    names
+    candidate_file_names_for(binary, cfg!(windows))
+}
+
+fn candidate_file_names_for(binary: &str, windows: bool) -> Vec<OsString> {
+    let suffixes: &[&str] = if windows {
+        &[".exe", ".cmd", ".bat"]
+    } else {
+        &[""]
+    };
+    suffixes
+        .iter()
+        .map(|suffix| OsString::from(format!("{binary}{suffix}")))
+        .collect()
 }
 
 fn find_on_path_in(directories: &[PathBuf], binary: &str) -> Option<PathBuf> {
     let candidates = candidate_file_names(binary);
+    find_candidate_in(directories, &candidates)
+}
+
+fn find_candidate_in(directories: &[PathBuf], candidates: &[OsString]) -> Option<PathBuf> {
     for directory in directories {
-        for candidate in &candidates {
+        for candidate in candidates {
             let path = directory.join(candidate);
             if path.is_file() {
                 return Some(path);
@@ -105,6 +108,21 @@ fn home_directory() -> Option<PathBuf> {
     }
 }
 
+/// Respect relocated Windows local app data, with the normal profile layout
+/// as a fallback when the desktop process does not inherit LOCALAPPDATA.
+#[cfg(any(windows, test))]
+fn windows_agy_directories(home: &Path, local_appdata: Option<&Path>) -> Vec<PathBuf> {
+    let mut directories = Vec::new();
+    if let Some(local) = local_appdata.filter(|path| path.is_absolute()) {
+        directories.push(local.join("agy").join("bin"));
+    }
+    let default = home.join("AppData").join("Local").join("agy").join("bin");
+    if !directories.contains(&default) {
+        directories.push(default);
+    }
+    directories
+}
+
 /// Well-known per-user install locations for `home`, without touching the
 /// filesystem beyond best-effort directory listings. Callers filter by
 /// file existence at lookup time, so missing directories are harmless.
@@ -129,6 +147,8 @@ fn fallback_directories_for(home: &Path) -> Vec<PathBuf> {
     }
     #[cfg(windows)]
     {
+        let local_appdata = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+        directories.extend(windows_agy_directories(home, local_appdata.as_deref()));
         if let Some(appdata) = std::env::var_os("APPDATA").map(PathBuf::from) {
             if appdata.is_absolute() {
                 directories.push(appdata.join("npm"));
@@ -1440,7 +1460,12 @@ mod tests {
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].label, "Gemini Example (High)");
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("agy"), b"stub").unwrap();
+        std::fs::write(
+            dir.path()
+                .join(format!("agy{}", std::env::consts::EXE_SUFFIX)),
+            b"stub",
+        )
+        .unwrap();
         assert!(cli_available_in(
             &[dir.path().to_path_buf()],
             CliProviderId::Agy
@@ -1565,12 +1590,81 @@ opencode/no-adjustment
     #[test]
     fn path_lookup_finds_staged_binaries_without_a_shell() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let binary = dir.path().join("codex");
+        let binary = dir
+            .path()
+            .join(format!("codex{}", std::env::consts::EXE_SUFFIX));
         std::fs::write(&binary, b"stub").expect("stage binary");
         let found = find_on_path_in(&[dir.path().to_path_buf()], "codex").expect("binary found");
         assert_eq!(found, binary);
         assert!(find_on_path_in(&[dir.path().to_path_buf()], "ghost").is_none());
         assert!(find_on_path_in(&[], "codex").is_none());
+    }
+
+    #[test]
+    fn windows_lookup_skips_npm_posix_shims_and_prefers_executables() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let directories = vec![dir.path().to_path_buf()];
+        for tool in ["codex", "opencode", "claude", "agy"] {
+            let candidates = candidate_file_names_for(tool, true);
+            std::fs::write(dir.path().join(tool), b"#!/bin/sh\n").unwrap();
+            assert_eq!(find_candidate_in(&directories, &candidates), None);
+            for extension in ["bat", "cmd", "exe"] {
+                let launcher = dir.path().join(format!("{tool}.{extension}"));
+                std::fs::write(&launcher, b"stub").unwrap();
+                assert_eq!(find_candidate_in(&directories, &candidates), Some(launcher));
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_check_launches_cmd_beside_posix_shim() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let bin = dir.path().join("npm with spaces");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("codex"), b"#!/bin/sh\nexit 1\n").unwrap();
+        std::fs::write(
+            bin.join("codex.cmd"),
+            b"@echo off\r\necho codex-test 1.0\r\n",
+        )
+        .unwrap();
+        let binary = find_cli_binary_in(&[bin.clone()], CliProviderId::Codex).unwrap();
+        assert_eq!(binary, bin.join("codex.cmd"));
+        assert_eq!(probe_cli_version(&binary).unwrap(), "codex-test 1.0");
+    }
+
+    #[test]
+    fn windows_agy_lookup_uses_local_appdata_and_profile_fallback() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let home = dir.path().join("profile with spaces");
+        let local = dir.path().join("relocated local data");
+        let default_bin = home.join("AppData/Local/agy/bin");
+        let relocated_bin = local.join("agy/bin");
+        let directories = windows_agy_directories(&home, Some(&local));
+        assert_eq!(
+            directories,
+            vec![relocated_bin.clone(), default_bin.clone()]
+        );
+        assert_eq!(
+            windows_agy_directories(&home, None),
+            vec![default_bin.clone()]
+        );
+        assert_eq!(
+            windows_agy_directories(&home, Some(Path::new("relative"))),
+            vec![default_bin.clone()]
+        );
+        assert_eq!(
+            windows_agy_directories(&home, Some(&home.join("AppData/Local"))),
+            vec![default_bin.clone()]
+        );
+        // Exercise real discovery without relying on this test process's PATH.
+        let filename = format!("agy{}", std::env::consts::EXE_SUFFIX);
+        for bin in [default_bin, relocated_bin] {
+            std::fs::create_dir_all(&bin).expect("stage install directory");
+            let binary = bin.join(&filename);
+            std::fs::write(&binary, b"stub").expect("stage agy");
+            assert_eq!(find_on_path_in(&directories, "agy"), Some(binary));
+        }
     }
 
     #[test]
@@ -1797,7 +1891,9 @@ opencode/no-adjustment
         // misses per-user installs (opencode, claude, nvm shims), so the
         // combined lookup must still resolve a staged tool directory.
         let dir = tempfile::tempdir().expect("temp dir");
-        let binary = dir.path().join("opencode");
+        let binary = dir
+            .path()
+            .join(format!("opencode{}", std::env::consts::EXE_SUFFIX));
         std::fs::write(&binary, b"stub").expect("stage binary");
         let directories = vec![dir.path().to_path_buf()];
         let found = find_cli_binary_in(&directories, CliProviderId::Opencode).expect("tool found");
@@ -1808,7 +1904,7 @@ opencode/no-adjustment
         let home = tempfile::tempdir().expect("temp home");
         let tool_dir = home.path().join(".opencode/bin");
         std::fs::create_dir_all(&tool_dir).expect("stage tool dir");
-        let staged = tool_dir.join("opencode");
+        let staged = tool_dir.join(format!("opencode{}", std::env::consts::EXE_SUFFIX));
         std::fs::write(&staged, b"stub").expect("stage tool");
         let fallbacks = fallback_directories_for(home.path());
         assert_eq!(

@@ -1,5 +1,35 @@
 # Plan.md — EPUB Translation Studio
 
+### Windows npm CLI launcher selection regression — 2026-10-14
+
+Fixed a Milestone 5 Windows launch failure: discovery previously selected npm's
+extensionless POSIX shim before its Windows launcher. Windows now searches
+.exe, .cmd and .bat only, preserving directory precedence. Shared discovery
+applies to provider Check, model listing and translation for Codex, OpenCode,
+Claude and agy. Unix bare-name lookup is unchanged. Regression coverage stages
+all four tools with coexisting shims and verifies launcher preference on any OS;
+a Windows-only test probes a .cmd launcher in a directory containing spaces.
+Existing staged tests now use platform executable suffixes.
+Formatting and the Rust suite passed on macOS (134 unit, 20 export, 18 import;
+3 ignored). No frontend changes; frontend checks were not run.
+Native Windows Check/translation remains unverified on this macOS host.
+Next unfinished task: rebuild Windows Sagar and verify Codex Check and a
+translation with the actual install. No milestone checkboxes changed.
+
+### Windows agy install detection regression — 2026-10-14
+
+Fixed the Milestone 5 cross-platform provider lookup to include
+LOCALAPPDATA/agy/bin and the normal AppData/Local/agy/bin profile fallback.
+Relocated local app data takes priority; relative environment paths are ignored.
+The existing shared discovery supplies provider listing, Check and CLI execution.
+Regression coverage stages installs without PATH, including spaces, relocation,
+missing/relative environment values and duplicate locations. cargo fmt --check
+and cargo test passed (133 unit, 20 export, 18 import; 3 ignored).
+No frontend or EPUB behavior changed. Native Windows detection and execution
+remain unverified on this macOS host. Next unfinished task: rebuild the Windows
+app and verify Providers → Antigravity → Check with the installed agy.exe.
+No milestone checkboxes changed.
+
 ### Release HTML → Rich mode regression — 2026-10-14
 
 Fixed the Milestone 2 editor-readiness race: a parent chapter-reset effect
