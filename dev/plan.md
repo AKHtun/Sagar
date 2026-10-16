@@ -1,5 +1,29 @@
 # Plan.md — EPUB Translation Studio
 
+### Selection formatting popup — 2026-10-15
+
+Milestone 2 editing follow-up: selecting text in Translation → Rich text now
+shows a floating toolbar for bold, italic, underline, strike, highlight, inline
+code, superscript, subscript and links. Link entry supports book-relative URLs,
+#anchors and http(s)/mailto with visible validation, Save, Remove link and Cancel.
+Editing an existing link expands its range; removal is disabled for links with
+book attributes so navigation IDs/semantics cannot disappear silently.
+The popup preserves selection, supports Tab/arrow keys/Escape, follows scroll/
+resize, and hides for read-only/HTML views and composition. Existing book inline
+containers remain the serialization model; highlight/sup/sub tools only act on
+compatible inline selections, preserving attributes and disabling unsafe ranges.
+Changes use the existing draft/autosave path; no schema or dependency changes.
+
+Validation: frontend lint/build passed (existing bundle-size warning); all 73
+frontend tests passed, with the four popup tests rerun after the final link
+safeguard. Rust formatting and 16 rich-text validation tests passed. Browser
+component checks cover light/dark appearance, normal/minimum layouts including
+960×640, empty/typed/restored content, Myanmar text, selection formatting, link
+validation/correction and keyboard focus/dismissal. Native IME, current desktop
+build and Windows/Linux behavior remain unverified. Next unfinished task:
+rebuild/restart Sagar and check native selection/IME in a real chapter. No
+milestone checkboxes advanced.
+
 ### Borderless table styles in Rich text — 2026-10-15
 
 Milestone 2 compatibility follow-up: the translation validator now permits

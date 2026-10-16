@@ -8,6 +8,7 @@ import { BookAttributes } from "./bookAttributes";
 import { bookImageView } from "./bookImages";
 import { BookTableCell, BookTableHeader, createBookStructure } from "./bookStructure";
 import { documentFragment, normalizeRichDocument } from "./richText";
+import { SelectionToolbar } from "./SelectionToolbar";
 import { useSlashMenu } from "./useSlashMenu";
 
 const ChapterTable = Table.extend({
@@ -76,6 +77,7 @@ export function ChapterEditor({
   return (
     <>
       <EditorContent editor={editor} />
+      {editor ? <SelectionToolbar editor={editor} active={active && !disabled} /> : null}
       {slashMenu}
     </>
   );
