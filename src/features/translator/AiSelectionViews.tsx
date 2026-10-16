@@ -66,7 +66,7 @@ export function SourceRows({
   return (
     <section className="ai-selection__list" aria-label={t("Source selections")}>
       {units.map((unit) => (
-        <article className="ai-selection__item" key={unit.id}>
+        <article className="ai-selection__item ai-source-row" key={unit.id}>
           <label className="ai-selection__choice">
             <input
               type="checkbox"
@@ -75,20 +75,35 @@ export function SourceRows({
               onChange={(event) => toggle(unit.id, event.target.checked)}
             />
             <span className="ai-selection__row-copy">
-              <strong>
-                {unit.order + 1}. <span className="ai-selection__kind">{unit.kind}</span>
-              </strong>
-              <span className="ai-selection__excerpt">
-                {unit.text || "Image · included locally"}
+              <span className="ai-source-row__meta">
+                <strong>
+                  {unit.order + 1}.{" "}
+                  <span className="ai-selection__kind">
+                    {t(
+                      unit.kind === "paragraph"
+                        ? "Paragraph"
+                        : unit.kind === "table"
+                          ? "Table"
+                          : unit.kind === "image"
+                            ? "Image"
+                            : unit.kind,
+                    )}
+                  </span>
+                </strong>
+                {unit.unavailable ? (
+                  <small>{t("Unavailable")}</small>
+                ) : unit.added ? (
+                  <small>{t("Added before")}</small>
+                ) : unit.hasProposal ? (
+                  <small>{t("Saved proposal")}</small>
+                ) : null}
               </span>
-              <small>
-                {unit.unavailable ??
-                  (unit.added
-                    ? "Added before"
-                    : unit.hasProposal
-                      ? "Saved proposal"
-                      : t("Not translated"))}
-              </small>
+              <span className="ai-selection__excerpt">
+                {unit.text || t("Image · included locally")}
+              </span>
+              {unit.unavailable ? (
+                <small className="ai-source-row__warning">{unit.unavailable}</small>
+              ) : null}
             </span>
           </label>
           {(unit.kind === "image" || unit.kind === "figure") && !unit.unavailable ? (
@@ -99,8 +114,11 @@ export function SourceRows({
               />
             </div>
           ) : null}
-          <details>
-            <summary>{t("Expand formatted source")}</summary>
+          <details className="ai-source-row__details">
+            <summary title={t("Expand formatted source")}>
+              <Icon name="richText" />
+              <span className="visually-hidden">{t("Expand formatted source")}</span>
+            </summary>
             <SelectionPreview
               html={unit.previewHtml}
               label={`Source item ${unit.order + 1}`}

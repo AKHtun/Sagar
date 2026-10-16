@@ -1792,3 +1792,23 @@ were removed. Native file chooser, Rust/provider integration and Windows/Linux
 rendering were not rerun. Next unfinished task: native verification of the
 compact global and Book Settings dialogs with remaining localization coverage.
 The existing bundle-size warning remains.
+
+### Compact AI translation setup — 2026-10-16
+
+Whole-chapter and selected-paragraph translation now share compact mode controls
+and a single provider/model/language summary. Optional instructions guidance
+is collapsed; chapter sharing consent remains explicit beside Generate. The
+paragraph workflow uses small step controls, a combined batch/count toolbar,
+and shorter source rows with icon disclosures for formatted previews. Blocked
+items retain visible reasons and disabled checkboxes. Existing job, retry,
+review and append behavior is unchanged; source markup is not reprocessed. New
+labels are translated in all five non-English catalogs.
+
+`bun run check` passed and the 26 targeted AI selection/progress tests passed.
+Browser fixtures checked Myanmar at 1280×720 in light mode and within 960×640
+component bounds in dark mode, visible keyboard focus, consent enabling,
+disabled source items and preview expansion independent of selection. Synthetic
+fixtures were removed. Native provider calls, native window sizing and
+Windows/Linux rendering remain unverified. Next unfinished task: verify the
+compact dialogs in rebuilt native Sagar and finish remaining localization
+coverage. The existing bundle-size warning remains.

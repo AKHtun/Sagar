@@ -490,7 +490,7 @@ export function AiSelectionPanel({
           <button
             type="button"
             key={value}
-            className={step === value ? "btn btn--primary" : "btn"}
+            className="tab"
             aria-current={step === value ? "step" : undefined}
             disabled={
               editor.appending ||
@@ -511,10 +511,10 @@ export function AiSelectionPanel({
             />
             {index + 1}.{" "}
             {value === "select"
-              ? "Select"
+              ? t("Select")
               : value === "progress"
-                ? "Translate"
-                : "Review & Add"}
+                ? t("Translate")
+                : t("Review & Add")}
           </button>
         ))}
       </nav>
@@ -540,64 +540,68 @@ export function AiSelectionPanel({
             {history}
             {step === "select" ? (
               <>
-                <div className="ai-selection__heading">
-                  <h3 tabIndex={-1}>{t("Select source items")}</h3>
-                  <span role="status">
-                    {selected.size} {t("selected ·")} {data.units.length}{" "}
-                    {t("source items")}
-                  </span>
+                <div className="ai-selection__toolbar">
+                  <div className="ai-selection__heading">
+                    <h3 className="visually-hidden" tabIndex={-1}>
+                      {t("Select source items")}
+                    </h3>
+                    <span role="status">
+                      {selected.size} {t("selected ·")} {data.units.length}{" "}
+                      {t("source items")}
+                    </span>
+                  </div>
+                  <div className="button-row ai-selection__batch-actions">
+                    <button
+                      type="button"
+                      className="btn btn--small"
+                      disabled={running}
+                      onClick={() =>
+                        setSelected(
+                          new Set(
+                            data.units
+                              .filter((unit) => !unit.unavailable)
+                              .map((unit) => unit.id),
+                          ),
+                        )
+                      }
+                    >
+                      <Icon name="check" />
+                      {t("Select all available")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--small"
+                      disabled={running}
+                      onClick={() =>
+                        setSelected(
+                          new Set(
+                            data.units
+                              .filter((unit) => !unit.unavailable && !unit.hasProposal)
+                              .map((unit) => unit.id),
+                          ),
+                        )
+                      }
+                    >
+                      <Icon name="paragraph" />
+                      {t("Select untranslated")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--small"
+                      disabled={running}
+                      onClick={() => setSelected(new Set())}
+                    >
+                      <Icon name="close" />
+                      {t("Clear selection")}
+                    </button>
+                  </div>
                 </div>
-                <p className="dialog__muted">
-                  {selection
-                    ? `${selection.model} · ${selection.reasoningEffort ?? "Default effort"}`
-                    : "Choose an AI model in Settings to translate text. Images need no provider."}{" "}
-                  {t("· Images stay local.")}
-                </p>
-                <div className="button-row">
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={running}
-                    onClick={() =>
-                      setSelected(
-                        new Set(
-                          data.units
-                            .filter((unit) => !unit.unavailable)
-                            .map((unit) => unit.id),
-                        ),
-                      )
-                    }
-                  >
-                    <Icon name="check" />
-                    {t("Select all available")}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={running}
-                    onClick={() =>
-                      setSelected(
-                        new Set(
-                          data.units
-                            .filter((unit) => !unit.unavailable && !unit.hasProposal)
-                            .map((unit) => unit.id),
-                        ),
-                      )
-                    }
-                  >
-                    <Icon name="paragraph" />
-                    {t("Select untranslated")}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={running}
-                    onClick={() => setSelected(new Set())}
-                  >
-                    <Icon name="close" />
-                    {t("Clear selection")}
-                  </button>
-                </div>
+                {!selection ? (
+                  <p className="dialog__muted">
+                    Choose an AI model in Settings to translate text. Images need no
+                    provider.
+                  </p>
+                ) : null}
                 <SourceRows
                   units={data.units.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)}
                   selected={selected}
@@ -630,8 +634,11 @@ export function AiSelectionPanel({
                     </button>
                   </div>
                 ) : null}
-                <details>
-                  <summary>{t("Translation instructions")}</summary>
+                <details className="settings-help">
+                  <summary>
+                    <Icon name="keep" />
+                    {t("Translation instructions")}
+                  </summary>
                   {bookInstructions ? (
                     <details>
                       <summary>{t("Book instructions")}</summary>
@@ -948,7 +955,7 @@ export function AiSelectionPanel({
         ) : null}
         <div role="status">
           {step === "select"
-            ? `${selected.size} items selected`
+            ? `${selected.size} ${t("items selected")}`
             : step === "review"
               ? `${accepted.size} selected · Add to end of draft`
               : "Completed parts are saved locally"}
@@ -988,7 +995,9 @@ export function AiSelectionPanel({
               onClick={() => void start()}
             >
               <Icon name={localOnly ? "image" : "sparkles"} />
-              {localOnly ? generateLabel : `Translate ${selected.size} items`}
+              {localOnly
+                ? generateLabel
+                : `${t("Translate")} ${selected.size} ${t("items")}`}
             </button>
           ) : step === "progress" ? (
             running ? (

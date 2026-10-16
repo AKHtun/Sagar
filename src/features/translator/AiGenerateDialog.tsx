@@ -379,7 +379,11 @@ export function AiGenerateDialog({
   return (
     <div className="dialog-backdrop">
       <div
-        className={mode === "selected" ? "dialog dialog--selection" : "dialog"}
+        className={
+          mode === "selected"
+            ? "dialog dialog--selection ai-generation"
+            : "dialog ai-generation"
+        }
         role="dialog"
         aria-modal="true"
         aria-labelledby="ai-generate-title"
@@ -412,10 +416,10 @@ export function AiGenerateDialog({
           </button>
         </div>
 
-        <fieldset className="button-row ai-mode" aria-label={t("Translation mode")}>
+        <fieldset className="tabs ai-mode" aria-label={t("Translation mode")}>
           <button
             type="button"
-            className={mode === "whole" ? "btn btn--primary" : "btn"}
+            className="tab"
             aria-pressed={mode === "whole"}
             disabled={running || selectedBusy || editor.appending}
             onClick={() => setMode("whole")}
@@ -425,7 +429,7 @@ export function AiGenerateDialog({
           </button>
           <button
             type="button"
-            className={mode === "selected" ? "btn btn--primary" : "btn"}
+            className="tab"
             aria-pressed={mode === "selected"}
             disabled={running || selectedBusy || editor.appending}
             onClick={() => setMode("selected")}
@@ -434,6 +438,25 @@ export function AiGenerateDialog({
             {t("Selected paragraphs")}
           </button>
         </fieldset>
+
+        {selection && providers ? (
+          <div className="ai-config-summary" role="status">
+            <span>
+              <Icon name="sparkles" />
+              <strong>
+                {agentLabel(selection.agent, providers.cli, providers.custom)}
+              </strong>{" "}
+              · {selection.model} ·{" "}
+              {selection.reasoningEffort ?? t("Default (provider setting)")}
+            </span>
+            {project ? (
+              <span>
+                <Icon name="languages" />
+                {formatDirection(project.sourceLanguage, project.targetLanguage)}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         {mode === "selected" ? (
           <AiSelectionPanel
@@ -458,33 +481,8 @@ export function AiGenerateDialog({
           </StatusNotice>
         ) : (
           <>
-            <p className="dialog__muted">
-              {t("Agent")}{" "}
-              <strong>
-                {agentLabel(selection.agent, providers.cli, providers.custom)}
-              </strong>{" "}
-              {t("· Model")} <strong>{selection.model}</strong>
-              {" · "}
-              {t("Effort")} <strong>{selection.reasoningEffort ?? "Default"}</strong>
-            </p>
-            {project ? (
-              <p className="dialog__muted" role="status">
-                {t("Translating")}{" "}
-                {formatDirection(project.sourceLanguage, project.targetLanguage)}{" "}
-                {t(
-                  "— the languages set in the workspace footer. The original formatting is sent along so it can be preserved.",
-                )}
-              </p>
-            ) : null}
-
             {phase === "idle" || phase === "failed" ? (
               <>
-                {bookInstructions ? (
-                  <details>
-                    <summary>{t("Book instructions")}</summary>
-                    <p className="book-instructions">{bookInstructions}</p>
-                  </details>
-                ) : null}
                 <label className="form-field">
                   <span>{t("Instructions for this run (optional)")}</span>
                   <textarea
@@ -498,43 +496,62 @@ export function AiGenerateDialog({
                     placeholder={t("Additional guidance for this chapter…")}
                   />
                 </label>
-                <p className="dialog__muted">
-                  {t(
-                    "Book instructions and this run's instructions are sent together. Changing these instructions restarts translation on Retry.",
-                  )}
-                </p>
-                <label className="export-ack">
-                  <input
-                    type="checkbox"
-                    checked={consent}
-                    onChange={(event) => setConsent(event.target.checked)}
-                  />
-                  <span>
-                    {t("I understand this chapter's text will be sent to")}{" "}
-                    {agentLabel(selection.agent, providers.cli, providers.custom)}
-                    {selection.agent.startsWith("custom:")
-                      ? " at its configured API endpoint"
-                      : " through its installed tool"}{" "}
-                    {t("to generate a proposal.")}
-                  </span>
-                </label>
-                {phase === "failed" && streamed ? (
+                <details className="settings-help ai-generation__help">
+                  <summary>
+                    <Icon name="keep" />
+                    {t("Translation instructions")}
+                  </summary>
+                  {bookInstructions ? (
+                    <>
+                      <strong>{t("Book instructions")}</strong>
+                      <p className="book-instructions">{bookInstructions}</p>
+                    </>
+                  ) : null}
                   <p className="dialog__muted">
                     {t(
-                      "Retry keeps complete sections whose formatting matches the source and translates the rest. An unfinished section starts again. If no complete section can be kept, the chapter starts again. A completed result is revalidated without translating again.",
+                      "Book instructions and this run's instructions are sent together. Changing these instructions restarts translation on Retry.",
                     )}
                   </p>
-                ) : null}
-                <div className="button-row">
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    disabled={!consent || editor.draft?.conflict === true}
-                    onClick={() => void handleGenerate()}
-                  >
-                    <Icon name="refresh" />
-                    {phase === "failed" ? t("Retry") : "Generate"}
-                  </button>
+                  <p className="dialog__muted">
+                    {t("Original formatting is included for preservation.")}
+                  </p>
+                </details>
+                <div className="ai-generation__start">
+                  <label className="export-ack">
+                    <input
+                      type="checkbox"
+                      checked={consent}
+                      onChange={(event) => setConsent(event.target.checked)}
+                    />
+                    <span>
+                      {t("Send this chapter’s text to")}{" "}
+                      <strong>
+                        {agentLabel(selection.agent, providers.cli, providers.custom)}
+                      </strong>{" "}
+                      {selection.agent.startsWith("custom:")
+                        ? t("via API")
+                        : t("via installed tool")}
+                      .
+                    </span>
+                  </label>
+                  {phase === "failed" && streamed ? (
+                    <p className="dialog__muted">
+                      {t(
+                        "Retry keeps complete sections whose formatting matches the source and translates the rest. An unfinished section starts again. If no complete section can be kept, the chapter starts again. A completed result is revalidated without translating again.",
+                      )}
+                    </p>
+                  ) : null}
+                  <div className="button-row">
+                    <button
+                      type="button"
+                      className="btn btn--primary"
+                      disabled={!consent || editor.draft?.conflict === true}
+                      onClick={() => void handleGenerate()}
+                    >
+                      <Icon name="refresh" />
+                      {phase === "failed" ? t("Retry") : t("Generate")}
+                    </button>
+                  </div>
                 </div>
               </>
             ) : null}
