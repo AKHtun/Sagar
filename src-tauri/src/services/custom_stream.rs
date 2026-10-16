@@ -1067,6 +1067,7 @@ mod tests {
                 title: "Synthetic".into(),
                 author: None,
                 source_language: Some("en".into()),
+                target_language: "my".into(),
                 created_at: "2026-10-14T00:00:00Z".into(),
             },
             &[(

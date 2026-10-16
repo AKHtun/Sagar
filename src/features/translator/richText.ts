@@ -132,6 +132,7 @@ export function documentFragment(html: string): string {
       "dl",
       "dt",
       "dd",
+      "time",
       "span",
       "small",
       "abbr",
@@ -178,29 +179,31 @@ export function documentFragment(html: string): string {
       ...(tag === "div" ? ["align"] : []),
       ...(tag === "img"
         ? ["src", "srcset", "sizes", "alt", "width", "height", "loading", "decoding"]
-        : tag === "source"
-          ? ["src", "srcset", "sizes", "media", "type", "width", "height"]
-          : tag === "a"
-            ? ["href"]
-            : tag === "td" || tag === "th"
-              ? [
-                  "colspan",
-                  "rowspan",
-                  "width",
-                  "height",
-                  "align",
-                  "valign",
-                  "scope",
-                  "abbr",
-                  "headers",
-                ]
-              : tag === "table"
-                ? ["border", "cellpadding", "cellspacing", "width", "align"]
-                : tag === "ol" || tag === "ul"
-                  ? ["start", "type"]
-                  : tag === "li"
-                    ? ["value"]
-                    : []),
+        : tag === "time"
+          ? ["datetime"]
+          : tag === "source"
+            ? ["src", "srcset", "sizes", "media", "type", "width", "height"]
+            : tag === "a"
+              ? ["href"]
+              : tag === "td" || tag === "th"
+                ? [
+                    "colspan",
+                    "rowspan",
+                    "width",
+                    "height",
+                    "align",
+                    "valign",
+                    "scope",
+                    "abbr",
+                    "headers",
+                  ]
+                : tag === "table"
+                  ? ["border", "cellpadding", "cellspacing", "width", "align"]
+                  : tag === "ol" || tag === "ul"
+                    ? ["start", "type"]
+                    : tag === "li"
+                      ? ["value"]
+                      : []),
       ...(SVG_TAGS.includes(tag) ? [...SVG_ATTRS, "xmlns", "xmlns:xlink"] : []),
     ].sort();
     names.push(

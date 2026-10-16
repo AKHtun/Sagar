@@ -1,5 +1,26 @@
 # Plan.md — EPUB Translation Studio
 
+### Select heading groups and preserve time in translations — 2026-10-16
+
+Fixed the mismatch between source preview, Rich editing and selected-paragraph
+validation. Heading groups are selectable as one intact unit, retaining their
+existing locator/identity. Time elements and datetime now survive Rust document
+validation and Rich normalization, editing and reload; inline placement and
+active-attribute checks remain enforced. Existing blocked selection cache entries
+use the existing revalidation path on reopen; no migration or reimport is needed.
+Also corrected an extra angle bracket in unsupported-element diagnostics.
+This continues Milestone 5 compatibility polish; no milestone checkboxes advanced.
+
+Validation: bun run check and all 83 frontend tests passed (existing bundle-size
+warning). Rust formatting and the full Rust suite passed before the additional
+export regression; that new save/reload/export/reopen regression also passed.
+The synthetic fixture covers selection, text reconstruction, Myanmar editing,
+datetime retention, source immutability and invalid active/nested content.
+Native rendered/IME, normal/minimum window sizes, themes and Windows/Linux
+remain unverified. Next unfinished task: rebuild Sagar and reopen the affected
+chapter to verify both checkboxes and the translation-to-Rich flow in native UI.
+
+
 ### Rich legacy div alignment — 2026-10-16
 
 Fixed `div align` rejection in Rust document validation and attribute loss in
@@ -1812,3 +1833,40 @@ fixtures were removed. Native provider calls, native window sizing and
 Windows/Linux rendering remain unverified. Next unfinished task: verify the
 compact dialogs in rebuilt native Sagar and finish remaining localization
 coverage. The existing bundle-size warning remains.
+
+### Compact translation languages — 2026-10-16
+
+The workspace language dialog now has equal-width named language choices, an
+Unknown source option, and an Other language option that retains custom and
+regional tags. The repeated direction line is removed, detailed guidance is
+collapsed, and Save/Cancel share the existing settings footer. Fields disable
+while saving; selects and disclosures participate in the focus trap, and Enter
+submits. The existing metadata service and validation boundaries are preserved.
+New display labels are translated in all five non-English catalogs.
+
+`bun run check` passed, and four language-dialog/localization tests passed.
+Regression coverage checks regional/custom tags, unknown source, save failure
+retention, retry and focus restoration. Browser fixtures checked Myanmar in
+light at 1280×720 and dark within 960×640 component bounds, custom tag entry,
+invalid-tag feedback, save errors and keyboard focus wrapping. Fixtures were
+removed. Native saving and Windows/Linux rendering were not rerun. Next
+unfinished task: verify the compact language dialog in rebuilt native Sagar.
+No milestone checkboxes advanced; the existing bundle-size warning remains.
+
+### App-language default for new EPUB targets — 2026-10-16
+
+Library import passes the current app language through the typed Tauri bridge.
+The Rust import service maps English/Myanmar to Myanmar and Chinese, Japanese,
+Korean and Thai to their respective target tags. Missing/unknown preferences
+retain the Myanmar default. The target is inserted in the same transaction as
+the new project; existing projects and duplicate/resume targets are unchanged.
+No migration or source-content conversion is needed.
+
+Validation: lint/TypeScript/build and four frontend import/localization tests
+passed. Rust formatting and the full Rust test suite passed, including the import
+integration suite (21 tests, two existing ignored). The new synthetic regression covers all supported languages,
+unknown preference fallback, persisted targets, existing-project preservation
+and unchanged source/snapshot bytes. Native picker/import interaction and
+Windows/Linux were not exercised. Next unfinished task: verify changing app
+language then importing in rebuilt native Sagar. No milestone checkboxes advanced.
+The existing bundle-size warning remains.

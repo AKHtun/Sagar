@@ -302,4 +302,10 @@ export const ja: Record<string, string> = {
   "Image · included locally": "画像 · ローカルで保持",
   "Original formatting is included for preservation.":
     "元の書式を保持するため、書式情報も含めます。",
+  Unknown: "不明",
+  "Choose a language": "言語を選択",
+  "Other language…": "その他の言語…",
+  "Language tag": "言語タグ",
+  "Language details": "言語の詳細",
+  "Used for translation and export.": "翻訳と書き出しに使用します。",
 };

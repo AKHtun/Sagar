@@ -22,6 +22,24 @@ pub fn import_epub(
     source_path: &Path,
     allow_duplicate: bool,
 ) -> Result<ImportResult, AppError> {
+    import_epub_with_app_language(data_dir, source_path, allow_duplicate, "en")
+}
+
+/// The app language sets the initial target for a new project only.
+/// English/Myanmar and unknown preferences keep the historical Myanmar default.
+pub fn import_epub_with_app_language(
+    data_dir: &Path,
+    source_path: &Path,
+    allow_duplicate: bool,
+    app_language: &str,
+) -> Result<ImportResult, AppError> {
+    let target_language = match app_language {
+        "zh" => "zh",
+        "ja" => "ja",
+        "ko" => "ko",
+        "th" => "th",
+        _ => "my",
+    };
     let metadata = std::fs::metadata(source_path)?;
     if metadata.is_dir() {
         return Err(AppError::new(
@@ -73,6 +91,7 @@ pub fn import_epub(
             .unwrap_or_else(|| "Untitled book".to_string()),
         author: parsed.metadata.author.clone(),
         source_language: parsed.metadata.language.clone(),
+        target_language: target_language.to_string(),
         created_at: now,
     };
 

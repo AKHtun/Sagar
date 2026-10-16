@@ -23,6 +23,7 @@ const containers = [
 const blockSelector =
   "p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,hr,table,div,section,hgroup,article,main,header,footer,aside,figure,figcaption,pre,dl,dt,dd,svg,picture,img";
 const inline = [
+  "time",
   "span",
   "b",
   "i",
@@ -301,6 +302,7 @@ export function createBookStructure(imageBase = "") {
         group: "inline",
         inline: true,
         content: "inline*",
+        addAttributes: () => (tag === "time" ? { datetime: { default: null } } : {}),
         parseHTML: () => [{ tag, priority: 110 }],
         renderHTML: ({ HTMLAttributes }) => [tag, HTMLAttributes, 0],
       }),

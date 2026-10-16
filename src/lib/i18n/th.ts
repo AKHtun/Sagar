@@ -300,4 +300,10 @@ export const th: Record<string, string> = {
   items: "รายการ",
   "Image · included locally": "รูปภาพ · เก็บไว้ในเครื่อง",
   "Original formatting is included for preservation.": "รวมรูปแบบต้นฉบับเพื่อรักษาการจัดรูปแบบไว้",
+  Unknown: "ไม่ทราบ",
+  "Choose a language": "เลือกภาษา",
+  "Other language…": "ภาษาอื่น…",
+  "Language tag": "รหัสภาษา",
+  "Language details": "รายละเอียดภาษา",
+  "Used for translation and export.": "ใช้สำหรับการแปลและการส่งออก",
 };

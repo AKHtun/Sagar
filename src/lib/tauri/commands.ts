@@ -14,6 +14,7 @@ import type {
   ImportResult,
   ProjectSummary,
 } from "../../types/project";
+import type { AppLanguage } from "../prefs";
 import { toCommandError } from "./errors";
 import { preparePreviewImages } from "./preview";
 
@@ -60,11 +61,13 @@ export async function pickExportDestination(defaultName: string): Promise<string
 export async function importEpub(
   sourcePath: string,
   allowDuplicate: boolean,
+  appLanguage: AppLanguage = "en",
 ): Promise<ImportResult> {
   try {
     return await invoke<ImportResult>("import_epub", {
       sourcePath,
       allowDuplicate,
+      appLanguage,
     });
   } catch (error) {
     throw toCommandError(error);

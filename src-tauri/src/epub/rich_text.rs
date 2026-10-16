@@ -103,6 +103,7 @@ fn is_xhtml_document_tag(tag: &str) -> bool {
             | "dl"
             | "dt"
             | "dd"
+            | "time"
             | "span"
             | "b"
             | "i"
@@ -174,6 +175,7 @@ fn is_xhtml_inline(tag: &str) -> bool {
             | "br"
             | "img"
             | "a"
+            | "time"
             | "span"
             | "b"
             | "i"
@@ -417,7 +419,7 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
             // This is the rejection the AI dialog surfaces. Name the element
             // so Retry can drop/convert exactly this tag.
             return Err(invalid_detail(format!(
-                "Unsupported <{tag}>{ns_label}> element."
+                "Unsupported <{tag}>{ns_label} element."
             )));
         }
         if document {
@@ -447,6 +449,7 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                     | "u"
                     | "s"
                     | "a"
+                    | "time"
                     | "span"
                     | "b"
                     | "i"
@@ -575,6 +578,7 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                 ) | ("image", "href" | "alt")
                     | ("source", "src" | "srcset" | "sizes" | "media" | "type")
                     | ("a", "href")
+                    | ("time", "datetime")
                     | ("ol", "start")
                     | ("td" | "th", "colspan" | "rowspan")
             ) || (is_svg

@@ -84,13 +84,15 @@ pub async fn import_epub(
     app: AppHandle,
     source_path: String,
     allow_duplicate: bool,
+    app_language: Option<String>,
 ) -> Result<ImportResult, AppError> {
     let data_dir = app_data_dir(&app)?;
     run_blocking(move || {
-        services::import::import_epub(
+        services::import::import_epub_with_app_language(
             &data_dir,
             std::path::Path::new(&source_path),
             allow_duplicate,
+            app_language.as_deref().unwrap_or("en"),
         )
     })
     .await

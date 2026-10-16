@@ -43,7 +43,7 @@ type LibraryScreenProps = {
 };
 
 export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [library, setLibrary] = useState<LibraryState>({ status: "loading" });
   const [view, setView] = useState<LibraryView>(readLibraryView);
   const [query, setQuery] = useState("");
@@ -86,7 +86,7 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
     setImportError(null);
     setImportingName(fileName);
     try {
-      const result = await importEpub(path, allowDuplicate);
+      const result = await importEpub(path, allowDuplicate, language);
       setImportingName(null);
       onOpenProject(result.project.id, result.warnings);
     } catch (error) {

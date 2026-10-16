@@ -836,3 +836,42 @@ fn local_project_navigation_probe() {
             .count()
     );
 }
+
+#[test]
+fn app_language_sets_only_new_import_targets_and_survives_reopen() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let source = multi_chapter_epub(temp.path());
+    let original = std::fs::read(&source).expect("source bytes");
+    let data = temp.path().join("data");
+    for (app_language, target) in [
+        ("en", "my"),
+        ("my", "my"),
+        ("th", "th"),
+        ("zh", "zh"),
+        ("ja", "ja"),
+        ("ko", "ko"),
+        ("unsupported", "my"),
+    ] {
+        let imported =
+            services::import::import_epub_with_app_language(&data, &source, true, app_language)
+                .expect("import with language");
+        assert_eq!(imported.project.target_language, target);
+        assert_eq!(imported.project.source_language.as_deref(), Some("en"));
+        let reopened = services::projects::get_project(&data, &imported.project.id)
+            .expect("reload saved target");
+        assert_eq!(reopened.target_language, target);
+        let duplicate =
+            services::import::import_epub_with_app_language(&data, &source, false, "zh")
+                .expect_err("existing project must not be relabeled");
+        assert_eq!(duplicate.code, "duplicate_project");
+        assert_eq!(
+            services::projects::get_project(&data, &imported.project.id)
+                .expect("existing project")
+                .target_language,
+            target
+        );
+        let snapshot = data.join(format!("projects/{}/source.epub", imported.project.id));
+        assert_eq!(std::fs::read(snapshot).expect("snapshot"), original);
+    }
+    assert_eq!(std::fs::read(source).expect("unchanged source"), original);
+}

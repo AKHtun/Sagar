@@ -305,4 +305,10 @@ export const zh: Record<string, string> = {
   items: "项",
   "Image · included locally": "图片 · 仅保存在本机",
   "Original formatting is included for preservation.": "会一并发送原始格式，以便保留。",
+  Unknown: "未知",
+  "Choose a language": "选择语言",
+  "Other language…": "其他语言…",
+  "Language tag": "语言标签",
+  "Language details": "语言详情",
+  "Used for translation and export.": "用于翻译和导出。",
 };

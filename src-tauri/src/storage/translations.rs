@@ -444,6 +444,7 @@ mod tests {
                 title: "T".into(),
                 author: None,
                 source_language: Some("en".into()),
+                target_language: "my".into(),
                 created_at: "2026-01-01T00:00:00Z".into(),
             },
             &[(

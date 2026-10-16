@@ -3028,3 +3028,30 @@ button {
 .ai-selection__batch-actions {
   order: 1;
 }
+
+.language-dialog__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.language-dialog__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.language-dialog__fields .form-field select,
+.language-dialog__fields .form-field input {
+  width: 100%;
+  min-width: 0;
+}
+.language-dialog .settings-help {
+  margin: 0;
+}
+.language-dialog select[aria-invalid="true"] {
+  border-color: var(--color-error);
+}
+@media (max-width: 600px) {
+  .language-dialog__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

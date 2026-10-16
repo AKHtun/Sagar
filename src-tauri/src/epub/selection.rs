@@ -135,7 +135,8 @@ pub fn collect(source: &str) -> Result<Vec<SourceUnit>, AppError> {
         };
         let supported = matches!(
             tag,
-            "p" | "h1"
+            "p" | "hgroup"
+                | "h1"
                 | "h2"
                 | "h3"
                 | "h4"
@@ -399,6 +400,43 @@ pub fn assemble(units: &[(SourceUnit, String)]) -> String {
 mod tests {
     use super::*;
     const SOURCE: &str = include_str!("../../../tests/fixtures/ai/selected-content.xhtml");
+
+    #[test]
+    fn heading_groups_and_time_are_selectable_and_preserved() {
+        let source = include_str!("../../../tests/fixtures/editor/selection-time.xhtml");
+        let units = collect(source).expect("source");
+        assert_eq!(units.len(), 2);
+        assert!(units.iter().all(|u| u.unavailable.is_none()), "{units:?}");
+        assert_eq!(units[0].locator, "0");
+        assert!(units[0].html.contains("<hgroup id=\"title\">"));
+        assert!(
+            units[1]
+                .html
+                .contains("<time datetime=\"1878\">1878</time>")
+        );
+        let translated: Vec<_> = units
+            .into_iter()
+            .map(|unit| {
+                let replacements = parts(&unit.html, 4096)
+                    .expect("parts")
+                    .into_iter()
+                    .map(|part| (part.node, part.start, part.end, "မြန်မာ".into()))
+                    .collect::<Vec<_>>();
+                let html = reconstruct(&unit.html, &replacements).expect("rebuild");
+                (unit, html)
+            })
+            .collect();
+        let html = assemble(&translated);
+        let validated = rich_text::validate_document(&html)
+            .expect("valid translation")
+            .0;
+        assert!(validated.contains("<time datetime=\"1878\">မြန်မာ</time>"));
+        assert!(validated.contains("<hgroup id=\"title\">"));
+        assert!(
+            rich_text::validate_document("<p><time onclick=\"bad()\">1878</time></p>").is_err()
+        );
+        assert!(rich_text::validate_document("<p><time><p>bad</p></time></p>").is_err());
+    }
 
     #[test]
     fn selections_keep_figures_tables_images_and_structural_identity() {

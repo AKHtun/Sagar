@@ -302,4 +302,10 @@ export const ko: Record<string, string> = {
   "Image · included locally": "이미지 · 로컬에 유지",
   "Original formatting is included for preservation.":
     "원본 서식을 유지할 수 있도록 서식 정보도 포함합니다.",
+  Unknown: "알 수 없음",
+  "Choose a language": "언어 선택",
+  "Other language…": "다른 언어…",
+  "Language tag": "언어 태그",
+  "Language details": "언어 세부 정보",
+  "Used for translation and export.": "번역과 내보내기에 사용합니다.",
 };

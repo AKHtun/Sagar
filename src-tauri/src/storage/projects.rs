@@ -16,6 +16,7 @@ pub struct NewProject {
     pub title: String,
     pub author: Option<String>,
     pub source_language: Option<String>,
+    pub target_language: String,
     pub created_at: String,
 }
 
@@ -48,8 +49,8 @@ pub fn create_project(
     let tx = crate::storage::begin_write(conn)?;
     tx.execute(
         "INSERT INTO projects (id, source_sha256, source_snapshot_path, title, author,
-            source_language, created_at, updated_at, original_source_path)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8)",
+            source_language, created_at, updated_at, original_source_path, target_language)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8, ?9)",
         rusqlite::params![
             project.id,
             project.source_sha256,
@@ -59,6 +60,7 @@ pub fn create_project(
             project.source_language,
             project.created_at,
             project.original_source_path,
+            project.target_language,
         ],
     )?;
     for (chapter, blocks) in chapters {

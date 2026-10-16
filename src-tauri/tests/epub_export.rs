@@ -1818,3 +1818,66 @@ fn aligned_div_save_export_and_reopen() {
     epub::inspect(&destination).expect("reopen exported EPUB");
     assert_eq!(std::fs::read(source).expect("source after"), original);
 }
+
+#[test]
+fn heading_group_and_time_save_export_and_reopen() {
+    let dir = tempdir();
+    let data_dir = dir.join("data");
+    let files = rich_book_files();
+    let refs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "source.epub", &refs);
+    let original = std::fs::read(&source).expect("source");
+    let book = import_rich_book(&data_dir, &source);
+    let source_html = include_str!("../../tests/fixtures/editor/selection-time.xhtml");
+    let units = epub::selection::collect(source_html).expect("selection");
+    assert!(units.iter().all(|unit| unit.unavailable.is_none()));
+    let assembled = epub::selection::assemble(
+        &units
+            .into_iter()
+            .map(|unit| {
+                let html = unit.html.clone();
+                (unit, html)
+            })
+            .collect::<Vec<_>>(),
+    );
+    let html = assembled.as_str();
+    services::workspace::save_chapter_document(
+        &data_dir,
+        &book.chapter_ids[0],
+        Some(html.into()),
+        "draft",
+        0,
+    )
+    .expect("save");
+    let loaded =
+        services::workspace::get_chapter(&data_dir, &book.project_id, &book.chapter_ids[0])
+            .expect("reload");
+    assert_eq!(loaded.document.html.as_deref(), Some(html));
+    let destination = dir.join("compatible.epub");
+    services::export::export_epub(
+        &data_dir,
+        ExportRequest {
+            project_id: book.project_id,
+            destination: destination.clone(),
+            mode: "draft".into(),
+            title: None,
+            language: None,
+            include_original: true,
+        },
+    )
+    .expect("export");
+    let mut archive =
+        zip::ZipArchive::new(std::fs::File::open(&destination).expect("file")).expect("zip");
+    let mut output = String::new();
+    archive
+        .by_name("OEBPS/ch1.xhtml")
+        .expect("chapter")
+        .read_to_string(&mut output)
+        .expect("read");
+    assert!(output.contains(html));
+    epub::inspect(&destination).expect("reopen exported EPUB");
+    assert_eq!(std::fs::read(source).expect("source after"), original);
+}

@@ -469,4 +469,10 @@ export const my: Record<string, string> = {
   items: "ခု",
   "Image · included locally": "ပုံ · ဤကွန်ပျူတာတွင်သာ ထားပါသည်",
   "Original formatting is included for preservation.": "မူရင်းပုံစံကို ထိန်းသိမ်းနိုင်ရန် ပို့ပေးပါသည်။",
+  Unknown: "မသိရပါ",
+  "Choose a language": "ဘာသာစကား ရွေးရန်",
+  "Other language…": "အခြားဘာသာစကား…",
+  "Language tag": "ဘာသာစကားကုဒ်",
+  "Language details": "ဘာသာစကား အသေးစိတ်",
+  "Used for translation and export.": "ဘာသာပြန်ခြင်းနှင့် ထုတ်ယူခြင်းအတွက် သုံးပါသည်။",
 };

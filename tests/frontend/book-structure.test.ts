@@ -411,3 +411,24 @@ test("aligned div retains Myanmar text, escaped angle brackets and alignment thr
     } finally { editor.destroy(); }
   }
 });
+
+test("selected heading groups and time survive Rich typing and reload", async () => {
+  const source = await Bun.file(new URL("../fixtures/editor/selection-time.xhtml", import.meta.url)).text();
+  const body = new DOMParser().parseFromString(source, "text/html").body.innerHTML;
+  const normalized = normalizeRichDocument(body);
+  expect(normalized).toContain('<time datetime="1878">1878</time>');
+  const editor = createEditor(normalized);
+  try {
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(normalized));
+    let position = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === "1878") position = pos;
+    });
+    editor.commands.insertContentAt(position, "မြန်မာ ");
+    const saved = documentFragment(editor.getHTML());
+    expect(saved).toContain('<time datetime="1878">မြန်မာ 1878</time>');
+    expect(saved).toContain('<hgroup id="title">');
+    editor.commands.setContent(saved);
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(saved));
+  } finally { editor.destroy(); }
+});
