@@ -884,10 +884,14 @@ mod document_tests {
     use super::*;
     #[test]
     fn aligned_div_preserves_myanmar_and_escaped_brackets() {
-        let html = include_str!("../../../tests/fixtures/editor/aligned-div.xhtml");
-        let (saved, _) = validate_document(html).expect("aligned div");
-        assert_eq!(saved, html);
-        assert_eq!(validate_document(&saved).expect("reload").0, saved);
+        // XML normalizes CRLF to LF, including fixtures checked out on Windows.
+        let expected =
+            include_str!("../../../tests/fixtures/editor/aligned-div.xhtml").replace("\r\n", "\n");
+        for html in [expected.clone(), expected.replace('\n', "\r\n")] {
+            let (saved, _) = validate_document(&html).expect("aligned div");
+            assert_eq!(saved, expected);
+            assert_eq!(validate_document(&saved).expect("reload").0, saved);
+        }
         let nested = "<div align=\"center\"><p>မြန်မာ</p></div>";
         assert_eq!(validate_document(nested).expect("nested div").0, nested);
         assert!(validate_document("<div align=\"left\" onclick=\"evil()\">မြန်မာ</div>").is_err());
