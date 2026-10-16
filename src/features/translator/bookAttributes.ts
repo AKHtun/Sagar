@@ -72,6 +72,7 @@ export const BookAttributes = Extension.create({
               "lang",
               "dir",
               "role",
+              "data-parent",
               "epub:type",
               "xmlns:epub",
               "xml:lang",

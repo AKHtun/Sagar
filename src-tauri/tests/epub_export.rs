@@ -880,6 +880,74 @@ fn book_semantics_and_table_sections_save_export_and_reopen() {
 }
 
 #[test]
+fn chapter_heading_group_and_parent_save_export_and_reopen() {
+    let dir = tempdir();
+    let data_dir = dir.join("data");
+    let files = rich_book_files();
+    let refs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "source.epub", &refs);
+    let original = std::fs::read(&source).expect("source");
+    let book = import_rich_book(&data_dir, &source);
+    let html = include_str!("../../tests/fixtures/editor/chapter-heading-group.xhtml").trim();
+    services::workspace::save_chapter_document(
+        &data_dir,
+        &book.chapter_ids[0],
+        Some(html.into()),
+        "draft",
+        0,
+    )
+    .expect("save");
+    let loaded =
+        services::workspace::get_chapter(&data_dir, &book.project_id, &book.chapter_ids[0])
+            .expect("reload");
+    let saved = loaded.document.html.as_deref().expect("saved HTML");
+    let document = roxmltree::Document::parse(saved).expect("saved XHTML");
+    assert_eq!(
+        document.root_element().attribute("data-parent"),
+        Some("part-1")
+    );
+    assert_eq!(
+        document.root_element().attribute("role"),
+        Some("doc-chapter")
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|n| n.has_tag_name("hgroup") && n.attribute("class") == Some("has-h3"))
+    );
+    assert!(document.descendants().any(|n| n.has_tag_name("abbr")
+        && n.text() == Some("Mr.")
+        && n.attribute(("http://www.idpf.org/2007/ops", "type")) == Some("z3998:name-title")));
+    let destination = dir.join("compatible.epub");
+    services::export::export_epub(
+        &data_dir,
+        ExportRequest {
+            project_id: book.project_id,
+            destination: destination.clone(),
+            mode: "draft".into(),
+            title: None,
+            language: None,
+            include_original: true,
+        },
+    )
+    .expect("export");
+    let mut archive =
+        zip::ZipArchive::new(std::fs::File::open(&destination).expect("file")).expect("zip");
+    let mut output = String::new();
+    archive
+        .by_name("OEBPS/ch1.xhtml")
+        .expect("chapter")
+        .read_to_string(&mut output)
+        .expect("read");
+    assert!(output.contains(saved));
+    epub::inspect(&destination).expect("reopen exported EPUB");
+    assert_eq!(std::fs::read(source).expect("source after"), original);
+}
+
+#[test]
 fn borderless_table_styles_save_export_and_reopen() {
     let dir = tempdir();
     let data_dir = dir.join("data");

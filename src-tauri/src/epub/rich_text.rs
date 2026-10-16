@@ -91,6 +91,7 @@ fn is_xhtml_document_tag(tag: &str) -> bool {
             | "caption"
             | "div"
             | "section"
+            | "hgroup"
             | "article"
             | "main"
             | "header"
@@ -148,6 +149,7 @@ fn is_xhtml_block(tag: &str) -> bool {
             | "caption"
             | "div"
             | "section"
+            | "hgroup"
             | "article"
             | "main"
             | "header"
@@ -609,7 +611,7 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                 || document
                     && (matches!(
                         attr_name,
-                        "class" | "id" | "style" | "title" | "lang" | "dir" | "role"
+                        "class" | "id" | "style" | "title" | "lang" | "dir" | "role" | "data-parent"
                     ) || attr_name.starts_with("aria-")
                         || attr_name == "xml:lang"
                         || is_preserved_layout_attr(tag, attr_name)))

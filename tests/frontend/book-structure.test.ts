@@ -45,6 +45,31 @@ function createEditor(html: string) {
   });
 }
 
+test("chapter data-parent and heading groups survive Rich editing and reload", async () => {
+  const source = await Bun.file(new URL("../fixtures/editor/chapter-heading-group.xhtml", import.meta.url)).text();
+  const normalized = normalizeRichDocument(source);
+  expect(normalized).toContain('data-parent="part-1"');
+  expect(normalized).toContain('<hgroup class="has-h3">');
+  const editor = createEditor(normalized);
+  try {
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(normalized));
+    expect(editor.view.dom.querySelector("hgroup h3")?.textContent).toBe("I");
+    expect(editor.view.dom.querySelector("abbr")?.textContent).toBe("Mr.");
+    let titlePosition = 0;
+    editor.state.doc.descendants((node, position) => {
+      if (node.isText && node.text === "Mr.") titlePosition = position;
+    });
+    editor.commands.insertContentAt(titlePosition, "မြန်မာ ");
+    const saved = documentFragment(editor.getHTML());
+    expect(saved).toContain('data-parent="part-1"');
+    expect(saved).toContain('<hgroup class="has-h3">');
+    expect(saved).toContain('epub:type="z3998:name-title"');
+    expect(saved).toContain("မြန်မာ Mr.");
+    editor.commands.setContent(saved, { parseOptions: { preserveWhitespace: true } });
+    expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(saved));
+  } finally { editor.destroy(); }
+});
+
 test("Borderless verse tables keep styles and EPUB semantics through typing and reload", async () => {
   const source = await Bun.file(new URL("../fixtures/editor/borderless-table.xhtml", import.meta.url)).text();
   const normalized = normalizeRichDocument(source);

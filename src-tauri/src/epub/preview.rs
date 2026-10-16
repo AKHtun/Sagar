@@ -98,6 +98,7 @@ fn serialize_safe(
             | "u"
             | "s"
             | "span"
+            | "time"
             | "a"
             | "img"
             | "br"
@@ -128,7 +129,7 @@ fn serialize_safe(
             || !matches!(
                 name.as_str(),
                 "src" | "href" | "alt" | "title" | "id" | "lang" | "dir" | "colspan" | "rowspan"
-            )
+            ) && !(tag == "time" && name == "datetime" && attr.namespace().is_none())
         {
             continue;
         }
@@ -335,6 +336,42 @@ mod tests {
     fn keeps_plain_text_and_inline_markup() {
         let html = sanitize("See <em>this</em> &amp; that");
         assert_eq!(html, "See <em>this</em> &amp; that");
+    }
+
+    #[test]
+    fn keeps_time_text_in_chapter_and_block_previews() {
+        let source = include_str!("../../../tests/fixtures/editor/time-preview.xhtml");
+        let doc = roxmltree::Document::parse(source).unwrap();
+        for tag in ["body", "p"] {
+            let node = doc.descendants().find(|n| n.has_tag_name(tag)).unwrap();
+            let html = sanitize_fragment(
+                &source[node.range()],
+                tag,
+                "OEBPS/c1.xhtml",
+                "epubres://pid",
+            );
+            assert!(
+                html.contains("In the year <time datetime=\"1878\">1878</time> I took"),
+                "{html}"
+            );
+            let rendered = roxmltree::Document::parse(&html).unwrap();
+            let text: String = rendered
+                .descendants()
+                .filter(|n| n.is_text())
+                .filter_map(|n| n.text())
+                .collect();
+            assert_eq!(text, "In the year 1878 I took my degree.");
+        }
+    }
+
+    #[test]
+    fn time_keeps_nested_text_but_removes_active_content() {
+        assert_eq!(
+            sanitize(
+                r#"<time datetime="1878" onclick="bad()" style="display:none"><em>1878</em><script>bad()</script></time>"#
+            ),
+            r#"<time datetime="1878"><em>1878</em></time>"#,
+        );
     }
 
     #[test]

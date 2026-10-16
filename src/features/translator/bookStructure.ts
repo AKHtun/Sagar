@@ -9,6 +9,7 @@ import { tableAppearanceAttributes } from "./tableAppearance";
 const containers = [
   "div",
   "section",
+  "hgroup",
   "article",
   "main",
   "header",
@@ -20,7 +21,7 @@ const containers = [
   "dd",
 ];
 const blockSelector =
-  "p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,hr,table,div,section,article,main,header,footer,aside,figure,figcaption,pre,dl,dt,dd,svg,picture,img";
+  "p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,hr,table,div,section,hgroup,article,main,header,footer,aside,figure,figcaption,pre,dl,dt,dd,svg,picture,img";
 const inline = [
   "span",
   "b",

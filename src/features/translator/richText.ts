@@ -120,6 +120,7 @@ export function documentFragment(html: string): string {
       "blockquote",
       "div",
       "section",
+      "hgroup",
       "article",
       "main",
       "header",
@@ -170,6 +171,7 @@ export function documentFragment(html: string): string {
       "lang",
       "dir",
       "role",
+      "data-parent",
       "epub:type",
       "xmlns:epub",
       "xml:lang",
@@ -263,10 +265,10 @@ export function normalizeRichDocument(html: string): string {
       element.remove();
   }
   const blocks =
-    "p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,hr,table,thead,tbody,tfoot,tr,td,th,caption,div,section,article,main,header,footer,aside,figure,figcaption,pre,dl,dt,dd,svg,picture";
+    "p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,hr,table,thead,tbody,tfoot,tr,td,th,caption,div,section,hgroup,article,main,header,footer,aside,figure,figcaption,pre,dl,dt,dd,svg,picture";
   for (const parent of Array.from(
     doc.querySelectorAll(
-      "body,ul,ol,table,thead,tbody,tfoot,tr,div,section,article,main,header,footer,aside,figure,figcaption,dd,li,blockquote,td,th",
+      "body,ul,ol,table,thead,tbody,tfoot,tr,div,section,hgroup,article,main,header,footer,aside,figure,figcaption,dd,li,blockquote,td,th",
     ),
   )) {
     if (Array.from(parent.children).some((child) => child.matches(blocks))) {
@@ -285,7 +287,7 @@ export function normalizeRichDocument(html: string): string {
   }
   for (const parent of Array.from(
     doc.querySelectorAll(
-      "body,div,section,article,main,header,footer,aside,figure,figcaption,dd,li,blockquote,td,th",
+      "body,div,section,hgroup,article,main,header,footer,aside,figure,figcaption,dd,li,blockquote,td,th",
     ),
   )) {
     if (
@@ -331,7 +333,7 @@ export function comparableDocument(html: string): string {
       element.setAttribute("style", element.style.cssText);
   }
   for (const element of document.querySelectorAll(
-    "body, ul, ol, blockquote, table, thead, tbody, tfoot, tr, div, section, article, main, header, footer, aside, figure, figcaption, dl, svg, g",
+    "body, ul, ol, blockquote, table, thead, tbody, tfoot, tr, div, section, hgroup, article, main, header, footer, aside, figure, figcaption, dl, svg, g",
   )) {
     for (const node of Array.from(element.childNodes)) {
       if (node.nodeType === Node.TEXT_NODE && !(node.textContent ?? "").trim())

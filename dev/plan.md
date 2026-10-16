@@ -1,5 +1,41 @@
 # Plan.md — EPUB Translation Studio
 
+### Rich chapter parent and heading groups — 2026-10-16
+
+Rust document validation and the frontend Rich schema/serializer now preserve
+`data-parent` and `hgroup`. Heading groups participate in block normalization
+and comparison so indentation does not prevent HTML → Rich conversion. Existing
+abbr support retains the user's nested abbreviation and EPUB semantics. The
+synthetic chapter-heading-group fixture covers conversion, Myanmar editing,
+reload, SQLite save, export and reopening the EPUB, with original bytes intact.
+No migration or existing draft rewrite is required.
+
+Validation: lint/build and Rust formatting passed; the full Rust suite passed
+232 tests with four existing ignored. The affected frontend file passed 24 tests,
+including the new regression; its existing local-image display test failed
+(expected three images, got two), reproduced against unchanged HEAD frontend
+sources. The targeted new regression also passed independently. The existing
+bundle-size warning remains. Native visual/IME, theme/minimum-window and
+Windows/Linux checks remain unverified. Next unfinished task: reopen this draft
+in rebuilt native Sagar and verify HTML → Rich editing. No milestone checkboxes
+advanced; this continues Milestone 5 compatibility polish.
+
+### Original preview time text — 2026-10-16
+
+Fixed the preview sanitizer dropping `<time>` and its entire text subtree.
+The passive element and its unnamespaced datetime attribute now survive preview;
+event handlers, styles and scripts remain filtered. A synthetic XHTML regression
+fixture verifies “In the year 1878” in both full-chapter and block previews,
+with a second test covering nested emphasis and active-content removal. Source
+snapshots, translations and export serialization are unchanged.
+
+Validation: Rust formatting and full suite passed (231 tests passed, four
+existing ignored); frontend lint/build passed with the existing bundle-size
+warning. Native rendering, light/dark/minimum-window and Windows/Linux behavior
+remain unverified. Next unfinished task: rebuild/reopen the affected chapter in
+native Sagar to verify the year appears. This is a Milestone 5 preview polish
+regression; no milestone checkboxes advanced.
+
 ### Corrected saved ZAI API format — 2026-10-16
 
 The repeated “HTTP 200 returned JSON instead of an SSE stream” message was traced
