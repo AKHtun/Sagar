@@ -144,6 +144,7 @@ fn initialize_units(data_dir: &Path, chapter: &str) -> Result<repo::RunConfig, A
     };
     let saved = repo::units(&conn, chapter)?;
     if !saved.is_empty() {
+        refresh_cached_availability(data_dir, &mut conn, chapter, &config)?;
         return Ok(config);
     }
     let snapshot = workspace::snapshot_path(data_dir, &config.project_id)?;
@@ -157,19 +158,83 @@ fn initialize_units(data_dir: &Path, chapter: &str) -> Result<repo::RunConfig, A
     for unit in &mut units {
         unit.id = repo::block_id(&tx, chapter, &unit.locator)?
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        if unit.unavailable.is_none() {
-            let html = selection::assemble(&[(unit.clone(), unit.html.clone())]);
-            if let Err(e) = epub::rich_text::validate_document(&html) {
-                unit.unavailable = Some(e.message);
-            }
-            if let Err(e) = check_images(&mut archive, &unit.html, &config.resource_href) {
-                unit.unavailable = Some(e.message);
-            }
-        }
+        qualify_unit(&mut archive, &config.resource_href, unit)?;
         repo::put_unit(&tx, chapter, &config.fingerprint, unit)?;
     }
     tx.commit()?;
     Ok(config)
+}
+
+/// Applies the assembly, document and image checks shared by fresh
+/// collection, so a unit is only marked unavailable for a current reason.
+fn qualify_unit(
+    archive: &mut epub::archive::SafeArchive,
+    resource_href: &str,
+    unit: &mut selection::SourceUnit,
+) -> Result<(), AppError> {
+    if unit.unavailable.is_none() {
+        let html = selection::assemble(&[(unit.clone(), unit.html.clone())]);
+        if let Err(e) = epub::rich_text::validate_document(&html) {
+            unit.unavailable = Some(e.message);
+        }
+        if let Err(e) = check_images(archive, &unit.html, resource_href) {
+            unit.unavailable = Some(e.message);
+        }
+    }
+    Ok(())
+}
+
+/// Repairs cached verdicts written by older validators. Units were persisted
+/// with their `unavailable` reason, so an allowlist addition (e.g. the
+/// `clear`/`float` flow properties) would otherwise never unblock an already
+/// opened chapter. Re-collects from the immutable snapshot, keeps every unit
+/// id referenced by saved runs, and rewrites only rows whose content or
+/// verdict changed.
+fn refresh_cached_availability(
+    data_dir: &Path,
+    conn: &mut rusqlite::Connection,
+    chapter: &str,
+    config: &repo::RunConfig,
+) -> Result<(), AppError> {
+    let saved = repo::units(conn, chapter)?;
+    if saved.iter().all(|unit| unit.unavailable.is_none()) {
+        return Ok(());
+    }
+    let snapshot = workspace::snapshot_path(data_dir, &config.project_id)?;
+    let mut archive =
+        epub::archive::SafeArchive::open(&snapshot, &crate::security::ArchiveLimits::default())?;
+    let bytes = archive.read_entry(&config.resource_href)?;
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|_| AppError::new("invalid_epub", "The chapter is not UTF-8 XHTML."))?;
+    let mut fresh = selection::collect(text)?;
+    for unit in &mut fresh {
+        unit.id = repo::block_id(conn, chapter, &unit.locator)?.unwrap_or_else(|| {
+            saved
+                .iter()
+                .find(|kept| kept.locator == unit.locator)
+                .map(|kept| kept.id.clone())
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+        });
+        qualify_unit(&mut archive, &config.resource_href, unit)?;
+    }
+    let tx = crate::storage::begin_write(conn)?;
+    for unit in &fresh {
+        let previous = saved.iter().find(|kept| kept.locator == unit.locator);
+        match previous {
+            Some(kept)
+                if kept.id == unit.id
+                    && kept.html == unit.html
+                    && kept.unavailable == unit.unavailable => {}
+            Some(_) => {
+                repo::refresh_unit_data(&tx, chapter, unit)?;
+            }
+            None => {
+                repo::put_unit(&tx, chapter, &config.fingerprint, unit)?;
+            }
+        }
+    }
+    tx.commit()?;
+    Ok(())
 }
 
 fn check_images(

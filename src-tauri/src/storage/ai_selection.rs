@@ -108,6 +108,20 @@ pub fn put_unit(
     conn.execute("INSERT OR IGNORE INTO ai_selection_units(id,chapter_id,source_order,locator,fingerprint,data) VALUES(?1,?2,?3,?4,?5,?6)",params![unit.id,chapter,unit.order,unit.locator,fingerprint,json(unit)?])?;
     Ok(())
 }
+/// Rewrites a cached unit after re-validation (e.g. an older validator marked
+/// it unavailable and a newer one clears it). The row — and therefore the
+/// unit id referenced by saved runs — is preserved.
+pub fn refresh_unit_data(
+    conn: &Connection,
+    chapter: &str,
+    unit: &SourceUnit,
+) -> Result<(), AppError> {
+    conn.execute(
+        "UPDATE ai_selection_units SET data=?1 WHERE chapter_id=?2 AND locator=?3",
+        params![json(unit)?, chapter, unit.locator],
+    )?;
+    Ok(())
+}
 pub fn block_id(
     conn: &Connection,
     chapter: &str,

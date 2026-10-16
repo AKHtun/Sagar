@@ -1010,6 +1010,11 @@ pub fn validate_style(style: &str) -> Result<(), AppError> {
                 | "caption-side"
                 | "empty-cells"
                 | "vertical-align"
+                // Flow placement keywords only (none/left/right/both/...):
+                // the shared value guard below still rejects url(),
+                // expression(), @, backslashes and angle brackets.
+                | "clear"
+                | "float"
                 | "width"
                 | "height"
                 | "max-width"
@@ -1047,6 +1052,9 @@ mod copied_document_tests {
         assert_eq!(validate_document(&saved).expect("reload").0, saved);
         validate_style("border: none; border-width: 0px; border-bottom: 1px solid red; border-collapse: collapse; border-spacing: 0; padding: 0 1em; width: 80%; vertical-align: top; table-layout: auto;")
             .expect("safe table presentation");
+        // Float flow placement (e.g. headings clearing floated cover art)
+        // round-trips verbatim; only keyword values have any effect.
+        validate_style("clear: both; float: left;").expect("flow placement keywords");
         for style in [
             "border: url(https://example.com/border)",
             "border-image: url(https://example.com/border)",
@@ -1055,6 +1063,8 @@ mod copied_document_tests {
             "border: 0; position: fixed",
             "border: 0; @import: evil",
             "border: \\75rl(remote)",
+            "clear: url(https://example.com/x)",
+            "float: expression(alert(1))",
         ] {
             assert!(validate_style(style).is_err(), "{style}");
         }

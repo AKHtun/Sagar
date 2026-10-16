@@ -206,6 +206,56 @@ fn append_input(chapter: &str, ids: Vec<String>, revision: i64) -> AppendInput {
 }
 
 #[test]
+fn heading_with_flow_placement_style_is_selectable_and_stale_caches_heal() {
+    let dir = tempfile::tempdir().expect("dir");
+    let source = fixture(
+        dir.path(),
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>T</title></head><body><h2 style=\"clear: both\">I. A Beginning</h2><p>Every author has some peculiarity.</p></body></html>",
+    );
+    let data = dir.path().join("data");
+    let imported = services::import::import_epub(&data, &source, false).expect("import");
+    let chapter = &imported.chapters[0].id;
+    let state = ai_selection::load(&data, chapter).expect("load");
+    let heading = state
+        .units
+        .iter()
+        .find(|u| u.kind == "heading")
+        .expect("heading");
+    assert!(heading.unavailable.is_none(), "{:?}", heading.unavailable);
+    let heading_id = heading.id.clone();
+    // Simulate a unit row cached by the older validator that rejected `clear`.
+    {
+        let conn = services::workspace::open_db(&data).expect("db");
+        let mut poisoned = repo::units(&conn, chapter)
+            .expect("units")
+            .into_iter()
+            .find(|u| u.kind == "heading")
+            .expect("stored heading");
+        poisoned.unavailable = Some(
+            "The inline CSS property clear or its value is not supported. Use typography or table styles without URLs or positioning."
+                .into(),
+        );
+        conn.execute(
+            "UPDATE ai_selection_units SET data=?1 WHERE chapter_id=?2 AND locator=?3",
+            rusqlite::params![
+                serde_json::to_string(&poisoned).expect("json"),
+                chapter,
+                poisoned.locator
+            ],
+        )
+        .expect("poison");
+    }
+    let repaired = ai_selection::load(&data, chapter).expect("reload");
+    let heading = repaired
+        .units
+        .iter()
+        .find(|u| u.kind == "heading")
+        .expect("heading");
+    assert!(heading.unavailable.is_none(), "{:?}", heading.unavailable);
+    assert_eq!(heading.id, heading_id);
+}
+
+#[test]
 fn selected_content_translates_then_appends_exports_and_reopens_with_original_image_bytes() {
     let dir = tempfile::tempdir().expect("dir");
     let source = fixture(dir.path(), SOURCE);

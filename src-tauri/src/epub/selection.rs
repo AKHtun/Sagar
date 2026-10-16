@@ -510,6 +510,35 @@ mod tests {
     }
 
     #[test]
+    fn headings_with_flow_placement_styles_stay_selectable() {
+        // Real books clear headings past floated cover art
+        // (e.g. `<h2 style="clear: both">`); the style round-trips
+        // verbatim through validation, so selection must stay available.
+        let source = "<html xmlns=\"http://www.w3.org/1999/xhtml\"><body><h2 style=\"clear: both\">I. A Beginning</h2><p><img style=\"float: left\" src=\"images/cover.png\" alt=\"Cover\"/>Every author has some peculiarity.</p></body></html>";
+        let units = collect(source).expect("units");
+        assert_eq!(units.len(), 2);
+        assert!(
+            units.iter().all(|u| u.unavailable.is_none()),
+            "{:?}",
+            units
+                .iter()
+                .map(|u| (&u.kind, &u.unavailable))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(units[0].kind, "heading");
+        assert!(
+            units[0].html.contains("style=\"clear: both\""),
+            "{}",
+            units[0].html
+        );
+        assert!(
+            units[1].html.contains("style=\"float: left\""),
+            "{}",
+            units[1].html
+        );
+    }
+
+    #[test]
     fn nonadjacent_list_selections_keep_numbering_and_shared_ancestors() {
         let units = collect(SOURCE).expect("source");
         let selected: Vec<_> = units

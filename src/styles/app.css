@@ -806,6 +806,15 @@ button {
   max-height: calc(100dvh - 32px);
   overflow: hidden;
 }
+/* Large displays: let the selection workflow use the extra room instead of
+   floating in a narrow column. Small windows keep the default size above. */
+@media (min-width: 1600px) {
+  .dialog--selection {
+    width: min(1400px, calc(100vw - 64px));
+    height: min(90dvh, 1000px);
+    max-height: calc(100dvh - 48px);
+  }
+}
 .dialog--selection > .panel__header,
 .dialog--selection > .ai-mode {
   flex-shrink: 0;
