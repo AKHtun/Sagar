@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
+import { useTranslation } from "../../lib/i18n";
 import {
   deleteProject,
   getProjectCover,
@@ -42,6 +43,7 @@ type LibraryScreenProps = {
 };
 
 export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps) {
+  const { t } = useTranslation();
   const [library, setLibrary] = useState<LibraryState>({ status: "loading" });
   const [view, setView] = useState<LibraryView>(readLibraryView);
   const [query, setQuery] = useState("");
@@ -132,19 +134,19 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
     <main className="screen screen--library">
       <header className="screen__header">
         <div>
-          <h1 className="screen__heading">Library</h1>
+          <h1 className="screen__heading">{t("Library")}</h1>
           <p className="library-count">
             {library.status === "ready"
-              ? `${library.projects.length} ${library.projects.length === 1 ? "book" : "books"}`
-              : "Your books"}
+              ? `${library.projects.length} ${library.projects.length === 1 ? t("book") : t("books")}`
+              : t("Your books")}
           </p>
         </div>
         <div className="button-row">
           <button
             type="button"
             className="icon-button"
-            aria-label="Settings"
-            title="Settings"
+            aria-label={t("Settings")}
+            title={t("Settings")}
             onClick={(event) => {
               // WebKit does not focus buttons on pointer clicks by default.
               // Give the dialog a concrete trigger to restore on dismissal.
@@ -161,12 +163,15 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
             disabled={importingName !== null}
             onClick={() => void handleOpenEpub()}
           >
-            <Icon name="plus" /> Import EPUB
+            <Icon name="plus" /> {t("Import EPUB")}
           </button>
         </div>
       </header>
       {importingName ? (
-        <StatusNotice kind="loading">Importing “{importingName}”…</StatusNotice>
+        <StatusNotice kind="loading">
+          {t("Importing “")}
+          {importingName}”…
+        </StatusNotice>
       ) : null}
       {importError ? <StatusNotice kind="error">{importError}</StatusNotice> : null}
       {pickError ? (
@@ -176,13 +181,15 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
       ) : null}
 
       {duplicate ? (
-        <section className="panel duplicate-panel" aria-label="Duplicate book">
+        <section className="panel duplicate-panel" aria-label={t("Duplicate book")}>
           <div className="panel__header">
-            <h2 className="panel__heading">Already in your library</h2>
+            <h2 className="panel__heading">{t("Already in your library")}</h2>
           </div>
           <p>
-            “{duplicate.existing.title}” was imported from this same file. Continue that
-            project, or import it again as a separate project.
+            “{duplicate.existing.title}
+            {t(
+              "” was imported from this same file. Continue that project, or import it again as a separate project.",
+            )}
           </p>
           <div className="button-row">
             <button
@@ -191,7 +198,8 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
               onClick={() => onOpenProject(duplicate.existing.id, [])}
             >
               <Icon name="book" />
-              Continue “{duplicate.existing.title}”
+              {t("Continue “")}
+              {duplicate.existing.title}”
             </button>
             <button
               type="button"
@@ -199,11 +207,11 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
               onClick={() => void importPath(duplicate.path, duplicate.fileName, true)}
             >
               <Icon name="upload" />
-              Import as separate project
+              {t("Import as separate project")}
             </button>
             <button type="button" className="btn" onClick={() => setDuplicate(null)}>
               <Icon name="close" />
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
         </section>
@@ -212,28 +220,28 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
       <section className="panel library-books" aria-labelledby="recent-projects-heading">
         <div className="panel__header">
           <h2 className="panel__heading" id="recent-projects-heading">
-            Your books
+            {t("Your books")}
           </h2>
           <div className="library-controls">
             <label className="library-search">
               <Icon name="search" size={16} />
               <input
                 type="search"
-                aria-label="Search books"
-                placeholder="Search books"
+                aria-label={t("Search books")}
+                placeholder={t("Search books")}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
             </label>
             <fieldset
               className="view-switch view-switch--icons"
-              aria-label="Library view"
+              aria-label={t("Library view")}
             >
               <button
                 type="button"
                 className="icon-button"
-                aria-label="Table view"
-                title="Table view"
+                aria-label={t("Table view")}
+                title={t("Table view")}
                 aria-pressed={view === "table"}
                 onClick={() => setView("table")}
               >
@@ -242,8 +250,8 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
               <button
                 type="button"
                 className="icon-button"
-                aria-label="Grid view"
-                title="Grid view"
+                aria-label={t("Grid view")}
+                title={t("Grid view")}
                 aria-pressed={view === "grid"}
                 onClick={() => setView("grid")}
               >
@@ -253,7 +261,7 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
           </div>
         </div>
         {library.status === "loading" ? (
-          <StatusNotice kind="loading">Loading projects…</StatusNotice>
+          <StatusNotice kind="loading">{t("Loading projects…")}</StatusNotice>
         ) : null}
         {library.status === "error" ? (
           <StatusNotice kind="error" onRetry={refreshProjects}>
@@ -263,8 +271,8 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
         {library.status === "ready" && library.projects.length === 0 ? (
           <div className="empty-state">
             <Icon name="book" size={36} />
-            <h3 className="empty-state__heading">Add your first book</h3>
-            <p>Import an EPUB to start translating.</p>
+            <h3 className="empty-state__heading">{t("Add your first book")}</h3>
+            <p>{t("Import an EPUB to start translating.")}</p>
           </div>
         ) : null}
         {library.status === "ready" && library.projects.length > 0 ? (
@@ -284,7 +292,7 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
         {library.status === "ready" &&
         library.projects.length > 0 &&
         filtered.length === 0 ? (
-          <p className="library-no-results">No books match your search.</p>
+          <p className="library-no-results">{t("No books match your search.")}</p>
         ) : null}
       </section>
 
@@ -359,6 +367,7 @@ function ConfirmRemoveDialog({
   onCancel: () => void;
   onConfirm: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
@@ -390,16 +399,18 @@ function ConfirmRemoveDialog({
         ref={dialogRef}
       >
         <h2 className="panel__heading" id="remove-project-title">
-          Remove “{project.title}”?
+          {t("Remove “")}
+          {project.title}”?
         </h2>
         <p>
-          The saved translations for this book will be deleted from this computer. The
-          original EPUB file is not modified.
+          {t(
+            "The saved translations for this book will be deleted from this computer. The original EPUB file is not modified.",
+          )}
         </p>
         <div className="button-row dialog__actions">
           <button type="button" className="btn" onClick={onCancel} ref={cancelRef}>
             <Icon name="close" />
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             type="button"
@@ -407,7 +418,7 @@ function ConfirmRemoveDialog({
             disabled={busy}
             onClick={() => void onConfirm()}
           >
-            <Icon name="trash" size={16} /> {busy ? "Deleting…" : "Delete project"}
+            <Icon name="trash" size={16} /> {busy ? t("Deleting…") : t("Delete project")}
           </button>
         </div>
       </div>
@@ -426,6 +437,7 @@ function ProjectRow({
   onRequestRemove: (project: ProjectSummary) => void;
   onSettings: (project: ProjectSummary) => void;
 }) {
+  const { t } = useTranslation();
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: saved Book Settings can change the cover without changing project ID.
@@ -466,7 +478,7 @@ function ProjectRow({
             {project.title}
           </span>
           <span className="project-row__meta">
-            {project.author ?? "Unknown author"}{" "}
+            {project.author ?? t("Unknown author")}{" "}
             <span className="project-row__language">
               {project.sourceLanguage ?? "—"} → {project.targetLanguage}
             </span>
@@ -500,7 +512,7 @@ function ProjectRow({
         type="button"
         className="icon-button"
         aria-label={`Book settings for ${project.title}`}
-        title="Book metadata and AI instructions"
+        title={t("Book metadata and AI instructions")}
         onClick={() => onSettings(project)}
       >
         <Icon name="settings" size={18} />
@@ -509,7 +521,7 @@ function ProjectRow({
         type="button"
         className="project-row__remove icon-button"
         aria-label={`Remove ${project.title} from the library`}
-        title="Remove this project from the library"
+        title={t("Remove this project from the library")}
         onClick={() => onRequestRemove(project)}
       >
         <Icon name="trash" size={18} />

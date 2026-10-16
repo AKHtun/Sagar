@@ -1,6 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { Icon } from "../../components/Icon";
+import { useTranslation } from "../../lib/i18n";
 import { languageName } from "../../lib/languages";
 import { preparePreviewImages } from "../../lib/tauri/preview";
 import type { SelectionItem, SelectionRun, SelectionUnit } from "../../types/aiSelection";
@@ -61,8 +62,9 @@ export function SourceRows({
   disabled: boolean;
   toggle: (id: string, checked: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <section className="ai-selection__list" aria-label="Source selections">
+    <section className="ai-selection__list" aria-label={t("Source selections")}>
       {units.map((unit) => (
         <article className="ai-selection__item" key={unit.id}>
           <label className="ai-selection__choice">
@@ -85,7 +87,7 @@ export function SourceRows({
                     ? "Added before"
                     : unit.hasProposal
                       ? "Saved proposal"
-                      : "Not translated")}
+                      : t("Not translated"))}
               </small>
             </span>
           </label>
@@ -98,7 +100,7 @@ export function SourceRows({
             </div>
           ) : null}
           <details>
-            <summary>Expand formatted source</summary>
+            <summary>{t("Expand formatted source")}</summary>
             <SelectionPreview
               html={unit.previewHtml}
               label={`Source item ${unit.order + 1}`}
@@ -106,7 +108,7 @@ export function SourceRows({
           </details>
         </article>
       ))}
-      {!units.length ? <p>No selectable source content in this chapter.</p> : null}
+      {!units.length ? <p>{t("No selectable source content in this chapter.")}</p> : null}
     </section>
   );
 }
@@ -128,6 +130,7 @@ function ReviewRow({
   target: string;
   toggle: (checked: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
   // Markup length is only an expansion heuristic; content is never truncated or reserialized.
   const long = item.sourcePreviewHtml.length + (item.previewHtml?.length ?? 0) > 1600;
@@ -141,13 +144,13 @@ function ReviewRow({
           onChange={(event) => toggle(event.target.checked)}
         />
         <strong>
-          Include result {item.order + 1} · {unit?.kind ?? "Content"} ·{" "}
+          {t("Include result")} {item.order + 1} · {unit?.kind ?? "Content"} ·{" "}
           {unit?.added ? "Added before" : "Ready"}
         </strong>
       </label>
       {long && !expanded ? (
         <p className="dialog__muted">
-          Long content — expand to compare the complete original and translation.
+          {t("Long content — expand to compare the complete original and translation.")}
         </p>
       ) : null}
       <div className="ai-review-pair" hidden={long && !expanded}>
@@ -194,12 +197,13 @@ export function ReviewRows({
   disabled: boolean;
   toggle: (id: string, checked: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <section aria-label="Paired translation results">
+    <section aria-label={t("Paired translation results")}>
       {entries.map(({ item, run, runNumber }) => (
         <div key={item.unitId}>
           <p className="dialog__muted">
-            Batch {runNumber} · {run.config.model || "Local images"}
+            {t("Batch")} {runNumber} · {run.config.model || "Local images"}
           </p>
           <ReviewRow
             item={item}

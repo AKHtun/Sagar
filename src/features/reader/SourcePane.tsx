@@ -2,6 +2,7 @@ import { type MouseEvent, type RefObject, useEffect, useRef, useState } from "re
 import { HtmlCode } from "../../components/HtmlCode";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
+import { useTranslation } from "../../lib/i18n";
 import type { ChapterContent } from "../../types/chapter";
 
 /** Full chapter preview is allowlisted in Rust. Raw XHTML is displayed as text. */
@@ -18,6 +19,7 @@ export function SourcePane({
   onRetry: () => void;
   scrollRef?: RefObject<HTMLDivElement | null>;
 }) {
+  const { t } = useTranslation();
   const [view, setView] = useState<"reader" | "html">("reader");
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "error">(
     "idle",
@@ -47,15 +49,18 @@ export function SourcePane({
     <section className="pane pane--source" aria-labelledby="source-pane-heading">
       <div className="pane__header">
         <h2 className="pane__heading" id="source-pane-heading">
-          Original <span className="pane__badge">Read only</span>
+          {t("Original")} <span className="pane__badge">{t("Read only")}</span>
         </h2>
-        <fieldset className="view-switch view-switch--icons" aria-label="Original view">
+        <fieldset
+          className="view-switch view-switch--icons"
+          aria-label={t("Original view")}
+        >
           {view === "html" ? (
             <button
               type="button"
               className="icon-button"
-              aria-label="Copy original HTML"
-              title={copyState === "copied" ? "HTML copied" : "Copy original HTML"}
+              aria-label={t("Copy original HTML")}
+              title={copyState === "copied" ? "HTML copied" : t("Copy original HTML")}
               disabled={loading || !!error || !content || copyState === "copying"}
               onClick={() => void copyHtml()}
             >
@@ -65,8 +70,8 @@ export function SourcePane({
           <button
             type="button"
             className="icon-button"
-            aria-label="Original reader view"
-            title="Reader view"
+            aria-label={t("Original reader view")}
+            title={t("Reader view")}
             aria-pressed={view === "reader"}
             onClick={() => setView("reader")}
           >
@@ -75,8 +80,8 @@ export function SourcePane({
           <button
             type="button"
             className="icon-button"
-            aria-label="Original HTML view"
-            title="HTML view"
+            aria-label={t("Original HTML view")}
+            title={t("HTML view")}
             aria-pressed={view === "html"}
             onClick={() => setView("html")}
           >
@@ -86,7 +91,7 @@ export function SourcePane({
       </div>
       <div className="pane__scroll" ref={scrollRef}>
         {copyState === "copied" ? (
-          <StatusNotice kind="success">Original HTML copied.</StatusNotice>
+          <StatusNotice kind="success">{t("Original HTML copied.")}</StatusNotice>
         ) : null}
         {copyState === "error" ? (
           <StatusNotice
@@ -94,10 +99,12 @@ export function SourcePane({
             onRetry={() => void copyHtml()}
             retryLabel="Copy again"
           >
-            Could not copy HTML. Try again or select the code and copy it manually.
+            {t("Could not copy HTML. Try again or select the code and copy it manually.")}
           </StatusNotice>
         ) : null}
-        {loading ? <StatusNotice kind="loading">Loading chapter…</StatusNotice> : null}
+        {loading ? (
+          <StatusNotice kind="loading">{t("Loading chapter…")}</StatusNotice>
+        ) : null}
         {error ? (
           <StatusNotice kind="error" onRetry={onRetry}>
             {error}
@@ -109,7 +116,7 @@ export function SourcePane({
           ) : (
             <article
               className="book-text"
-              aria-label="Original chapter content"
+              aria-label={t("Original chapter content")}
               onClick={interceptLinkClicks}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && (event.target as HTMLElement).closest("a"))
@@ -121,7 +128,7 @@ export function SourcePane({
           )
         ) : null}
         {!loading && !error && !content ? (
-          <StatusNotice kind="info">No chapter selected.</StatusNotice>
+          <StatusNotice kind="info">{t("No chapter selected.")}</StatusNotice>
         ) : null}
       </div>
     </section>

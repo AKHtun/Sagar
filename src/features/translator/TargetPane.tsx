@@ -5,6 +5,7 @@ import { HtmlCodeEditor } from "../../components/HtmlCode";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
 import { formatChapterHtml } from "../../lib/html/format";
+import { useTranslation } from "../../lib/i18n";
 import { validateChapterHtml } from "../../lib/tauri/commands";
 import type { ChapterContent } from "../../types/chapter";
 import { AiFixHtmlDialog } from "./AiFixHtmlDialog";
@@ -60,6 +61,7 @@ export function TargetPane({
   editor: ReturnType<typeof useChapterEditor>;
   scrollRef?: RefObject<HTMLDivElement | null>;
 }) {
+  const { t } = useTranslation();
   // Scope readiness to the chapter instead of clearing it in a parent effect:
   // child mount effects can report readiness before that effect runs.
   const [readyEditor, setReadyEditor] = useState<{
@@ -192,17 +194,19 @@ export function TargetPane({
     <section className="pane pane--target" aria-labelledby="target-pane-heading">
       <div className="pane__header">
         <h2 className="pane__heading" id="target-pane-heading">
-          Translation
+          {t("Translation")}
         </h2>
         <fieldset
           className="view-switch view-switch--icons"
-          aria-label="Translation view"
+          aria-label={t("Translation view")}
         >
           <button
             type="button"
             className="icon-button"
-            aria-label="Rich text view"
-            title={!activeEditor ? "Rich text view (editor loading)" : "Rich text view"}
+            aria-label={t("Rich text view")}
+            title={
+              !activeEditor ? t("Rich text view (editor loading)") : t("Rich text view")
+            }
             aria-pressed={view === "rich"}
             disabled={
               switching || !editor.draft || editor.draft.conflict || !activeEditor
@@ -214,8 +218,8 @@ export function TargetPane({
           <button
             type="button"
             className="icon-button"
-            aria-label="HTML view"
-            title="HTML view"
+            aria-label={t("HTML view")}
+            title={t("HTML view")}
             aria-pressed={view === "html"}
             disabled={switching || !editor.draft}
             onClick={showHtml}
@@ -227,8 +231,8 @@ export function TargetPane({
           type="button"
           className="icon-button"
           disabled={!editor.draft || editor.draft.conflict}
-          aria-label="Generate an AI translation proposal"
-          title="Generate an AI translation proposal"
+          aria-label={t("Generate an AI translation proposal")}
+          title={t("Generate an AI translation proposal")}
           onClick={() => setAiOpen(true)}
         >
           <Icon name="sparkles" />
@@ -237,8 +241,8 @@ export function TargetPane({
           <button
             type="button"
             className="icon-button"
-            aria-label="Formatting tools"
-            title="Formatting tools"
+            aria-label={t("Formatting tools")}
+            title={t("Formatting tools")}
             aria-expanded={formattingOpen}
             aria-controls="translation-formatting"
             disabled={!editor.draft || editor.draft.conflict}
@@ -254,13 +258,13 @@ export function TargetPane({
             aria-pressed={editor.draft?.status === "reviewed"}
             aria-label={
               editor.draft?.status === "reviewed"
-                ? "Chapter reviewed"
-                : "Mark chapter reviewed"
+                ? t("Chapter reviewed")
+                : t("Mark chapter reviewed")
             }
             title={
               editor.draft?.status === "reviewed"
-                ? "Chapter reviewed"
-                : "Mark chapter reviewed"
+                ? t("Chapter reviewed")
+                : t("Mark chapter reviewed")
             }
             disabled={
               !editor.draft || !hasContent(editor.draft.html) || editor.draft.conflict
@@ -274,13 +278,13 @@ export function TargetPane({
             className="icon-button"
             aria-label={
               editor.draft?.status === "skipped"
-                ? "Write translation"
-                : "Keep original chapter"
+                ? t("Write translation")
+                : t("Keep original chapter")
             }
             title={
               editor.draft?.status === "skipped"
-                ? "Write translation"
-                : "Keep original chapter"
+                ? t("Write translation")
+                : t("Keep original chapter")
             }
             disabled={!editor.draft || editor.draft.conflict}
             onClick={() =>
@@ -295,7 +299,7 @@ export function TargetPane({
         id="translation-formatting"
         className="editor-toolbar"
         role="toolbar"
-        aria-label="Translation formatting"
+        aria-label={t("Translation formatting")}
         hidden={!formattingOpen || view !== "rich"}
       >
         {(
@@ -309,8 +313,8 @@ export function TargetPane({
           <button
             type="button"
             key={mark}
-            title={label}
-            aria-label={label}
+            title={t(label)}
+            aria-label={t(label)}
             aria-pressed={canEdit && activeEditor.isActive(mark)}
             disabled={!canEdit}
             onMouseDown={(event) => event.preventDefault()}
@@ -322,9 +326,9 @@ export function TargetPane({
         <span className="editor-toolbar__divider" />
         <button
           type="button"
-          aria-label="Inline code"
+          aria-label={t("Inline code")}
           className="icon-button"
-          title="Inline code (Cmd/Ctrl + E)"
+          title={t("Inline code (Cmd/Ctrl + E)")}
           aria-pressed={canEdit && activeEditor.isActive("code")}
           disabled={!canEdit || !activeEditor.can().toggleCode()}
           onMouseDown={(event) => event.preventDefault()}
@@ -334,9 +338,9 @@ export function TargetPane({
         </button>
         <button
           type="button"
-          aria-label="Blockquote"
+          aria-label={t("Blockquote")}
           className="icon-button"
-          title="Blockquote"
+          title={t("Blockquote")}
           aria-pressed={canEdit && activeEditor.isActive("blockquote")}
           disabled={!canEdit || !activeEditor.can().toggleBlockquote()}
           onMouseDown={(event) => event.preventDefault()}
@@ -346,9 +350,9 @@ export function TargetPane({
         </button>
         <button
           type="button"
-          aria-label="Code block"
+          aria-label={t("Code block")}
           className="icon-button"
-          title="Code block"
+          title={t("Code block")}
           aria-pressed={canEdit && activeEditor.isActive("codeBlock")}
           disabled={!canEdit || !activeEditor.can().toggleCodeBlock()}
           onMouseDown={(event) => event.preventDefault()}
@@ -359,8 +363,8 @@ export function TargetPane({
         <span className="editor-toolbar__divider" />
         <button
           type="button"
-          aria-label="Paragraph"
-          title="Paragraph (Cmd/Ctrl + Alt + 0)"
+          aria-label={t("Paragraph")}
+          title={t("Paragraph (Cmd/Ctrl + Alt + 0)")}
           aria-pressed={canEdit && activeEditor.isActive("paragraph")}
           disabled={!canEdit}
           onMouseDown={(event) => event.preventDefault()}
@@ -387,8 +391,8 @@ export function TargetPane({
         <button
           type="button"
           disabled={!canEdit}
-          aria-label="Bullets"
-          title="Bulleted list"
+          aria-label={t("Bullets")}
+          title={t("Bulleted list")}
           aria-pressed={canEdit && activeEditor.isActive("bulletList")}
           onClick={() => activeEditor?.chain().focus().toggleBulletList().run()}
         >
@@ -397,8 +401,8 @@ export function TargetPane({
         <button
           type="button"
           disabled={!canEdit}
-          aria-label="Numbered list"
-          title="Numbered list"
+          aria-label={t("Numbered list")}
+          title={t("Numbered list")}
           aria-pressed={canEdit && activeEditor.isActive("orderedList")}
           onClick={() => activeEditor?.chain().focus().toggleOrderedList().run()}
         >
@@ -408,8 +412,8 @@ export function TargetPane({
         <button
           type="button"
           disabled={!canEdit || !activeEditor.can().undo()}
-          aria-label="Undo"
-          title="Undo"
+          aria-label={t("Undo")}
+          title={t("Undo")}
           onClick={() => activeEditor?.chain().focus().undo().run()}
         >
           <Icon name="undo" size={17} />
@@ -417,8 +421,8 @@ export function TargetPane({
         <button
           type="button"
           disabled={!canEdit || !activeEditor.can().redo()}
-          aria-label="Redo"
-          title="Redo"
+          aria-label={t("Redo")}
+          title={t("Redo")}
           onClick={() => activeEditor?.chain().focus().redo().run()}
         >
           <Icon name="redo" size={17} />
@@ -427,8 +431,8 @@ export function TargetPane({
         <button
           type="button"
           disabled={!canEdit}
-          aria-label="Insert image"
-          title="Insert image"
+          aria-label={t("Insert image")}
+          title={t("Insert image")}
           onClick={() => setImagePicker(!imagePicker)}
         >
           <Icon name="image" size={17} />
@@ -478,13 +482,13 @@ export function TargetPane({
         />
       </div>
       {canEdit && activeEditor.isActive("table") ? (
-        <div className="table-toolbar" role="toolbar" aria-label="Table editing">
-          <span>Table</span>
+        <div className="table-toolbar" role="toolbar" aria-label={t("Table editing")}>
+          <span>{t("Table")}</span>
           <button
             type="button"
             className="icon-button"
-            aria-label="Add row below"
-            title="Add row below"
+            aria-label={t("Add row below")}
+            title={t("Add row below")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => activeEditor.chain().focus().addRowAfter().run()}
           >
@@ -493,8 +497,8 @@ export function TargetPane({
           <button
             type="button"
             className="icon-button"
-            aria-label="Add column after"
-            title="Add column after"
+            aria-label={t("Add column after")}
+            title={t("Add column after")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => activeEditor.chain().focus().addColumnAfter().run()}
           >
@@ -503,8 +507,8 @@ export function TargetPane({
           <button
             type="button"
             className="icon-button"
-            aria-label="Delete row"
-            title="Delete row"
+            aria-label={t("Delete row")}
+            title={t("Delete row")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => activeEditor.chain().focus().deleteRow().run()}
           >
@@ -513,8 +517,8 @@ export function TargetPane({
           <button
             type="button"
             className="icon-button"
-            aria-label="Delete column"
-            title="Delete column"
+            aria-label={t("Delete column")}
+            title={t("Delete column")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => activeEditor.chain().focus().deleteColumn().run()}
           >
@@ -523,8 +527,8 @@ export function TargetPane({
           <button
             type="button"
             className="icon-button"
-            aria-label="Delete table"
-            title="Delete table"
+            aria-label={t("Delete table")}
+            title={t("Delete table")}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => activeEditor.chain().focus().deleteTable().run()}
           >
@@ -535,14 +539,14 @@ export function TargetPane({
       {imagePicker ? (
         <div className="image-picker">
           <div className="image-picker__heading">
-            <strong>Insert into your translation</strong>
+            <strong>{t("Insert into your translation")}</strong>
             <button
               type="button"
               className="btn btn--small"
               onClick={() => setImagePicker(false)}
             >
               <Icon name="close" />
-              Close
+              {t("Close")}
             </button>
           </div>
           <button
@@ -551,9 +555,9 @@ export function TargetPane({
             onClick={() => fileInput.current?.click()}
           >
             <Icon name="upload" />
-            Import image from computer…
+            {t("Import image from computer…")}
           </button>
-          <p className="dialog__muted">Images from this chapter</p>
+          <p className="dialog__muted">{t("Images from this chapter")}</p>
           {content?.images.length ? (
             <div className="image-picker__grid">
               {content.images.map((image) => (
@@ -570,14 +574,16 @@ export function TargetPane({
             </div>
           ) : (
             <p className="dialog__muted">
-              No supported PNG, JPEG or GIF images in this chapter.
+              {t("No supported PNG, JPEG or GIF images in this chapter.")}
             </p>
           )}
         </div>
       ) : null}
       {imageError ? <StatusNotice kind="error">{imageError}</StatusNotice> : null}
       <div className="pane__scroll" ref={scrollRef}>
-        {loading ? <StatusNotice kind="loading">Loading chapter…</StatusNotice> : null}
+        {loading ? (
+          <StatusNotice kind="loading">{t("Loading chapter…")}</StatusNotice>
+        ) : null}
         {error ? (
           <StatusNotice kind="error" onRetry={onRetry}>
             {error}
@@ -595,7 +601,7 @@ export function TargetPane({
             ) : null}
             {editor.draft?.status === "skipped" ? (
               <StatusNotice kind="info">
-                This chapter will keep the original. Your draft remains saved.
+                {t("This chapter will keep the original. Your draft remains saved.")}
               </StatusNotice>
             ) : null}
             {view === "html" ? (
@@ -607,8 +613,8 @@ export function TargetPane({
                       <button
                         type="button"
                         className="icon-button"
-                        aria-label="Fix with AI"
-                        title="Fix with AI"
+                        aria-label={t("Fix with AI")}
+                        title={t("Fix with AI")}
                         disabled={!editor.draft || editor.draft.conflict}
                         onClick={() => setFixConfirmOpen(true)}
                       >
@@ -645,7 +651,7 @@ export function TargetPane({
           </div>
         ) : null}
         {!loading && !error && !content ? (
-          <StatusNotice kind="info">No chapter selected.</StatusNotice>
+          <StatusNotice kind="info">{t("No chapter selected.")}</StatusNotice>
         ) : null}
       </div>
       {fixConfirmOpen && content ? (

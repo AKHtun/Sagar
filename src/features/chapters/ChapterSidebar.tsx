@@ -1,5 +1,6 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import { Icon } from "../../components/Icon";
+import { useTranslation } from "../../lib/i18n";
 import type { ChapterSummary } from "../../types/project";
 
 import { type ChapterNode, chapterTree } from "./chapterTree";
@@ -22,6 +23,7 @@ export function ChapterSidebar({
   chapterStatusOverride,
   onSelect,
 }: ChapterSidebarProps) {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -64,8 +66,8 @@ export function ChapterSidebar({
             <button
               type="button"
               className="icon-button chapter-list__toggle"
-              aria-label={`${expanded ? "Collapse" : "Expand"} ${node.title}`}
-              title={`${expanded ? "Collapse" : "Expand"} ${node.title}`}
+              aria-label={`${expanded ? t("Collapse") : t("Expand")} ${node.title}`}
+              title={`${expanded ? t("Collapse") : t("Expand")} ${node.title}`}
               aria-expanded={expanded}
               aria-controls={groupId}
               onClick={() =>
@@ -97,7 +99,7 @@ export function ChapterSidebar({
                   {chapter.title}
                 </span>
                 <span className="chapter-list__status">
-                  {statusLabel(chapter, isActive ? chapterStatusOverride : null)}
+                  {t(statusLabel(chapter, isActive ? chapterStatusOverride : null))}
                 </span>
               </span>
             </button>
@@ -117,15 +119,15 @@ export function ChapterSidebar({
     );
   }
   return (
-    <nav className="chapter-nav" aria-label="Chapters">
-      <h2 className="chapter-nav__heading">Chapters</h2>
+    <nav className="chapter-nav" aria-label={t("Chapters")}>
+      <h2 className="chapter-nav__heading">{t("Chapters")}</h2>
       <div className="chapter-nav__filters">
         <label className="chapter-nav__search">
           <Icon name="search" size={16} />
           <input
             type="search"
-            aria-label="Search sidebar chapters"
-            placeholder="Search chapters…"
+            aria-label={t("Search sidebar chapters")}
+            placeholder={t("Search chapters…")}
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -135,28 +137,28 @@ export function ChapterSidebar({
         </label>
         <select
           className="chapter-nav__status-filter"
-          aria-label="Filter chapters by progress"
+          aria-label={t("Filter chapters by progress")}
           value={filter}
           onChange={(event) => {
             setFilter(event.target.value);
             setCollapsed(new Set());
           }}
         >
-          <option value="all">All chapters</option>
-          <option value="incomplete">Incomplete</option>
-          <option value="not_started">Not started</option>
-          <option value="in_progress">In progress</option>
-          <option value="completed">Completed</option>
+          <option value="all">{t("All chapters")}</option>
+          <option value="incomplete">{t("Incomplete")}</option>
+          <option value="not_started">{t("Not started")}</option>
+          <option value="in_progress">{t("In progress")}</option>
+          <option value="completed">{t("Completed")}</option>
         </select>
         <p className="chapter-nav__count" role="status">
-          {filtered.length} of {chapters.length} chapters
+          {filtered.length} {t("of")} {chapters.length} {t("chapters")}
         </p>
       </div>
       {chapters.length === 0 ? (
-        <p className="chapter-nav__empty">No chapters found.</p>
+        <p className="chapter-nav__empty">{t("No chapters found.")}</p>
       ) : filtered.length === 0 ? (
         <div className="chapter-nav__empty">
-          <p>No matching chapters.</p>
+          <p>{t("No matching chapters.")}</p>
           <button
             type="button"
             className="btn btn--small"
@@ -166,7 +168,7 @@ export function ChapterSidebar({
             }}
           >
             <Icon name="refresh" />
-            Clear filters
+            {t("Clear filters")}
           </button>
         </div>
       ) : (

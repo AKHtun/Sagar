@@ -1,5 +1,6 @@
 import { useMemo, useRef } from "react";
 import { highlightHtml } from "../lib/html/highlight";
+import { useTranslation } from "../lib/i18n";
 
 export function HtmlCode({ value }: { value: string }) {
   const highlighted = useMemo(() => highlightHtml(value), [value]);
@@ -21,6 +22,7 @@ export function HtmlCodeEditor({
   disabled: boolean;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   const backdrop = useRef<HTMLPreElement>(null);
   const highlighted = useMemo(() => highlightHtml(value), [value]);
   return (
@@ -35,7 +37,7 @@ export function HtmlCodeEditor({
       </pre>
       <textarea
         className="html-editor"
-        aria-label="Translation HTML code"
+        aria-label={t("Translation HTML code")}
         value={value}
         spellCheck={false}
         autoCapitalize="off"

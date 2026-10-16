@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
+import { useTranslation } from "../../lib/i18n";
 import {
   getTranslationSelection,
   listTranslationModels,
@@ -44,6 +45,7 @@ export function agentLabel(
  * sends book text anywhere.
  */
 export function TranslationModelSection({ cli, custom }: TranslationModelSectionProps) {
+  const { t } = useTranslation();
   const [agent, setAgent] = useState("codex");
   const [catalog, setCatalog] = useState<TranslationModelList | null>(null);
   const [loading, setLoading] = useState(false);
@@ -55,6 +57,7 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
   const catalogRequest = useRef(0);
 
   const loadCatalog = useCallback((nextAgent: string) => {
@@ -171,9 +174,7 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
         effectiveEffort || null,
       );
       setSaved(selection);
-      setSavedNotice(
-        `Saved: ${agentLabel(agent, cli, custom)} · ${selection.model} · ${selection.reasoningEffort ?? "Default"}`,
-      );
+      setSavedNotice("Saved");
     } catch (error) {
       setSaveError(
         error instanceof CommandError
@@ -185,38 +186,41 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
     }
   }
 
+  useEffect(() => {
+    if (!loading && catalog?.agent === agent && draft.trim() !== "" && !selectedModel) {
+      setManualOpen(true);
+    }
+  }, [loading, catalog, agent, draft, selectedModel]);
+
+  const hasChanges =
+    draft.trim() !== "" &&
+    (saved?.agent !== agent ||
+      saved?.model !== draft.trim() ||
+      (saved?.reasoningEffort ?? "") !== effectiveEffort);
+
   return (
-    <section aria-labelledby="ai-translation-model-heading">
-      <h3 className="panel__heading" id="ai-translation-model-heading">
-        Translation Model
+    <section className="model-settings" aria-labelledby="ai-translation-model-heading">
+      <h3 className="visually-hidden" id="ai-translation-model-heading">
+        {t("Translation Model")}
       </h3>
-      <p className="dialog__muted">
-        The agent and model future translation will use. Saving only remembers the choice
-        — nothing is translated and no book text is sent.
-      </p>
-
-      {saved ? (
-        <p className="dialog__muted">
-          Current selection: <strong>{agentLabel(saved.agent, cli, custom)}</strong> ·{" "}
-          <strong>{saved.model}</strong> · {saved.reasoningEffort ?? "Default"} effort
-        </p>
-      ) : (
-        <p className="dialog__muted">No translation model selected yet.</p>
-      )}
-
-      <div className="form-grid">
-        <label className="form-field">
-          <span>Agent</span>
+      <div className="model-settings__agent">
+        <label className="form-field settings-row">
+          <span className="settings-label">
+            <Icon name="sparkles" />
+            {t("Agent")}
+          </span>
           <select
+            className="settings-select"
             value={agent}
+            aria-label={t("Translation agent")}
             onChange={(event) => {
               setAgent(event.target.value);
               setDraft("");
               setEffort("");
               setSavedNotice(null);
               setSaveError(null);
+              setManualOpen(false);
             }}
-            aria-label="Translation agent"
           >
             {cli.map((provider) => (
               <option key={provider.id} value={provider.id}>
@@ -226,111 +230,105 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
             ))}
             {custom.map((provider) => (
               <option key={provider.id} value={`custom:${provider.id}`}>
-                {provider.name} (custom)
+                {provider.name} {t("(custom)")}
               </option>
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          className="icon-button model-settings__refresh"
+          disabled={loading}
+          onClick={() => loadCatalog(agent)}
+          aria-label={t("Refresh models")}
+          title={t("Refresh models")}
+        >
+          <Icon name="refresh" spin={loading} />
+        </button>
+      </div>
+
+      <div className="model-settings__catalog">
+        <div className="model-settings__list-heading">
+          <span className="settings-label">
+            <Icon name="list" />
+            {t("Model")}
+          </span>
+          {catalog?.agent === agent && !loading ? (
+            <span
+              className="dialog__muted"
+              role="status"
+              aria-label={t("Available models")}
+            >
+              {filtered.length} / {catalog.models.length}
+            </span>
+          ) : null}
+        </div>
         <label className="form-field">
-          <span>Search models</span>
+          <span className="visually-hidden">{t("Search models")}</span>
           <input
             type="search"
-            aria-label="Search models"
-            placeholder="Search models"
+            aria-label={t("Search models")}
+            placeholder={t("Search models")}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
-      </div>
-
-      <div className="model-refresh-row">
-        <button
-          type="button"
-          className="icon-button"
-          disabled={loading}
-          onClick={() => loadCatalog(agent)}
-          aria-label="Refresh models"
-          title="Refresh models"
-        >
-          <Icon name="refresh" size={16} spin={loading} />
-        </button>
-        {catalog ? (
-          <span className="dialog__muted" role="status">
-            {catalog.source === "live" ? "Live list" : "Known list"} ·{" "}
+        {loadError ? (
+          <StatusNotice kind="error" onRetry={() => loadCatalog(agent)}>
+            {loadError}
+          </StatusNotice>
+        ) : null}
+        {loading ? (
+          <StatusNotice kind="loading">{t("Loading models…")}</StatusNotice>
+        ) : null}
+        {!loading && !loadError && filtered.length === 0 ? (
+          <p className="dialog__muted">
             {search.trim() === ""
-              ? `${catalog.models.length} models`
-              : `${filtered.length} of ${catalog.models.length} models`}
-            {" · "}
-            {catalog.message}
-          </span>
+              ? t("No models were listed for this agent.")
+              : t("No models match your search.")}
+          </p>
+        ) : null}
+        {!loading && catalog?.agent === agent && filtered.length > 0 ? (
+          <div
+            className="model-list"
+            role="radiogroup"
+            aria-label={t("Available models")}
+            tabIndex={0}
+          >
+            {filtered.map((model) => (
+              <label
+                key={model.id}
+                className="model-list__row"
+                data-selected={draft === model.id}
+              >
+                <input
+                  type="radio"
+                  name="translation-model"
+                  checked={draft === model.id}
+                  onChange={() => {
+                    setDraft(model.id);
+                    setEffort("");
+                    setSaveError(null);
+                    setSavedNotice(null);
+                  }}
+                />
+                <span className="model-list__main">
+                  <span className="model-list__title">{model.label}</span>
+                </span>
+              </label>
+            ))}
+          </div>
         ) : null}
       </div>
 
-      {loadError ? (
-        <StatusNotice kind="error" onRetry={() => loadCatalog(agent)}>
-          {loadError}
-        </StatusNotice>
-      ) : null}
-      {loading ? <StatusNotice kind="loading">Loading models…</StatusNotice> : null}
-
-      {!loading && !loadError && filtered.length === 0 ? (
-        <p className="dialog__muted">
-          {search.trim() === ""
-            ? "No models were listed for this agent."
-            : "No models match your search."}
-        </p>
-      ) : null}
-
-      {filtered.length > 0 ? (
-        <div
-          className="model-list"
-          role="radiogroup"
-          aria-label="Available models"
-          tabIndex={0}
-        >
-          {filtered.map((model) => (
-            <label key={model.id} className="model-list__row">
-              <input
-                type="radio"
-                name="translation-model"
-                checked={draft === model.id}
-                onChange={() => {
-                  setDraft(model.id);
-                  setEffort("");
-                  setSaveError(null);
-                  setSavedNotice(null);
-                }}
-              />
-              <span className="model-list__main">
-                <span className="model-list__title">{model.label}</span>
-                {model.detail ? (
-                  <span className="model-list__meta">{model.detail}</span>
-                ) : null}
-              </span>
-            </label>
-          ))}
-        </div>
-      ) : null}
-
-      <label className="form-field">
-        <span>Or enter a model ID manually</span>
-        <input
-          type="text"
-          value={draft}
-          maxLength={128}
-          placeholder="e.g. gpt-5.6-sol"
-          onChange={(event) => {
-            setDraft(event.target.value);
-            setEffort("");
-            setSaveError(null);
-            setSavedNotice(null);
-          }}
-        />
-      </label>
-
-      <label className="form-field">
-        <span>Reasoning effort{agent === "opencode" ? " / model variant" : ""}</span>
+      <label className="form-field settings-row model-settings__effort">
+        <span className="settings-label">
+          <Icon name="settings" />
+          {t("Reasoning effort")}
+          {agent === "opencode" ? " / model variant" : ""}
+        </span>
         <select
+          className="settings-select"
           value={effectiveEffort}
           disabled={loading || draft.trim() === "" || effortOptions.length === 0}
           aria-describedby="reasoning-effort-help"
@@ -340,7 +338,7 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
             setSaveError(null);
           }}
         >
-          <option value="">Default (provider setting)</option>
+          <option value="">{t("Default (provider setting)")}</option>
           {orderedEfforts.map((value) => (
             <option key={value} value={value}>
               {effortLabel(value)}
@@ -348,27 +346,90 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
           ))}
         </select>
       </label>
-      <p className="dialog__muted" id="reasoning-effort-help">
-        {agent.startsWith("custom:") && customProtocol === "openai"
-          ? "Send the selected reasoning effort to your API provider. Available choices are overrides, not detected model capabilities. If the provider rejects a value, choose another level or Default to use its own setting."
-          : effortOptions.length === 0
-            ? "No adjustable effort levels are listed for this model. The provider default will be used."
-            : "Higher effort can take longer and use more tokens. Available levels depend on the model and provider."}
-      </p>
 
-      {saveError ? <StatusNotice kind="error">{saveError}</StatusNotice> : null}
-      {savedNotice ? <StatusNotice kind="success">{savedNotice}</StatusNotice> : null}
+      <details
+        className="settings-help model-settings__manual model-settings__help"
+        open={manualOpen}
+        onToggle={(event) => setManualOpen(event.currentTarget.open)}
+      >
+        <summary>
+          <Icon name="settings" />
+          {t("More options")}
+        </summary>
+        <label className="form-field">
+          <span>{t("Or enter a model ID manually")}</span>
+          <input
+            type="text"
+            value={draft}
+            maxLength={128}
+            placeholder="e.g. gpt-5.6-sol"
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setEffort("");
+              setSaveError(null);
+              setSavedNotice(null);
+            }}
+          />
+        </label>
 
-      <div className="button-row dialog__actions">
-        <button
-          type="button"
-          className="btn btn--primary"
-          disabled={saving || loading || draft.trim() === ""}
-          onClick={() => void handleSave()}
-        >
-          <Icon name="save" />
-          {saving ? "Saving…" : "Save"}
-        </button>
+        {selectedModel?.detail ? (
+          <p className="dialog__muted">
+            <strong>{selectedModel.label}</strong> · {selectedModel.detail}
+          </p>
+        ) : null}
+        {catalog?.agent === agent ? (
+          <p className="dialog__muted">
+            {catalog.source === "live" ? t("Live list") : t("Known list")} ·{" "}
+            {catalog.message}
+          </p>
+        ) : null}
+        <p className="dialog__muted" id="reasoning-effort-help">
+          {agent.startsWith("custom:") && customProtocol === "openai"
+            ? "Send the selected reasoning effort to your API provider. Available choices are overrides, not detected model capabilities. If the provider rejects a value, choose another level or Default to use its own setting."
+            : effortOptions.length === 0
+              ? "No adjustable effort levels are listed for this model. The provider default will be used."
+              : "Higher effort can take longer and use more tokens. Available levels depend on the model and provider."}
+        </p>
+        <p className="dialog__muted">
+          {t(
+            "The agent and model future translation will use. Saving only remembers the choice — nothing is translated and no book text is sent.",
+          )}
+        </p>
+        {saved ? (
+          <p className="dialog__muted">
+            {t("Current selection:")} {agentLabel(saved.agent, cli, custom)} ·{" "}
+            {saved.model} · {saved.reasoningEffort ?? "Default"}
+          </p>
+        ) : null}
+      </details>
+
+      <div className="settings-footer">
+        {saveError ? <StatusNotice kind="error">{saveError}</StatusNotice> : null}
+        <div className="settings-footer__actions">
+          <div className="model-settings__save-state" role="status">
+            <span>
+              {saving
+                ? t("Saving…")
+                : draft.trim() === ""
+                  ? t("No translation model selected yet.")
+                  : hasChanges
+                    ? t("Unsaved changes")
+                    : saved || savedNotice
+                      ? t("Saved")
+                      : t("No translation model selected yet.")}
+            </span>
+            {draft.trim() ? <span className="dialog__muted">{draft.trim()}</span> : null}
+          </div>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={saving || loading || draft.trim() === ""}
+            onClick={() => void handleSave()}
+          >
+            <Icon name="save" />
+            {saving ? t("Saving…") : t("Save")}
+          </button>
+        </div>
       </div>
     </section>
   );

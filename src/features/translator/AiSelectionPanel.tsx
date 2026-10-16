@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
+import { useTranslation } from "../../lib/i18n";
 import { formatDirection } from "../../lib/languages";
 import {
   controlAiSelectionRun,
@@ -47,6 +48,7 @@ export function AiSelectionPanel({
   editor: ReturnType<typeof useChapterEditor>;
   onBusy: (busy: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [step, setStep] = useState<WorkflowStep>("select");
   const observedRun = useRef("");
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -382,16 +384,19 @@ export function AiSelectionPanel({
         onChange={(event) => setConsent(event.target.checked)}
       />
       <span>
-        I understand selected text and neighboring context will be sent to the chosen
-        provider. Image bytes are never sent.
+        {t(
+          "I understand selected text and neighboring context will be sent to the chosen provider. Image bytes are never sent.",
+        )}
       </span>
     </label>
   );
   const history = data?.runs.length ? (
     <details className="ai-run-history">
-      <summary>History · {data.runs.length} saved runs</summary>
+      <summary>
+        {t("History ·")} {data.runs.length} {t("saved runs")}
+      </summary>
       <label className="form-field">
-        <span>Saved proposals and runs</span>
+        <span>{t("Saved proposals and runs")}</span>
         <select
           value={runId ?? ""}
           disabled={running || editor.appending}
@@ -408,8 +413,8 @@ export function AiSelectionPanel({
         >
           {data.runs.map((value, index) => (
             <option key={value.id} value={value.id}>
-              Run {data.runs.length - index} · {value.config.model || "Images only"} ·{" "}
-              {value.state}
+              {t("Run")} {data.runs.length - index} ·{" "}
+              {value.config.model || "Images only"} · {value.state}
             </option>
           ))}
         </select>
@@ -421,12 +426,15 @@ export function AiSelectionPanel({
             {run.config.model || "Images only"} ·{" "}
             {run.config.reasoningEffort ?? "Default effort"}
           </p>
-          <p className="dialog__muted">Resume and Retry use this saved configuration.</p>
+          <p className="dialog__muted">
+            {t("Resume and Retry use this saved configuration.")}
+          </p>
           {confirmDelete ? (
-            <section aria-label="Confirm deleting saved proposals">
+            <section aria-label={t("Confirm deleting saved proposals")}>
               <p>
-                Delete this run and all its saved proposals? This cannot be undone. Text
-                already added to your draft and insertion history will stay.
+                {t(
+                  "Delete this run and all its saved proposals? This cannot be undone. Text already added to your draft and insertion history will stay.",
+                )}
               </p>
               <div className="button-row">
                 <button
@@ -436,7 +444,7 @@ export function AiSelectionPanel({
                   onClick={() => void deleteSavedRun()}
                 >
                   <Icon name="trash" />
-                  {deleting ? "Deleting…" : "Delete saved proposals"}
+                  {deleting ? t("Deleting…") : "Delete saved proposals"}
                 </button>
                 <button
                   type="button"
@@ -445,7 +453,7 @@ export function AiSelectionPanel({
                   onClick={() => setConfirmDelete(false)}
                 >
                   <Icon name="close" />
-                  Cancel deletion
+                  {t("Cancel deletion")}
                 </button>
               </div>
             </section>
@@ -457,12 +465,12 @@ export function AiSelectionPanel({
               onClick={() => setConfirmDelete(true)}
             >
               <Icon name="trash" />
-              Delete this saved run…
+              {t("Delete this saved run…")}
             </button>
           )}
 
           <details>
-            <summary>Saved instructions</summary>
+            <summary>{t("Saved instructions")}</summary>
             <p className="book-instructions">
               {run.config.bookInstructions || "No book instructions"}
             </p>
@@ -476,8 +484,8 @@ export function AiSelectionPanel({
   ) : null;
 
   return (
-    <section className="ai-selection" aria-label="Selected paragraphs translation">
-      <nav className="ai-selection__steps" aria-label="Translation workflow">
+    <section className="ai-selection" aria-label={t("Selected paragraphs translation")}>
+      <nav className="ai-selection__steps" aria-label={t("Translation workflow")}>
         {(["select", "progress", "review"] as const).map((value, index) => (
           <button
             type="button"
@@ -525,7 +533,7 @@ export function AiSelectionPanel({
         {notice ? <StatusNotice kind="info">{notice}</StatusNotice> : null}
         {!data ? (
           error ? null : (
-            <StatusNotice kind="loading">Loading source selections…</StatusNotice>
+            <StatusNotice kind="loading">{t("Loading source selections…")}</StatusNotice>
           )
         ) : (
           <>
@@ -533,16 +541,17 @@ export function AiSelectionPanel({
             {step === "select" ? (
               <>
                 <div className="ai-selection__heading">
-                  <h3 tabIndex={-1}>Select source items</h3>
+                  <h3 tabIndex={-1}>{t("Select source items")}</h3>
                   <span role="status">
-                    {selected.size} selected · {data.units.length} source items
+                    {selected.size} {t("selected ·")} {data.units.length}{" "}
+                    {t("source items")}
                   </span>
                 </div>
                 <p className="dialog__muted">
                   {selection
                     ? `${selection.model} · ${selection.reasoningEffort ?? "Default effort"}`
                     : "Choose an AI model in Settings to translate text. Images need no provider."}{" "}
-                  · Images stay local.
+                  {t("· Images stay local.")}
                 </p>
                 <div className="button-row">
                   <button
@@ -560,7 +569,7 @@ export function AiSelectionPanel({
                     }
                   >
                     <Icon name="check" />
-                    Select all available
+                    {t("Select all available")}
                   </button>
                   <button
                     type="button"
@@ -577,7 +586,7 @@ export function AiSelectionPanel({
                     }
                   >
                     <Icon name="paragraph" />
-                    Select untranslated
+                    {t("Select untranslated")}
                   </button>
                   <button
                     type="button"
@@ -586,7 +595,7 @@ export function AiSelectionPanel({
                     onClick={() => setSelected(new Set())}
                   >
                     <Icon name="close" />
-                    Clear selection
+                    {t("Clear selection")}
                   </button>
                 </div>
                 <SourceRows
@@ -604,10 +613,11 @@ export function AiSelectionPanel({
                       onClick={() => setPage(page - 1)}
                     >
                       <Icon name="left" />
-                      Previous items
+                      {t("Previous items")}
                     </button>
                     <span>
-                      Page {page + 1} of {Math.ceil(data.units.length / PAGE_SIZE)}
+                      {t("Page")} {page + 1} {t("of")}{" "}
+                      {Math.ceil(data.units.length / PAGE_SIZE)}
                     </span>
                     <button
                       type="button"
@@ -616,20 +626,20 @@ export function AiSelectionPanel({
                       onClick={() => setPage(page + 1)}
                     >
                       <Icon name="right" />
-                      Next items
+                      {t("Next items")}
                     </button>
                   </div>
                 ) : null}
                 <details>
-                  <summary>Translation instructions</summary>
+                  <summary>{t("Translation instructions")}</summary>
                   {bookInstructions ? (
                     <details>
-                      <summary>Book instructions</summary>
+                      <summary>{t("Book instructions")}</summary>
                       <p className="book-instructions">{bookInstructions}</p>
                     </details>
                   ) : null}
                   <label className="form-field">
-                    <span>Instructions for this run (optional)</span>
+                    <span>{t("Instructions for this run (optional)")}</span>
                     <textarea
                       rows={3}
                       maxLength={20000}
@@ -639,8 +649,9 @@ export function AiSelectionPanel({
                     />
                   </label>
                   <p className="dialog__muted">
-                    Applies to new runs. Resume and Retry keep the saved run’s
-                    instructions.
+                    {t(
+                      "Applies to new runs. Resume and Retry keep the saved run’s instructions.",
+                    )}
                   </p>
                 </details>
               </>
@@ -656,10 +667,12 @@ export function AiSelectionPanel({
                           : "Saved translation progress"}
                     </h3>
                     <p role="status">
-                      {run.config.model || "Local images"} · {runReady.length} ready ·{" "}
+                      {run.config.model || "Local images"} · {runReady.length}{" "}
+                      {t("ready ·")}{" "}
                       {run.items.filter((item) => item.state === "translating").length}{" "}
-                      translating ·{" "}
-                      {run.items.filter((item) => item.state === "failed").length} failed
+                      {t("translating ·")}{" "}
+                      {run.items.filter((item) => item.state === "failed").length}{" "}
+                      {t("failed")}
                     </p>
                     {run.message ? (
                       <StatusNotice kind={run.state === "failed" ? "error" : "info"}>
@@ -691,7 +704,7 @@ export function AiSelectionPanel({
                               onClick={() => void control("smaller")}
                             >
                               <Icon name="minus" />
-                              Retry with smaller batches
+                              {t("Retry with smaller batches")}
                             </button>
                             <button
                               type="button"
@@ -700,7 +713,7 @@ export function AiSelectionPanel({
                               onClick={() => void control("skip")}
                             >
                               <Icon name="right" />
-                              Skip and continue
+                              {t("Skip and continue")}
                             </button>
                           </>
                         ) : null}
@@ -725,7 +738,7 @@ export function AiSelectionPanel({
                                   : item.state === "translating"
                                     ? "Translating…"
                                     : item.state === "failed"
-                                      ? "Failed"
+                                      ? t("Failed")
                                       : item.state === "skipped"
                                         ? "Skipped"
                                         : "Pending"}{" "}
@@ -735,7 +748,7 @@ export function AiSelectionPanel({
                           </p>
                           {item.failedOutput ? (
                             <details>
-                              <summary>Recoverable provider output</summary>
+                              <summary>{t("Recoverable provider output")}</summary>
                               <textarea
                                 readOnly
                                 value={item.failedOutput}
@@ -746,43 +759,46 @@ export function AiSelectionPanel({
                         </article>
                       ))}
                     <details>
-                      <summary>Live provider output</summary>
+                      <summary>{t("Live provider output")}</summary>
                       <textarea
                         className="ai-stream"
-                        aria-label="Selected translation live output"
+                        aria-label={t("Selected translation live output")}
                         readOnly
                         value={stream}
                       />
                     </details>
                     <details>
-                      <summary>Technical request details</summary>
+                      <summary>{t("Technical request details")}</summary>
                       <ApiRequestDetails messages={trace} />
                     </details>
                     {eventsUnavailable ? (
                       <p role="status">
-                        Live output is unavailable. Saved progress is refreshed while the
-                        run is active.
+                        {t(
+                          "Live output is unavailable. Saved progress is refreshed while the run is active.",
+                        )}
                       </p>
                     ) : null}
                   </>
                 ) : (
                   <>
                     <div className="ai-selection__heading">
-                      <h3 tabIndex={-1}>Review translations</h3>
+                      <h3 tabIndex={-1}>{t("Review translations")}</h3>
                       <p className="dialog__muted">
-                        All saved batches in this chapter · Results wait here until you
-                        add them to the draft.
+                        {t(
+                          "All saved batches in this chapter · Results wait here until you add them to the draft.",
+                        )}
                       </p>
                       <span>
-                        {ready.length} ready ·{" "}
-                        {ready.filter((item) => added.has(item.unitId)).length} added
-                        before
+                        {ready.length} {t("ready ·")}{" "}
+                        {ready.filter((item) => added.has(item.unitId)).length}{" "}
+                        {t("added before")}
                       </span>
                     </div>
                     {!ready.length ? (
                       <StatusNotice kind="info">
-                        No results waiting to be added. Added translations are saved in
-                        your chapter draft. Select more source items to continue.
+                        {t(
+                          "No results waiting to be added. Added translations are saved in your chapter draft. Select more source items to continue.",
+                        )}
                       </StatusNotice>
                     ) : null}
                     <div className="button-row">
@@ -793,7 +809,7 @@ export function AiSelectionPanel({
                         onClick={() => setAccepted(new Set(ready.map((item) => item.id)))}
                       >
                         <Icon name="check" />
-                        Select all results
+                        {t("Select all results")}
                       </button>
                       <button
                         type="button"
@@ -802,18 +818,19 @@ export function AiSelectionPanel({
                         onClick={() => setAccepted(new Set())}
                       >
                         <Icon name="close" />
-                        Clear selection
+                        {t("Clear selection")}
                       </button>
                     </div>
                     <p className="dialog__muted">
-                      Check results to add to the draft. Clear selection only unchecks
-                      them; it does not delete saved proposals or draft text.
+                      {t(
+                        "Check results to add to the draft. Clear selection only unchecks them; it does not delete saved proposals or draft text.",
+                      )}
                     </p>
                     {ready.some((item) => added.has(item.unitId)) ? (
                       <StatusNotice kind="info">
-                        “Added before” is insertion history, not a check of your current
-                        draft. If you removed the text, select its result and add it
-                        again.
+                        {t(
+                          "“Added before” is insertion history, not a check of your current draft. If you removed the text, select its result and add it again.",
+                        )}
                       </StatusNotice>
                     ) : null}
                     {run.items.some(
@@ -826,8 +843,9 @@ export function AiSelectionPanel({
                               !["ready", "added", "superseded"].includes(item.state),
                           ).length
                         }{" "}
-                        items are pending, failed or skipped. Return to Translate to
-                        inspect them.
+                        {t(
+                          "items are pending, failed or skipped. Return to Translate to inspect them.",
+                        )}
                       </p>
                     ) : null}
                     <ReviewRows
@@ -841,8 +859,9 @@ export function AiSelectionPanel({
                       toggle={(id, checked) => toggle(id, checked, "preview")}
                     />
                     <p className="dialog__muted">
-                      Adds to the end of your draft, preserving existing writing. The
-                      chapter remains Draft until you review it.
+                      {t(
+                        "Adds to the end of your draft, preserving existing writing. The chapter remains Draft until you review it.",
+                      )}
                     </p>
                   </>
                 )}
@@ -855,7 +874,7 @@ export function AiSelectionPanel({
                       onClick={() => setPreviewPage(previewPage - 1)}
                     >
                       <Icon name="left" />
-                      Previous results
+                      {t("Previous results")}
                     </button>
                     <button
                       type="button"
@@ -867,7 +886,7 @@ export function AiSelectionPanel({
                       onClick={() => setPreviewPage(previewPage + 1)}
                     >
                       <Icon name="right" />
-                      Next results
+                      {t("Next results")}
                     </button>
                   </div>
                 ) : null}
@@ -919,7 +938,7 @@ export function AiSelectionPanel({
               {needsOrderConfirmation
                 ? "Add earlier source items at the end of the draft, even if this differs from source order. "
                 : ""}
-              Existing writing is preserved; duplicate anchors are still rejected.
+              {t("Existing writing is preserved; duplicate anchors are still rejected.")}
             </span>
           </label>
         ) : null}
@@ -935,11 +954,13 @@ export function AiSelectionPanel({
               : "Completed parts are saved locally"}
           {editor.draft?.conflict ? (
             <p className="dialog__muted">
-              Resolve the draft’s save conflict before adding results.
+              {t("Resolve the draft’s save conflict before adding results.")}
             </p>
           ) : null}
           {step === "select" && needsProvider && !consent ? (
-            <p className="dialog__muted">Approve sharing selected text to translate.</p>
+            <p className="dialog__muted">
+              {t("Approve sharing selected text to translate.")}
+            </p>
           ) : null}
         </div>
         <div className="button-row">
@@ -951,7 +972,7 @@ export function AiSelectionPanel({
               onClick={() => setStep("select")}
             >
               <Icon name="left" />
-              Select more
+              {t("Select more")}
             </button>
           ) : null}
           {step === "select" ? (
@@ -977,7 +998,7 @@ export function AiSelectionPanel({
                 onClick={() => void control("cancel")}
               >
                 <Icon name="close" />
-                Cancel translation
+                {t("Cancel translation")}
               </button>
             ) : (
               <button
@@ -990,7 +1011,7 @@ export function AiSelectionPanel({
                 }}
               >
                 <Icon name="check" />
-                Review {ready.length} results
+                {t("Review")} {ready.length} {t("results")}
               </button>
             )
           ) : (
@@ -1001,7 +1022,7 @@ export function AiSelectionPanel({
               onClick={() => void append()}
             >
               <Icon name="plus" />
-              {editor.appending ? "Saving…" : `Add ${accepted.size} results to draft`}
+              {editor.appending ? t("Saving…") : `Add ${accepted.size} results to draft`}
             </button>
           )}
         </div>

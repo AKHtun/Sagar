@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
+import { useTranslation } from "../../lib/i18n";
 import { formatDirection } from "../../lib/languages";
 import {
   cancelAiTranslation,
@@ -51,6 +52,7 @@ export function AiGenerateDialog({
   editor: ReturnType<typeof useChapterEditor>;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<AiProviderList | null>(null);
   const [selection, setSelection] = useState<TranslationSelection | null>(null);
   const [project, setProject] = useState<ProjectSummary | null>(null);
@@ -386,7 +388,7 @@ export function AiGenerateDialog({
       >
         <div className="panel__header">
           <h2 className="panel__heading" id="ai-generate-title">
-            AI translation proposal
+            {t("AI translation proposal")}
           </h2>
           <button
             type="button"
@@ -394,14 +396,14 @@ export function AiGenerateDialog({
             aria-label={
               !editor.appending && (running || selectedBusy)
                 ? "Cancel and close"
-                : "Close"
+                : t("Close")
             }
             title={
               editor.appending
                 ? "Wait for results to finish saving"
                 : running || selectedBusy
                   ? "Cancel and close"
-                  : "Close"
+                  : t("Close")
             }
             disabled={editor.appending}
             onClick={handleClose}
@@ -410,7 +412,7 @@ export function AiGenerateDialog({
           </button>
         </div>
 
-        <fieldset className="button-row ai-mode" aria-label="Translation mode">
+        <fieldset className="button-row ai-mode" aria-label={t("Translation mode")}>
           <button
             type="button"
             className={mode === "whole" ? "btn btn--primary" : "btn"}
@@ -419,7 +421,7 @@ export function AiGenerateDialog({
             onClick={() => setMode("whole")}
           >
             <Icon name="book" />
-            Whole chapter
+            {t("Whole chapter")}
           </button>
           <button
             type="button"
@@ -429,7 +431,7 @@ export function AiGenerateDialog({
             onClick={() => setMode("selected")}
           >
             <Icon name="paragraph" />
-            Selected paragraphs
+            {t("Selected paragraphs")}
           </button>
         </fieldset>
 
@@ -447,28 +449,31 @@ export function AiGenerateDialog({
         ) : loadError ? (
           <StatusNotice kind="error">{loadError}</StatusNotice>
         ) : !providers ? (
-          <StatusNotice kind="loading">Loading AI settings…</StatusNotice>
+          <StatusNotice kind="loading">{t("Loading AI settings…")}</StatusNotice>
         ) : !selection ? (
           <StatusNotice kind="info">
-            No translation agent selected yet. Choose one in Library → AI settings →
-            Translation Model.
+            {t(
+              "No translation agent selected yet. Choose one in Library → AI settings → Translation Model.",
+            )}
           </StatusNotice>
         ) : (
           <>
             <p className="dialog__muted">
-              Agent{" "}
+              {t("Agent")}{" "}
               <strong>
                 {agentLabel(selection.agent, providers.cli, providers.custom)}
               </strong>{" "}
-              · Model <strong>{selection.model}</strong>
-              {" · "}Effort <strong>{selection.reasoningEffort ?? "Default"}</strong>
+              {t("· Model")} <strong>{selection.model}</strong>
+              {" · "}
+              {t("Effort")} <strong>{selection.reasoningEffort ?? "Default"}</strong>
             </p>
             {project ? (
               <p className="dialog__muted" role="status">
-                Translating{" "}
-                {formatDirection(project.sourceLanguage, project.targetLanguage)} — the
-                languages set in the workspace footer. The original formatting is sent
-                along so it can be preserved.
+                {t("Translating")}{" "}
+                {formatDirection(project.sourceLanguage, project.targetLanguage)}{" "}
+                {t(
+                  "— the languages set in the workspace footer. The original formatting is sent along so it can be preserved.",
+                )}
               </p>
             ) : null}
 
@@ -476,12 +481,12 @@ export function AiGenerateDialog({
               <>
                 {bookInstructions ? (
                   <details>
-                    <summary>Book instructions</summary>
+                    <summary>{t("Book instructions")}</summary>
                     <p className="book-instructions">{bookInstructions}</p>
                   </details>
                 ) : null}
                 <label className="form-field">
-                  <span>Instructions for this run (optional)</span>
+                  <span>{t("Instructions for this run (optional)")}</span>
                   <textarea
                     rows={3}
                     maxLength={20000}
@@ -490,12 +495,13 @@ export function AiGenerateDialog({
                       setCurrentInstructions(event.target.value);
                       setStreamed("");
                     }}
-                    placeholder="Additional guidance for this chapter…"
+                    placeholder={t("Additional guidance for this chapter…")}
                   />
                 </label>
                 <p className="dialog__muted">
-                  Book instructions and this run's instructions are sent together.
-                  Changing these instructions restarts translation on Retry.
+                  {t(
+                    "Book instructions and this run's instructions are sent together. Changing these instructions restarts translation on Retry.",
+                  )}
                 </p>
                 <label className="export-ack">
                   <input
@@ -504,20 +510,19 @@ export function AiGenerateDialog({
                     onChange={(event) => setConsent(event.target.checked)}
                   />
                   <span>
-                    I understand this chapter&apos;s text will be sent to{" "}
+                    {t("I understand this chapter's text will be sent to")}{" "}
                     {agentLabel(selection.agent, providers.cli, providers.custom)}
                     {selection.agent.startsWith("custom:")
                       ? " at its configured API endpoint"
                       : " through its installed tool"}{" "}
-                    to generate a proposal.
+                    {t("to generate a proposal.")}
                   </span>
                 </label>
                 {phase === "failed" && streamed ? (
                   <p className="dialog__muted">
-                    Retry keeps complete sections whose formatting matches the source and
-                    translates the rest. An unfinished section starts again. If no
-                    complete section can be kept, the chapter starts again. A completed
-                    result is revalidated without translating again.
+                    {t(
+                      "Retry keeps complete sections whose formatting matches the source and translates the rest. An unfinished section starts again. If no complete section can be kept, the chapter starts again. A completed result is revalidated without translating again.",
+                    )}
                   </p>
                 ) : null}
                 <div className="button-row">
@@ -528,7 +533,7 @@ export function AiGenerateDialog({
                     onClick={() => void handleGenerate()}
                   >
                     <Icon name="refresh" />
-                    {phase === "failed" ? "Retry" : "Generate"}
+                    {phase === "failed" ? t("Retry") : "Generate"}
                   </button>
                 </div>
               </>
@@ -538,26 +543,29 @@ export function AiGenerateDialog({
               <div className="button-row">
                 <button type="button" className="btn btn--cancel" onClick={handleCancel}>
                   <Icon name="close" />
-                  Cancel
+                  {t("Cancel")}
                 </button>
               </div>
             ) : null}
 
             {eventsDead ? (
               <StatusNotice kind="error">
-                Live progress is unavailable. If a run never finishes, close and reopen
-                this dialog — your draft is untouched.
+                {t(
+                  "Live progress is unavailable. If a run never finishes, close and reopen this dialog — your draft is untouched.",
+                )}
               </StatusNotice>
             ) : null}
             {running ? (
               <StatusNotice kind="loading">
-                Translating… ({elapsed}s elapsed — this can take up to 30 minutes)
+                {t("Translating… (")}
+                {elapsed}
+                {t("s elapsed — this can take up to 30 minutes)")}
               </StatusNotice>
             ) : null}
             {running && stalledSecs >= STALL_WARNING_AFTER_SECS ? (
               <StatusNotice kind="info">
-                No answer text for {stalledSecs}s. Your draft is safe. You can wait or
-                Cancel.
+                {t("No answer text for")} {stalledSecs}
+                {t("s. Your draft is safe. You can wait or Cancel.")}
                 {selection.agent.startsWith("custom:")
                   ? " Open API request details below to check the response and reasoning activity."
                   : " The tool has not returned more answer text yet."}
@@ -568,7 +576,7 @@ export function AiGenerateDialog({
               <textarea
                 ref={streamRef}
                 className="ai-stream"
-                aria-label="Live translation output"
+                aria-label={t("Live translation output")}
                 readOnly
                 value={streamed}
               />
@@ -581,7 +589,7 @@ export function AiGenerateDialog({
             ) : null}
 
             {proposal ? (
-              <section aria-label="AI proposal preview">
+              <section aria-label={t("AI proposal preview")}>
                 <div
                   className="ai-proposal"
                   // The backend validates proposals against the chapter schema.
@@ -605,8 +613,9 @@ export function AiGenerateDialog({
                 </div>
                 {confirmInsert ? (
                   <p className="dialog__muted">
-                    Your current draft has content. Inserting replaces it (kept as an
-                    unreviewed draft, never marked reviewed).
+                    {t(
+                      "Your current draft has content. Inserting replaces it (kept as an unreviewed draft, never marked reviewed).",
+                    )}
                   </p>
                 ) : null}
               </section>

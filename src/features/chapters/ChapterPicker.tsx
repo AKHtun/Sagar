@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
+import { useTranslation } from "../../lib/i18n";
 import type { ChapterSummary } from "../../types/project";
 
 export function ChapterPicker({
@@ -13,6 +14,7 @@ export function ChapterPicker({
   disabled: boolean;
   onSelect: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -72,7 +74,7 @@ export function ChapterPicker({
         className="chapter-picker__trigger"
         ref={trigger}
         disabled={disabled}
-        aria-label={`Current chapter: ${selected ? label(selected) : "Choose chapter"}`}
+        aria-label={`Current chapter: ${selected ? label(selected) : t("Choose chapter")}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
@@ -84,7 +86,7 @@ export function ChapterPicker({
           }
         }}
       >
-        <span>{selected ? label(selected) : "Choose chapter"}</span>
+        <span>{selected ? label(selected) : t("Choose chapter")}</span>
         <Icon name="chevronDown" size={16} />
       </button>
       {open ? (
@@ -98,12 +100,12 @@ export function ChapterPicker({
                   setOpen(false);
               }}
               role="combobox"
-              aria-label="Search chapters"
+              aria-label={t("Search chapters")}
               aria-expanded={true}
               aria-controls={listId}
               aria-autocomplete="list"
               aria-activedescendant={activeId ? `${listId}-${activeId}` : undefined}
-              placeholder="Search chapter title or number…"
+              placeholder={t("Search chapter title or number…")}
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
@@ -135,7 +137,7 @@ export function ChapterPicker({
           <div
             id={listId}
             role="listbox"
-            aria-label="Chapters"
+            aria-label={t("Chapters")}
             className="chapter-picker__list"
           >
             {filtered.map((chapter) => (
@@ -175,7 +177,7 @@ export function ChapterPicker({
           <p className="chapter-picker__help" role="status">
             {filtered.length
               ? `${filtered.length} chapters · ↑↓ navigate · Enter select`
-              : "No matching chapters"}
+              : t("No matching chapters")}
           </p>
         </div>
       ) : null}

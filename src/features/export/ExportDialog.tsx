@@ -1,7 +1,9 @@
 // biome-ignore-all lint/a11y/noNoninteractiveTabindex: the scrollable chapter region must support keyboard scrolling.
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
+import { useTranslation } from "../../lib/i18n";
 import {
   exportEpub,
   pickExportDestination,
@@ -28,6 +30,7 @@ export function ExportDialog({
   onFlushSaves,
   onOutcome,
 }: ExportDialogProps) {
+  const { t } = useTranslation();
   const [review, setReview] = useState<ExportReview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [title, setTitle] = useState(project.title);
@@ -175,13 +178,13 @@ export function ExportDialog({
       >
         <div className="panel__header export-dialog__header">
           <h2 className="panel__heading" id="export-dialog-title">
-            Export EPUB
+            {t("Export EPUB")}
           </h2>
           <button
             type="button"
             className="icon-button"
-            aria-label="Close"
-            title="Close"
+            aria-label={t("Close")}
+            title={t("Close")}
             disabled={exporting}
             onClick={onClose}
           >
@@ -195,7 +198,7 @@ export function ExportDialog({
           </StatusNotice>
         ) : null}
         {!loadError && !review ? (
-          <StatusNotice kind="loading">Reviewing saved translations…</StatusNotice>
+          <StatusNotice kind="loading">{t("Reviewing saved translations…")}</StatusNotice>
         ) : null}
 
         {review ? (
@@ -203,7 +206,7 @@ export function ExportDialog({
             <div className="export-dialog__settings">
               <div className="form-grid">
                 <label className="form-field">
-                  <span>Translated title</span>
+                  <span>{t("Translated title")}</span>
                   <input
                     type="text"
                     value={title}
@@ -212,7 +215,7 @@ export function ExportDialog({
                   />
                 </label>
                 <label className="form-field">
-                  <span>Target language (BCP 47)</span>
+                  <span>{t("Target language (BCP 47)")}</span>
                   <input
                     type="text"
                     value={language}
@@ -229,18 +232,17 @@ export function ExportDialog({
               </div>
 
               <p className="export-dialog__explanation">
-                Draft export includes{" "}
-                <strong>reviewed translations and saved drafts</strong>.{" "}
+                {t("Draft export includes")}{" "}
+                <strong>{t("reviewed translations and saved drafts")}</strong>.{" "}
                 {includeOriginal ? (
-                  <>
-                    Empty chapters and chapters marked “Keep original” retain the original
-                    content.
-                  </>
+                  t(
+                    "Empty chapters and chapters marked “Keep original” retain the original content.",
+                  )
                 ) : (
                   <>
-                    Empty chapters and chapters marked “Keep original” are{" "}
-                    <strong>omitted</strong> — the draft contains only translated
-                    chapters.
+                    {t("Empty chapters and chapters marked “Keep original” are")}{" "}
+                    <strong>{t("omitted")}</strong>{" "}
+                    {t("— the draft contains only translated chapters.")}
                   </>
                 )}
               </p>
@@ -251,23 +253,25 @@ export function ExportDialog({
                     checked={includeOriginal}
                     onChange={(event) => setIncludeOriginal(event.target.checked)}
                   />
-                  <span>Include original content for untranslated chapters.</span>
+                  <span>{t("Include original content for untranslated chapters.")}</span>
                 </label>
               ) : null}
               <div className="export-summary">
                 <span className="export-chip export-chip--success">
-                  {review.reviewedTotal} reviewed
+                  {review.reviewedTotal} {t("reviewed")}
                 </span>
-                <span className="export-chip">{review.skippedTotal} keep original</span>
-                <span className="export-chip export-chip--warning">
-                  {review.draftTotal} draft
+                <span className="export-chip">
+                  {review.skippedTotal} {t("keep original")}
                 </span>
                 <span className="export-chip export-chip--warning">
-                  {review.pendingTotal} not translated
+                  {review.draftTotal} {t("draft")}
+                </span>
+                <span className="export-chip export-chip--warning">
+                  {review.pendingTotal} {t("not translated")}
                 </span>
                 {review.unsupportedTotal > 0 ? (
                   <span className="export-chip export-chip--muted">
-                    {review.unsupportedTotal} preserved unsupported
+                    {review.unsupportedTotal} {t("preserved unsupported")}
                   </span>
                 ) : null}
               </div>
@@ -275,15 +279,15 @@ export function ExportDialog({
             {review.chapters.length > 0 ? (
               <section
                 className="export-dialog__chapters"
-                aria-label="Chapter export review"
+                aria-label={t("Chapter export review")}
                 tabIndex={0}
               >
                 <table className="export-table">
                   <thead>
                     <tr>
-                      <th scope="col">Chapter</th>
-                      <th scope="col">Status</th>
-                      <th scope="col">Draft export includes</th>
+                      <th scope="col">{t("Chapter")}</th>
+                      <th scope="col">{t("Status")}</th>
+                      <th scope="col">{t("Draft export includes")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -295,20 +299,20 @@ export function ExportDialog({
                             className={`chapter-export-status chapter-export-status--${chapter.reviewed ? "reviewed" : chapter.draft ? "draft" : "original"}`}
                           >
                             {chapter.reviewed
-                              ? "Reviewed"
+                              ? t("Reviewed")
                               : chapter.skipped
-                                ? "Keep original"
+                                ? t("Keep original")
                                 : chapter.draft
-                                  ? "Draft"
-                                  : "Not translated"}
+                                  ? t("Draft")
+                                  : t("Not translated")}
                           </span>
                         </td>
                         <td>
                           {chapter.reviewed || chapter.draft
-                            ? "Saved translation"
+                            ? t("Saved translation")
                             : includeOriginal
-                              ? "Original content"
-                              : "Omitted"}
+                              ? t("Original content")
+                              : t("Omitted")}
                         </td>
                       </tr>
                     ))}
@@ -326,8 +330,9 @@ export function ExportDialog({
                     onChange={(event) => setDraftAck(event.target.checked)}
                   />
                   <span>
-                    Include unreviewed drafts. I understand these translations may be
-                    incomplete.
+                    {t(
+                      "Include unreviewed drafts. I understand these translations may be incomplete.",
+                    )}
                   </span>
                 </label>
               ) : null}
@@ -344,12 +349,12 @@ export function ExportDialog({
                   onClick={() => void runExport("completed")}
                   title={
                     review.complete
-                      ? "All chapters are reviewed or intentionally kept original"
-                      : "Finish reviewing every chapter to enable a completed export"
+                      ? t("All chapters are reviewed or intentionally kept original")
+                      : t("Finish reviewing every chapter to enable a completed export")
                   }
                 >
                   <Icon name="download" />
-                  Export completed EPUB
+                  {t("Export completed EPUB")}
                 </button>
                 <button
                   type="button"
@@ -368,12 +373,13 @@ export function ExportDialog({
                   }
                 >
                   <Icon name="download" />
-                  Export draft…
+                  {t("Export draft…")}
                 </button>
               </div>
               <p className="dialog__muted">
-                Save a separate EPUB to a location you choose. Your original book stays
-                unchanged.
+                {t(
+                  "Save a separate EPUB to a location you choose. Your original book stays unchanged.",
+                )}
               </p>
             </div>
           </>

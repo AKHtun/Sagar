@@ -160,7 +160,7 @@ test("native API formats populate endpoints and persist their protocol", async (
     } })));
     await act(async () => container.querySelector<HTMLButtonElement>('#ai-tab-providers')!.click());
     for (const [protocol, endpoint] of [["gemini", "https://generativelanguage.googleapis.com/v1beta"], ["anthropic", "https://api.anthropic.com/v1"]]) {
-      await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Add custom provider")!.click());
+      await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Add provider")!.click());
       const select = [...container.querySelectorAll("label")].find(label => label.textContent?.includes("API format"))!.querySelector("select")!;
       await act(async () => { select.value = protocol!; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
       expect(container.querySelector<HTMLInputElement>('input[type="url"]')!.value).toBe(endpoint!);

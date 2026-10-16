@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
+import { useTranslation } from "../../lib/i18n";
 import {
   cancelAiTranslation,
   getTranslationSelection,
@@ -40,6 +41,7 @@ export function AiFixHtmlDialog({
   onApply: (fixedHtml: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<AiProviderList | null>(null);
   const [selection, setSelection] = useState<TranslationSelection | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -279,13 +281,13 @@ export function AiFixHtmlDialog({
       >
         <div className="panel__header">
           <h2 className="panel__heading" id="ai-fix-title">
-            Fix with AI?
+            {t("Fix with AI?")}
           </h2>
           <button
             type="button"
             className="icon-button"
-            aria-label={running ? "Cancel and close" : "Close"}
-            title={running ? "Cancel and close" : "Close"}
+            aria-label={running ? "Cancel and close" : t("Close")}
+            title={running ? "Cancel and close" : t("Close")}
             onClick={handleClose}
           >
             <Icon name="close" />
@@ -295,26 +297,28 @@ export function AiFixHtmlDialog({
         {loadError ? (
           <StatusNotice kind="error">{loadError}</StatusNotice>
         ) : !providers ? (
-          <StatusNotice kind="loading">Loading AI settings…</StatusNotice>
+          <StatusNotice kind="loading">{t("Loading AI settings…")}</StatusNotice>
         ) : !selection ? (
           <StatusNotice kind="info">
-            No translation agent selected yet. Choose one in Library → AI settings →
-            Translation Model.
+            {t(
+              "No translation agent selected yet. Choose one in Library → AI settings → Translation Model.",
+            )}
           </StatusNotice>
         ) : (
           <>
             <p className="dialog__muted">
-              Agent{" "}
+              {t("Agent")}{" "}
               <strong>
                 {agentLabel(selection.agent, providers.cli, providers.custom)}
               </strong>{" "}
-              · Model <strong>{selection.model}</strong>
-              {" · "}Effort <strong>{selection.reasoningEffort ?? "Default"}</strong>
+              {t("· Model")} <strong>{selection.model}</strong>
+              {" · "}
+              {t("Effort")} <strong>{selection.reasoningEffort ?? "Default"}</strong>
             </p>
             <p className="dialog__muted">
-              Your current Translation HTML is sent to the tool, which restructures it
-              into rich-text-compatible XHTML without translating. Your code is kept until
-              you press Apply, and the source book is never modified.
+              {t(
+                "Your current Translation HTML is sent to the tool, which restructures it into rich-text-compatible XHTML without translating. Your code is kept until you press Apply, and the source book is never modified.",
+              )}
             </p>
 
             {phase === "idle" || phase === "failed" ? (
@@ -326,12 +330,12 @@ export function AiFixHtmlDialog({
                     onChange={(event) => setConsent(event.target.checked)}
                   />
                   <span>
-                    I understand my current draft HTML will be sent to{" "}
+                    {t("I understand my current draft HTML will be sent to")}{" "}
                     {agentLabel(selection.agent, providers.cli, providers.custom)}
                     {selection.agent.startsWith("custom:")
                       ? " at its configured API endpoint"
                       : " through its installed tool"}{" "}
-                    to repair its structure.
+                    {t("to repair its structure.")}
                   </span>
                 </label>
                 <div className="button-row">
@@ -356,26 +360,29 @@ export function AiFixHtmlDialog({
                   onClick={handleCancelRun}
                 >
                   <Icon name="close" />
-                  Cancel
+                  {t("Cancel")}
                 </button>
               </div>
             ) : null}
 
             {eventsDead ? (
               <StatusNotice kind="error">
-                Live progress is unavailable. If a run never finishes, close and reopen
-                this dialog — your draft is untouched.
+                {t(
+                  "Live progress is unavailable. If a run never finishes, close and reopen this dialog — your draft is untouched.",
+                )}
               </StatusNotice>
             ) : null}
             {running ? (
               <StatusNotice kind="loading">
-                Repairing… ({elapsed}s elapsed — this can take up to 30 minutes)
+                {t("Repairing… (")}
+                {elapsed}
+                {t("s elapsed — this can take up to 30 minutes)")}
               </StatusNotice>
             ) : null}
             {running && stalledSecs >= STALL_WARNING_AFTER_SECS ? (
               <StatusNotice kind="info">
-                No answer text for {stalledSecs}s. Your draft is safe. You can wait or
-                Cancel.
+                {t("No answer text for")} {stalledSecs}
+                {t("s. Your draft is safe. You can wait or Cancel.")}
                 {selection.agent.startsWith("custom:")
                   ? " Open API request details below to check the response and reasoning activity."
                   : " The tool has not returned more answer text yet."}
@@ -386,7 +393,7 @@ export function AiFixHtmlDialog({
               <textarea
                 ref={streamRef}
                 className="ai-stream"
-                aria-label="Live repair output"
+                aria-label={t("Live repair output")}
                 readOnly
                 value={streamed}
               />
@@ -399,7 +406,7 @@ export function AiFixHtmlDialog({
             ) : null}
 
             {fixed ? (
-              <section aria-label="Fixed HTML preview">
+              <section aria-label={t("Fixed HTML preview")}>
                 <div
                   className="ai-proposal"
                   // The backend validates the fix against the chapter schema.
@@ -413,12 +420,13 @@ export function AiFixHtmlDialog({
                     onClick={() => onApply(fixed)}
                   >
                     <Icon name="check" />
-                    Apply fixed HTML
+                    {t("Apply fixed HTML")}
                   </button>
                 </div>
                 <p className="dialog__muted">
-                  Applying replaces your current draft (kept as an unreviewed draft, never
-                  marked reviewed). Check the preview first.
+                  {t(
+                    "Applying replaces your current draft (kept as an unreviewed draft, never marked reviewed). Check the preview first.",
+                  )}
                 </p>
               </section>
             ) : null}

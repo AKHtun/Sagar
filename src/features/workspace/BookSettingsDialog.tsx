@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
+import { useTranslation } from "../../lib/i18n";
 import { getBookSettings, getProject, saveBookSettings } from "../../lib/tauri/commands";
 import type { BookSettings, ProjectSummary } from "../../types/project";
 
@@ -13,6 +14,7 @@ export function BookSettingsDialog({
   onClose: () => void;
   onSaved: (project: ProjectSummary) => void;
 }) {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<BookSettings | null>(null);
   const [tab, setTab] = useState<"metadata" | "instructions">("metadata");
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +22,8 @@ export function BookSettingsDialog({
   const [readingCover, setReadingCover] = useState(false);
   const [retry, setRetry] = useState(0);
   const dialog = useRef<HTMLDivElement>(null);
+  const coverInput = useRef<HTMLInputElement>(null);
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     dialog.current?.focus();
@@ -31,7 +35,10 @@ export function BookSettingsDialog({
     setError(null);
     getBookSettings(project.id)
       .then((value) => {
-        if (!disposed) setSettings(value);
+        if (!disposed) {
+          setSettings(value);
+          setDescriptionOpen(value.description.trim() !== "");
+        }
       })
       .catch((failure: unknown) => {
         if (!disposed)
@@ -54,7 +61,7 @@ export function BookSettingsDialog({
       if (event.key !== "Tab") return;
       const controls = Array.from(
         dialog.current?.querySelectorAll<HTMLElement>(
-          "button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled)",
+          "button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), summary",
         ) ?? [],
       ).filter((control) => control.getClientRects().length > 0);
       const first = controls[0];
@@ -135,7 +142,7 @@ export function BookSettingsDialog({
   return (
     <div className="dialog-backdrop">
       <div
-        className="dialog"
+        className="dialog book-settings-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="book-settings-title"
@@ -143,47 +150,68 @@ export function BookSettingsDialog({
         ref={dialog}
       >
         <div className="panel__header">
-          <h2 className="panel__heading" id="book-settings-title">
-            Book settings · {project.title}
-          </h2>
+          <div className="book-settings__heading">
+            <h2 className="panel__heading" id="book-settings-title">
+              {t("Book settings")}
+            </h2>
+            <p className="dialog__muted book-settings__book-title" title={project.title}>
+              {project.title}
+            </p>
+          </div>
           <button
             type="button"
             className="icon-button"
-            aria-label="Close book settings"
-            title="Close"
+            aria-label={t("Close book settings")}
+            title={t("Close")}
             disabled={saving || readingCover}
             onClick={onClose}
           >
             <Icon name="close" />
           </button>
         </div>
-        <fieldset
-          className="book-settings-sections button-row"
-          aria-label="Book settings sections"
+        <div
+          className="tabs"
+          role="tablist"
+          aria-label={t("Book settings sections")}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            const next = tab === "metadata" ? "instructions" : "metadata";
+            setTab(next);
+            document.getElementById(`book-settings-tab-${next}`)?.focus();
+          }}
         >
           <button
             type="button"
-            className="btn"
-            aria-pressed={tab === "metadata"}
+            className="tab"
+            role="tab"
+            id="book-settings-tab-metadata"
+            aria-selected={tab === "metadata"}
+            aria-controls="book-settings-panel-metadata"
+            tabIndex={tab === "metadata" ? 0 : -1}
             onClick={() => setTab("metadata")}
           >
             <Icon name="book" />
-            Metadata
+            {t("Metadata")}
           </button>
           <button
             type="button"
-            className="btn"
-            aria-pressed={tab === "instructions"}
+            className="tab"
+            role="tab"
+            id="book-settings-tab-instructions"
+            aria-selected={tab === "instructions"}
+            aria-controls="book-settings-panel-instructions"
+            tabIndex={tab === "instructions" ? 0 : -1}
             onClick={() => setTab("instructions")}
           >
             <Icon name="sparkles" />
-            AI instructions
+            {t("AI instructions")}
           </button>
-        </fieldset>
+        </div>
         {!settings && !error ? (
-          <StatusNotice kind="loading">Loading book settings…</StatusNotice>
+          <StatusNotice kind="loading">{t("Loading book settings…")}</StatusNotice>
         ) : null}
-        {error ? (
+        {error && !settings ? (
           <StatusNotice
             kind="error"
             onRetry={!settings ? () => setRetry((value) => value + 1) : undefined}
@@ -193,35 +221,51 @@ export function BookSettingsDialog({
         ) : null}
         {settings ? (
           <form
+            className="book-settings__form"
             onSubmit={(event) => {
               event.preventDefault();
               void save();
             }}
           >
-            {tab === "metadata" ? (
-              <>
-                <p className="dialog__muted">
-                  These fields describe the exported EPUB. The original book is preserved.
-                  Leave author, publisher or description blank to keep its source value.
-                </p>
-                <div
-                  className={`book-cover-settings${settings.customCover ? " book-cover-settings--custom" : ""}`}
-                >
-                  <span className="book-cover-settings__label">Export cover</span>
-                  {settings.customCover ? (
-                    <img
-                      className="book-cover-settings__preview"
-                      src={settings.customCover}
-                      alt="Custom export cover preview"
-                    />
-                  ) : (
-                    <p className="dialog__muted">
-                      The original cover will be used, if the book has one.
-                    </p>
-                  )}
-                  <label className="form-field">
-                    <span>Choose custom cover</span>
+            <div
+              role="tabpanel"
+              id={`book-settings-panel-${tab}`}
+              aria-labelledby={`book-settings-tab-${tab}`}
+            >
+              {tab === "metadata" ? (
+                <div className="book-settings__metadata">
+                  <div className="book-cover-settings">
+                    {settings.customCover ? (
+                      <img
+                        className="book-cover-settings__preview"
+                        src={settings.customCover}
+                        alt={t("Custom export cover preview")}
+                      />
+                    ) : (
+                      <div
+                        className="book-cover-settings__placeholder"
+                        aria-hidden="true"
+                      >
+                        <Icon name="image" size={24} />
+                      </div>
+                    )}
+                    <div className="book-cover-settings__info">
+                      <span className="book-cover-settings__label">
+                        {t("Export cover")}
+                      </span>
+                      <span className="dialog__muted">
+                        {readingCover
+                          ? t("Reading cover…")
+                          : settings.customCover
+                            ? t("Custom cover")
+                            : t("Original cover")}
+                      </span>
+                      <span className="dialog__muted">PNG · JPEG · GIF · ≤ 8 MB</span>
+                    </div>
                     <input
+                      ref={coverInput}
+                      hidden
+                      aria-label={t("Choose custom cover")}
                       type="file"
                       accept="image/png,image/jpeg,image/gif"
                       disabled={saving || readingCover}
@@ -230,101 +274,157 @@ export function BookSettingsDialog({
                         event.target.value = "";
                       }}
                     />
-                  </label>
-                  {readingCover ? (
-                    <StatusNotice kind="loading">Reading cover…</StatusNotice>
-                  ) : null}
-                  {settings.customCover ? (
-                    <button
-                      type="button"
-                      className="btn"
-                      disabled={saving || readingCover}
-                      onClick={() => setSettings({ ...settings, customCover: null })}
-                    >
-                      <Icon name="keep" />
-                      Use original cover
-                    </button>
-                  ) : null}
-                  <p className="dialog__muted">
-                    PNG, JPEG or GIF, up to 8 MB. Saved with Book Settings and included in
-                    export. Cancel discards this selection.
-                  </p>
-                </div>
-                <div className="form-grid">
-                  {(
-                    [
-                      ["title", "Export title"],
-                      ["author", "Primary author"],
-                      ["publisher", "Publisher"],
-                      ["sourceLanguage", "Original language"],
-                      ["targetLanguage", "Translation language"],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <label className="form-field" key={key}>
-                      <span>{label}</span>
-                      <input
-                        value={settings[key]}
-                        required={key === "title" || key === "targetLanguage"}
-                        maxLength={key.includes("Language") ? 64 : 1024}
+                    <div className="book-cover-settings__actions">
+                      <button
+                        type="button"
+                        className="btn btn--small"
                         disabled={saving || readingCover}
-                        onChange={(event) => update(key, event.target.value)}
+                        onClick={() => coverInput.current?.click()}
+                      >
+                        <Icon name="upload" />
+                        {t("Choose cover")}
+                      </button>
+                      {settings.customCover ? (
+                        <button
+                          type="button"
+                          className="icon-button"
+                          disabled={saving || readingCover}
+                          aria-label={t("Use original cover")}
+                          title={t("Use original cover")}
+                          onClick={() => setSettings({ ...settings, customCover: null })}
+                        >
+                          <Icon name="undo" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <label className="form-field">
+                    <span>{t("Export title")}</span>
+                    <input
+                      value={settings.title}
+                      required
+                      maxLength={1024}
+                      disabled={saving || readingCover}
+                      onChange={(event) => update("title", event.target.value)}
+                    />
+                  </label>
+                  <div className="book-settings__fields">
+                    {(
+                      [
+                        ["author", "Primary author"],
+                        ["publisher", "Publisher"],
+                        ["sourceLanguage", "Original language"],
+                        ["targetLanguage", "Translation language"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <label className="form-field" key={key}>
+                        <span>{t(label)}</span>
+                        <input
+                          value={settings[key]}
+                          required={key === "targetLanguage"}
+                          maxLength={key.includes("Language") ? 64 : 1024}
+                          disabled={saving || readingCover}
+                          onChange={(event) => update(key, event.target.value)}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <details
+                    className="settings-help book-settings__description"
+                    open={descriptionOpen}
+                    onToggle={(event) => setDescriptionOpen(event.currentTarget.open)}
+                  >
+                    <summary>
+                      <Icon name="paragraph" />
+                      {t("Description")}
+                    </summary>
+                    <label className="form-field">
+                      <span className="visually-hidden">{t("Description")}</span>
+                      <textarea
+                        rows={3}
+                        value={settings.description}
+                        maxLength={20000}
+                        disabled={saving || readingCover}
+                        onChange={(event) => update("description", event.target.value)}
                       />
                     </label>
-                  ))}
+                  </details>
+                  <details className="settings-help book-settings__help">
+                    <summary>
+                      <Icon name="keep" />
+                      {t("Export details")}
+                    </summary>
+                    <p className="dialog__muted">
+                      {t(
+                        "These fields describe the exported EPUB. The original book is preserved. Leave author, publisher or description blank to keep its source value.",
+                      )}
+                    </p>
+                    <p className="dialog__muted">
+                      {t("The original cover will be used, if the book has one.")}
+                    </p>
+                    <p className="dialog__muted">
+                      {t(
+                        "PNG, JPEG or GIF, up to 8 MB. Saved with Book Settings and included in export. Cancel discards this selection.",
+                      )}
+                    </p>
+                  </details>
                 </div>
-                <label className="form-field">
-                  <span>Description</span>
-                  <textarea
-                    rows={4}
-                    value={settings.description}
-                    maxLength={20000}
+              ) : (
+                <div className="book-settings__instructions">
+                  <label className="form-field">
+                    <span>{t("Book translation instructions")}</span>
+                    <textarea
+                      className="book-settings__instructions-editor"
+                      value={settings.instructions}
+                      maxLength={20000}
+                      disabled={saving || readingCover}
+                      placeholder={t("Use these character names consistently…")}
+                      onChange={(event) => update("instructions", event.target.value)}
+                    />
+                  </label>
+                  <details className="settings-help book-settings__help">
+                    <summary>
+                      <Icon name="keep" />
+                      {t("Instructions help")}
+                    </summary>
+                    <p className="dialog__muted">
+                      {t(
+                        "Applied to every AI translation in this book, together with the current run's instructions. Use this for consistent names, terminology and writing style.",
+                      )}
+                    </p>
+                    <p className="dialog__muted">
+                      {t(
+                        "Saved locally. Sent to the selected agent only when you generate a translation; not included in the exported EPUB.",
+                      )}
+                    </p>
+                  </details>
+                </div>
+              )}
+            </div>
+            <div className="settings-footer">
+              {error ? <StatusNotice kind="error">{error}</StatusNotice> : null}
+              <div className="settings-footer__actions">
+                <span className="dialog__muted">{t("Save applies to both tabs.")}</span>
+                <div className="button-row dialog__actions">
+                  <button
+                    type="button"
+                    className="btn"
                     disabled={saving || readingCover}
-                    onChange={(event) => update("description", event.target.value)}
-                  />
-                </label>
-              </>
-            ) : (
-              <>
-                <p className="dialog__muted">
-                  Applied to every AI translation in this book, together with the current
-                  run's instructions. Use this for consistent names, terminology and
-                  writing style.
-                </p>
-                <label className="form-field">
-                  <span>Book translation instructions</span>
-                  <textarea
-                    rows={10}
-                    value={settings.instructions}
-                    maxLength={20000}
+                    onClick={onClose}
+                  >
+                    <Icon name="close" />
+                    {t("Cancel")}
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn--primary"
                     disabled={saving || readingCover}
-                    placeholder="Use these character names consistently…"
-                    onChange={(event) => update("instructions", event.target.value)}
-                  />
-                </label>
-                <p className="dialog__muted">
-                  Saved locally. Sent to the selected agent only when you generate a
-                  translation; not included in the exported EPUB.
-                </p>
-              </>
-            )}
-            <div className="button-row dialog__actions">
-              <button
-                type="button"
-                className="btn"
-                disabled={saving || readingCover}
-                onClick={onClose}
-              >
-                <Icon name="close" />
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn btn--primary"
-                disabled={saving || readingCover}
-              >
-                <Icon name="save" />
-                {saving ? "Saving…" : "Save"}
-              </button>
+                  >
+                    <Icon name="save" />
+                    {saving ? t("Saving…") : t("Save")}
+                  </button>
+                </div>
+              </div>
             </div>
           </form>
         ) : null}

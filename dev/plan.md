@@ -1614,3 +1614,181 @@ old-output cleanup, unchanged manual draft, late completion ordering, and a
 single replacement result in Review. Native rendered checks of this simplified
 review remain pending; next unfinished task is native model-change/retranslate
 verification. The existing build bundle warning remains.
+
+### App language in Appearance — 2026-10-16
+
+Settings → Appearance now offers English and မြန်မာ (Myanmar). English is the
+initial/fallback language; the selected app language is saved locally alongside
+presentation preferences, restored on startup, and applied immediately through a
+React context with the document language updated for accessibility. Language
+changes do not remount the app or change book text, translation language settings,
+source snapshots or saved drafts. Shared UI typography includes Myanmar-capable
+font fallbacks.
+
+A local Myanmar message catalog and translation hook cover Appearance and the
+main library, chapter navigation, reader, authoring, Book Settings, export and
+existing AI workflow labels/help text. Missing messages safely retain English.
+Some computed/dynamic messages, editor-generated menus, technical diagnostics,
+backend/provider errors and native OS dialogs still retain their existing text;
+this is an initial localization pass, not a claim of complete string coverage.
+
+Validation: `bun run check` passed (lint, TypeScript, production build; existing
+bundle-size warning remains). All 80 frontend tests passed, including new
+language default/validation, fallback, immediate switching, focus preservation,
+unchanged theme/text size and restoration regressions. Browser rendering at
+1207×1256 verified Myanmar in light/dark Appearance, keyboard language/theme
+selection, restoration after reload, and Escape/focus restoration. Native
+Tauri, minimum-window-size and Windows/Linux rendering remain unverified. No
+Rust or EPUB processing changed, so Rust checks were not rerun.
+
+Next unfinished task: finish dynamic/technical message and editor-menu coverage,
+then verify localization in native Sagar at normal/minimum window sizes on the
+supported platforms and review Myanmar terminology with a native speaker.
+
+Appearance preview correction: the English sample “The next chapter begins here.”
+now stays English with `lang="en"` in either app language; the Myanmar sample
+stays Myanmar. Removed the sample from the interface catalog. Frontend checks
+and all three localization tests passed, including a regression assertion for
+the English sample under Myanmar UI. Rendered/native checks were not repeated
+for this text-only correction; the next unfinished localization tasks above
+remain unchanged.
+
+### Simplified Chinese app language — 2026-10-16
+
+Added 中文（简体） to Settings → Appearance. The `zh` preference persists across
+restarts, updates the document language to `zh-Hans`, and uses a Simplified
+Chinese catalog for the existing localized interface. English remains the
+fallback for messages not yet in the catalog. The English sample in the
+Appearance preview remains hard-coded English and is excluded from catalogs.
+Regression coverage checks Chinese translations and fallback, all three picker
+options, persistence/invalid stored values, immediate Chinese selection, the
+`zh-Hans` document language and the English preview. Lint, TypeScript, build and
+all three focused localization tests passed; the existing bundle-size warning
+remains. A 1280×1280 browser rendering verified the Simplified Chinese picker,
+Appearance controls and English-only preview in dark mode. Native Tauri and
+minimum-window-size checks remain for the localization follow-up listed above.
+
+
+### Japanese app language — 2026-10-16
+
+Added 日本語 to Settings → Appearance as the fourth app language. Japanese is
+saved and restored with the other language preferences; choosing it applies the
+Japanese catalog and sets the document language to `ja`. The English Appearance
+preview sentence is absent from all language catalogs.
+
+Lint, TypeScript, production build and the three focused localization tests
+passed, including four picker options, Japanese selection and persistence,
+`ja` document language, Japanese translation/fallback and the English-only
+preview. Browser/native Japanese rendering and minimum-window-size checks remain
+part of the outstanding localization follow-up. The existing bundle-size
+warning remains.
+
+### Korean app language — 2026-10-16
+
+Added 한국어 as a fifth choice in Settings → Appearance. The app stores the `ko`
+language code, restores it on launch, sets the document language to `ko`, and
+uses a Korean catalog for the interface strings covered by localization. The
+English Appearance sample remains outside the catalogs.
+
+`bun run check` passed (lint, TypeScript and production build; existing bundle
+size warning remains), as did all three focused localization tests. Browser
+rendering verified the Korean picker and Appearance labels in dark mode. Native
+Tauri and minimum-window-size checks remain part of the localization follow-up.
+
+### Thai app language — 2026-10-16
+
+Added ไทย as a sixth choice in Settings → Appearance. The `th` language code is
+saved and restored, and selecting Thai applies the Thai catalog and sets the
+document language to `th`. The English Appearance sample remains outside all
+language catalogs.
+
+`bun run check` passed (lint, TypeScript and production build; existing bundle
+size warning remains), as did all three focused localization tests, including
+Thai selection/persistence and English fallback. Native Tauri and minimum-window
+checks remain in the localization follow-up.
+
+### Simplify provider settings — 2026-10-16
+
+Replaced library-style provider rows with compact settings rows. Coding
+assistants show their name, availability and a labeled Check icon; custom
+providers show name/model, status and consistent Test, Edit, Details and Delete
+icons with tooltips. URLs and API-key state expand on request, and connection
+help/privacy explanations are collapsed instead of occupying the top of every
+settings tab. The provider form keeps protocol-specific help collapsed and
+focuses the first text field when opened. Connection failures stay visible;
+delete requires an explicit inline confirmation. Focus trapping now includes
+selects and disclosures and skips hidden content. New labels are translated in
+all supported interface catalogs.
+
+`bun run check` passed, with the existing bundle-size warning. All 81 frontend
+tests passed, including a new regression for details, failed tests and confirmed
+versus cancelled deletion; the existing provider-form test uses the shorter
+Add provider label. A synthetic browser fixture verified Myanmar in light and
+dark, a 1280×720 preview and a component constrained to 960×640, details expansion,
+visible failures, keyboard focus on delete cancellation, form focus and retained
+inputs after validation. The fixture was removed after verification. Native
+Tauri/provider integration and Windows/Linux rendering were not rerun. Next
+unfinished task: verify the compact settings in rebuilt native Sagar alongside
+the remaining localization coverage work.
+
+### Compact Appearance settings — 2026-10-16
+
+Appearance now has aligned language/theme rows and a grouped text-size slider,
+current-size badge and preview. The duplicate visible heading and default help
+paragraphs were removed; the same shared Settings help disclosure used by
+Providers retains language, autosave and keyboard-shortcut guidance. New short
+labels are translated in all supported catalogs. The fixed English and Myanmar
+preview samples are preserved. Slider value announcements use the selected
+interface language.
+
+Four focused localization/provider regression tests passed. Browser fixtures
+verified Myanmar at 1280×720 and within 960×640 component bounds, light/dark
+appearance, keyboard theme selection, slider End → 28px with immediate preview,
+and help expansion. The temporary fixture was removed. Native Tauri and other
+platform rendering remain unverified. Next unfinished task: verify both compact
+settings tabs in rebuilt native Sagar with the remaining localization work.
+Lint, TypeScript and production build also passed; the existing bundle-size
+warning remains.
+
+### Compact Translation Model settings — 2026-10-16
+
+Translation Model now uses compact shared settings rows, searchable model names
+with a visible selected state, and a persistent footer for Save and saved/unsaved
+feedback. Model descriptions, catalog diagnostics, manual IDs and reasoning
+explanations live under More options. Unknown saved/manual IDs expand options
+so the value remains editable. Provider-default effort restrictions are retained;
+switching agents clears the pending model and disables Save until one is chosen.
+Save errors appear in the footer and retain the pending selection for retry.
+Appearance and model settings now share the same row/label/select styles.
+
+`bun run check` and eight focused settings/localization/AI-progress tests passed.
+Browser fixtures checked Myanmar in light and dark, a 1280×720 preview and
+960×640 component bounds, search and selection, custom IDs, saving/failed-save/
+retry feedback, expanded options, and disabled Gemini reasoning controls. The
+fixture was removed. Native Tauri/provider calls and cross-platform rendering
+remain unverified. Next unfinished task: verify all three compact settings tabs
+in rebuilt native Sagar and finish remaining localization coverage. The existing
+bundle-size warning remains.
+
+### Compact Book Settings — 2026-10-16
+
+Book Settings now separates its short title from a single-line book subtitle,
+uses the shared tab style with arrow-key navigation, and groups cover controls
+into a small preview/status/chooser row. The native file input is operated by a
+labeled Choose cover button. Export title has its own full-width row, with
+author/publisher and source/target languages aligned below. Description expands
+when populated or requested; longer export and instructions guidance is in help
+disclosures. The instructions editor gets a focused writing area. Both tabs
+share a sticky Save/Cancel footer with errors and an explicit note that Save
+applies to both tabs. The footer pattern is shared with Translation Model.
+
+`bun run check` passed; all 82 frontend tests passed. New coverage checks cover
+reset and tab persistence, failed-save retention, retrying both tabs together,
+and focus restoration. Browser fixtures verified Myanmar in light/dark at
+1280×720 and within 960×640 component bounds, custom-cover/reset display,
+keyboard tabs, metadata and Myanmar instruction edits surviving switches and
+save failure, plus visible loading/error/disabled actions. Synthetic fixtures
+were removed. Native file chooser, Rust/provider integration and Windows/Linux
+rendering were not rerun. Next unfinished task: native verification of the
+compact global and Book Settings dialogs with remaining localization coverage.
+The existing bundle-size warning remains.

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "../lib/i18n";
 import { Icon } from "./Icon";
 
 export type NoticeKind = "loading" | "success" | "error" | "info";
@@ -31,21 +32,22 @@ export function StatusNotice({
   retryLabel = "Retry",
   action,
 }: StatusNoticeProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={`notice notice--${kind}`}
       role={kind === "error" ? "alert" : "status"}
     >
-      <span className="notice__kind">{KIND_LABEL[kind]}</span>
+      <span className="notice__kind">{t(KIND_LABEL[kind])}</span>
       <div className="notice__body">
-        <span>{children}</span>
+        <span>{typeof children === "string" ? t(children) : children}</span>
         {kind === "error" && (onRetry || action) ? (
           <div className="notice__actions">
             {action}
             {onRetry ? (
               <button type="button" className="btn" onClick={onRetry}>
                 <Icon name="book" />
-                {retryLabel}
+                {t(retryLabel)}
               </button>
             ) : null}
           </div>

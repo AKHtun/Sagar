@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { Icon } from "../../components/Icon";
+import { useTranslation } from "../../lib/i18n";
 import type { BlockView } from "../../types/chapter";
 import { RichBlockEditor } from "./RichBlockEditor";
 import { hasContent, plainFragment } from "./richText";
@@ -38,6 +39,7 @@ export function BlockEditorRow({
   onRetry,
   onReloadAfterConflict,
 }: BlockEditorRowProps) {
+  const { t } = useTranslation();
   const state = editorState;
   const status = state?.status ?? block.status;
   const text = state?.text ?? block.targetHtml ?? "";
@@ -55,9 +57,11 @@ export function BlockEditorRow({
         {block.hasInlineMarkup ? (
           <span
             className="target-block__note"
-            title="The original text contains inline formatting or links. Check formatting, links and images when replacing this content; “Keep original” preserves the source fully."
+            title={t(
+              "The original text contains inline formatting or links. Check formatting, links and images when replacing this content; “Keep original” preserves the source fully.",
+            )}
           >
-            Check original formatting
+            {t("Check original formatting")}
           </span>
         ) : null}
         <span className="target-block__actions">
@@ -86,7 +90,7 @@ export function BlockEditorRow({
             }
           >
             <Icon name="check" />
-            Mark reviewed
+            {t("Mark reviewed")}
           </button>
           {status === "skipped" ? (
             <button
@@ -95,7 +99,7 @@ export function BlockEditorRow({
               onClick={() => onTranslateAgain(block.id, block.sourcePlainText)}
             >
               <Icon name="edit" />
-              Translate instead
+              {t("Translate instead")}
             </button>
           ) : (
             <button
@@ -103,10 +107,10 @@ export function BlockEditorRow({
               className="btn btn--small"
               onClick={() => onKeepOriginal(block.id)}
               disabled={state?.conflict ?? false}
-              title="Keep the original text for this block in the exported book"
+              title={t("Keep the original text for this block in the exported book")}
             >
               <Icon name="keep" />
-              Keep original
+              {t("Keep original")}
             </button>
           )}
         </span>
@@ -125,7 +129,7 @@ export function BlockEditorRow({
       {state?.conflict ? (
         <div className="target-block__error" role="alert">
           <span>
-            A newer saved version of this block exists. Your draft is kept above.
+            {t("A newer saved version of this block exists. Your draft is kept above.")}
           </span>
           <button
             type="button"
@@ -133,7 +137,7 @@ export function BlockEditorRow({
             onClick={onReloadAfterConflict}
           >
             <Icon name="refresh" />
-            Reload saved content
+            {t("Reload saved content")}
           </button>
         </div>
       ) : state?.error ? (
@@ -145,7 +149,7 @@ export function BlockEditorRow({
             onClick={() => onRetry(block.id)}
           >
             <Icon name="refresh" />
-            Retry
+            {t("Retry")}
           </button>
         </div>
       ) : null}

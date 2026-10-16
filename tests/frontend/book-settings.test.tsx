@@ -1,0 +1,121 @@
+import { expect, mock, test } from "bun:test";
+import { Window } from "happy-dom";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import type { BookSettings, ProjectSummary } from "../../src/types/project";
+
+const project: ProjectSummary = {
+  id: "book",
+  title: "A long book title for the settings header",
+  author: "Author",
+  sourceLanguage: "en",
+  targetLanguage: "my",
+  reviewedBlocks: 0,
+  totalBlocks: 2,
+  unsupportedBlocks: 0,
+  createdAt: "",
+  updatedAt: "",
+};
+const original: BookSettings = {
+  title: project.title,
+  author: "Author",
+  publisher: "",
+  description: "",
+  sourceLanguage: "en",
+  targetLanguage: "my",
+  instructions: "Keep names consistent. မြန်မာ",
+  customCover: "data:image/png;base64,c2FtcGxl",
+};
+const saved: BookSettings[] = [];
+let failSave = true;
+mock.module("@tauri-apps/api/core", () => ({
+  convertFileSrc: (path: string) => path,
+  invoke: async (command: string, args?: Record<string, unknown>) => {
+    if (command === "get_book_settings") return { ...original };
+    if (command === "get_project") return project;
+    if (command === "save_book_settings") {
+      saved.push({ ...(args?.settings as BookSettings) });
+      if (failSave) {
+        failSave = false;
+        throw { code: "save_failed", message: "Please retry saving." };
+      }
+      return;
+    }
+    throw new Error(command);
+  },
+}));
+const { BookSettingsDialog } = await import(
+  "../../src/features/workspace/BookSettingsDialog"
+);
+
+test("Book Settings retains edits across tabs and failed saves, then saves both tabs together", async () => {
+  const window = new Window();
+  Object.assign(globalThis, {
+    window,
+    document: window.document,
+    navigator: window.navigator,
+    HTMLElement: window.HTMLElement,
+    Node: window.Node,
+    Element: window.Element,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  const trigger = document.createElement("button");
+  document.body.append(trigger);
+  trigger.focus();
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  let closes = 0;
+  let updated: ProjectSummary | null = null;
+  const button = (name: string) => {
+    const value = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("button"),
+    ).find(
+      (b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name,
+    );
+    if (!value) throw new Error(`Missing button ${name}`);
+    return value;
+  };
+  try {
+    await act(async () =>
+      root.render(
+        createElement(BookSettingsDialog, {
+          project,
+          onClose: () => {
+            closes++;
+          },
+          onSaved: (value) => {
+            updated = value;
+          },
+        }),
+      ),
+    );
+    expect(container.querySelector("h2")?.textContent?.trim()).toBe("Book settings");
+    expect(container.querySelector(".book-settings__book-title")?.textContent).toBe(
+      project.title,
+    );
+    await act(async () => button("Use original cover").click());
+    await act(async () => button("AI instructions").click());
+    expect(container.querySelector("textarea")?.value).toBe(original.instructions);
+    expect(button("AI instructions").getAttribute("aria-selected")).toBe("true");
+    expect(saved.length).toBe(0);
+    await act(async () => button("Save").click());
+    expect(
+      container.querySelector('.settings-footer [role="alert"]')?.textContent,
+    ).toContain("Please retry saving.");
+    expect(closes).toBe(0);
+    expect(saved[0].customCover).toBeNull();
+    expect(saved[0].instructions).toBe(original.instructions);
+    await act(async () => button("Metadata").click());
+    expect(container.querySelector(".book-cover-settings__preview")).toBeNull();
+    await act(async () => button("Save").click());
+    expect(saved[1]).toEqual(saved[0]);
+    expect(updated).toEqual(project);
+    expect(closes).toBe(1);
+  } finally {
+    await act(async () => root.unmount());
+    expect(document.activeElement).toBe(trigger);
+    container.remove();
+    trigger.remove();
+  }
+});

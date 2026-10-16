@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Splitter } from "../../components/Splitter";
 import { StatusNotice } from "../../components/StatusNotice";
+import { useTranslation } from "../../lib/i18n";
 import { formatDirection } from "../../lib/languages";
 import {
   loadScrollSync,
@@ -58,6 +59,7 @@ export function WorkspaceFrame({
   importWarnings,
   onBackToLibrary,
 }: WorkspaceFrameProps) {
+  const { t } = useTranslation();
   const [projectState, setProjectState] = useState<ProjectState>({
     status: "loading",
   });
@@ -212,8 +214,8 @@ export function WorkspaceFrame({
         <button
           type="button"
           className="icon-button"
-          aria-label="Back to library"
-          title="Back to library"
+          aria-label={t("Back to library")}
+          title={t("Back to library")}
           onClick={() => {
             void editor.flushAll().then((ok) => {
               if (ok) onBackToLibrary();
@@ -223,14 +225,14 @@ export function WorkspaceFrame({
           <Icon name="back" />
         </button>
         <p className="workspace__book">
-          <span className="workspace__book-title">{project?.title ?? "Loading…"}</span>
+          <span className="workspace__book-title">{project?.title ?? t("Loading…")}</span>
         </p>
         <div className="workspace__chapterbar">
           <button
             type="button"
             className="icon-button"
-            aria-label="Chapters"
-            title="Toggle chapter sidebar"
+            aria-label={t("Chapters")}
+            title={t("Toggle chapter sidebar")}
             aria-expanded={sidebarVisible}
             onClick={() => setSidebarVisible(!sidebarVisible)}
           >
@@ -246,8 +248,8 @@ export function WorkspaceFrame({
             <button
               type="button"
               className="icon-button"
-              aria-label="Previous chapter"
-              title="Previous chapter"
+              aria-label={t("Previous chapter")}
+              title={t("Previous chapter")}
               disabled={
                 !activeChapter ||
                 activeChapter.spineIndex === 0 ||
@@ -265,8 +267,8 @@ export function WorkspaceFrame({
             <button
               type="button"
               className="icon-button"
-              aria-label="Next chapter"
-              title="Next chapter"
+              aria-label={t("Next chapter")}
+              title={t("Next chapter")}
               disabled={
                 !activeChapter ||
                 activeChapter.spineIndex === chapters.length - 1 ||
@@ -288,13 +290,13 @@ export function WorkspaceFrame({
           role="status"
           aria-live="polite"
         >
-          {SAVE_LABEL[editor.indicator]}
+          {t(SAVE_LABEL[editor.indicator])}
         </span>
         <button
           type="button"
           className="icon-button"
-          aria-label="Export EPUB"
-          title="Export EPUB"
+          aria-label={t("Export EPUB")}
+          title={t("Export EPUB")}
           disabled={projectState.status !== "ready"}
           onClick={() => setExportOpen(true)}
         >
@@ -303,11 +305,13 @@ export function WorkspaceFrame({
         <button
           type="button"
           className="icon-button"
-          aria-label={scrollSyncEnabled ? "Unlink pane scrolling" : "Link pane scrolling"}
+          aria-label={
+            scrollSyncEnabled ? t("Unlink pane scrolling") : t("Link pane scrolling")
+          }
           title={
             scrollSyncEnabled
-              ? "Unlink scrolling (panes scroll independently)"
-              : "Link scrolling (panes scroll together)"
+              ? t("Unlink scrolling (panes scroll independently)")
+              : t("Link scrolling (panes scroll together)")
           }
           aria-pressed={scrollSyncEnabled}
           onClick={toggleScrollSync}
@@ -317,8 +321,8 @@ export function WorkspaceFrame({
         <button
           type="button"
           className="icon-button"
-          aria-label="Book settings"
-          title="Book metadata and AI instructions"
+          aria-label={t("Book settings")}
+          title={t("Book metadata and AI instructions")}
           disabled={!project}
           onClick={() => setBookSettingsOpen(true)}
         >
@@ -328,7 +332,7 @@ export function WorkspaceFrame({
 
       {projectState.status === "loading" ? (
         <div className="workspace__notice">
-          <StatusNotice kind="loading">Loading project…</StatusNotice>
+          <StatusNotice kind="loading">{t("Loading project…")}</StatusNotice>
         </div>
       ) : null}
       {projectState.status === "error" ? (
@@ -340,16 +344,16 @@ export function WorkspaceFrame({
       ) : null}
 
       {warningsVisible && importWarnings.length > 0 ? (
-        <section className="panel workspace__warnings" aria-label="Import notes">
+        <section className="panel workspace__warnings" aria-label={t("Import notes")}>
           <div className="panel__header">
-            <h2 className="panel__heading">Import notes</h2>
+            <h2 className="panel__heading">{t("Import notes")}</h2>
             <button
               type="button"
               className="btn"
               onClick={() => setWarningsVisible(false)}
             >
               <Icon name="close" />
-              Dismiss
+              {t("Dismiss")}
             </button>
           </div>
           <ul className="warning-list">
@@ -434,27 +438,27 @@ export function WorkspaceFrame({
         {activeChapter ? (
           <>
             <span>
-              Chapter {activeChapter.spineIndex + 1} of {chapters.length}
+              {t("Chapter")} {activeChapter.spineIndex + 1} {t("of")} {chapters.length}
             </span>
             <span>
               {editor.draft?.status === "reviewed"
-                ? "Chapter reviewed"
+                ? t("Chapter reviewed")
                 : editor.draft?.status === "skipped"
-                  ? "Original chapter retained"
+                  ? t("Original chapter retained")
                   : editor.draft?.status === "draft"
-                    ? "Chapter draft"
-                    : "Ready to write"}
+                    ? t("Chapter draft")
+                    : t("Ready to write")}
             </span>
           </>
         ) : (
-          <span>No chapter selected</span>
+          <span>{t("No chapter selected")}</span>
         )}
         {project ? (
           <button
             type="button"
             className="workspace__lang"
             onClick={() => setLangOpen(true)}
-            title="Show and change the translation languages"
+            title={t("Show and change the translation languages")}
           >
             <Icon name="languages" />
             {formatDirection(project.sourceLanguage, project.targetLanguage)}
@@ -513,18 +517,20 @@ function ExportOutcomePanel({
   outcome: ExportOutcome;
   onDismiss: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="dialog-backdrop">
-      <div className="dialog" role="alertdialog" aria-label="Export finished">
+      <div className="dialog" role="alertdialog" aria-label={t("Export finished")}>
         <div className="panel__header">
           <h2 className="panel__heading">
-            Export {outcome.mode === "completed" ? "completed" : "draft"} finished
+            {t("Export")} {outcome.mode === "completed" ? "completed" : t("draft")}{" "}
+            finished
           </h2>
           <button
             type="button"
             className="icon-button"
-            aria-label="Close"
-            title="Close"
+            aria-label={t("Close")}
+            title={t("Close")}
             onClick={onDismiss}
           >
             <Icon name="close" />
@@ -536,7 +542,7 @@ function ExportOutcomePanel({
           {outcome.chaptersExported} chapter{outcome.chaptersExported === 1 ? "" : "s"}.
         </StatusNotice>
         <p className="dialog__path">
-          Output file:
+          {t("Output file:")}
           <code>{outcome.outputPath}</code>
         </p>
         {outcome.warnings.length > 0 ? (
@@ -552,7 +558,7 @@ function ExportOutcomePanel({
             ))}
           </ul>
         ) : (
-          <p className="dialog__muted">No validation warnings.</p>
+          <p className="dialog__muted">{t("No validation warnings.")}</p>
         )}
       </div>
     </div>

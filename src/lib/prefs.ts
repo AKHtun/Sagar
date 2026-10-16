@@ -3,10 +3,13 @@
  * separately from translations and never authoritative content.
  */
 
+export type AppLanguage = "en" | "my" | "zh" | "ja" | "ko" | "th";
+
 export type ThemePreference = "system" | "light" | "dark";
 
 const KEYS = {
   theme: "sagar.theme",
+  language: "sagar.language",
   zoom: "sagar.textZoom",
   sidebarWidth: "sagar.sidebarWidth",
   sourceWidth: "sagar.sourceWidth",
@@ -77,4 +80,19 @@ export function loadScrollSync(): boolean {
 
 export function saveScrollSync(enabled: boolean): void {
   write(KEYS.scrollSync, enabled ? "1" : "0");
+}
+
+export function loadAppLanguage(): AppLanguage {
+  const value = read(KEYS.language);
+  return value === "my" ||
+    value === "zh" ||
+    value === "ja" ||
+    value === "ko" ||
+    value === "th"
+    ? value
+    : "en";
+}
+
+export function saveAppLanguage(language: AppLanguage): void {
+  write(KEYS.language, language);
 }

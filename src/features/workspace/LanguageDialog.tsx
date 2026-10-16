@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
+import { useTranslation } from "../../lib/i18n";
 import { formatDirection, languageSuggestions } from "../../lib/languages";
 import { getProject, updateProjectMetadata } from "../../lib/tauri/commands";
 import { CommandError } from "../../lib/tauri/errors";
@@ -21,6 +22,7 @@ const TAG_PATTERN = /^[A-Za-z0-9-]+$/;
  * path; target was only editable at export time.
  */
 export function LanguageDialog({ project, onClose, onSaved }: LanguageDialogProps) {
+  const { t } = useTranslation();
   const [source, setSource] = useState(project.sourceLanguage ?? "");
   const [target, setTarget] = useState(project.targetLanguage);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -110,13 +112,13 @@ export function LanguageDialog({ project, onClose, onSaved }: LanguageDialogProp
       >
         <div className="panel__header">
           <h2 className="panel__heading" id="language-dialog-title">
-            Translation languages
+            {t("Translation languages")}
           </h2>
           <button
             type="button"
             className="icon-button"
-            aria-label="Close"
-            title="Close"
+            aria-label={t("Close")}
+            title={t("Close")}
             disabled={saving}
             onClick={onClose}
           >
@@ -133,7 +135,7 @@ export function LanguageDialog({ project, onClose, onSaved }: LanguageDialogProp
 
         <div className="form-grid">
           <label className="form-field">
-            <span>Source language (original book)</span>
+            <span>{t("Source language (original book)")}</span>
             <input
               type="text"
               value={source}
@@ -155,7 +157,7 @@ export function LanguageDialog({ project, onClose, onSaved }: LanguageDialogProp
             ) : null}
           </label>
           <label className="form-field">
-            <span>Target language (translation)</span>
+            <span>{t("Target language (translation)")}</span>
             <input
               type="text"
               value={target}
@@ -185,8 +187,9 @@ export function LanguageDialog({ project, onClose, onSaved }: LanguageDialogProp
           ))}
         </datalist>
         <p className="dialog__muted">
-          Leave the source blank when the original language is unknown. Changing languages
-          only relabels the project and future exports — book text is never rewritten.
+          {t(
+            "Leave the source blank when the original language is unknown. Changing languages only relabels the project and future exports — book text is never rewritten.",
+          )}
         </p>
 
         {saveError ? <StatusNotice kind="error">{saveError}</StatusNotice> : null}
@@ -199,7 +202,7 @@ export function LanguageDialog({ project, onClose, onSaved }: LanguageDialogProp
             onClick={() => void handleSave()}
           >
             <Icon name="save" />
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("Saving…") : t("Save")}
           </button>
         </div>
       </div>

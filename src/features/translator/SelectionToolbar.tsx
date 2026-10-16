@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon, type IconName } from "../../components/Icon";
+import { useTranslation } from "../../lib/i18n";
 import { toggleBookInline } from "./inlineFormatting";
 
 const formats: { label: string; mark: string; icon: IconName }[] = [
@@ -39,6 +40,7 @@ export function SelectionToolbar({
   editor: Editor;
   active: boolean;
 }) {
+  const { t } = useTranslation();
   const popup = useRef<HTMLFieldSetElement>(null);
   const [position, setPosition] = useState<Position | null>(null);
   const [link, setLink] = useState<string | null>(null);
@@ -234,7 +236,7 @@ export function SelectionToolbar({
   return createPortal(
     <fieldset
       ref={popup}
-      aria-label="Selection tools"
+      aria-label={t("Selection tools")}
       className="selection-popup"
       style={{ left: position.x, top: position.y }}
       onBlur={() => requestAnimationFrame(() => updatePosition.current())}
@@ -242,7 +244,7 @@ export function SelectionToolbar({
       {link === null ? (
         <div
           role="toolbar"
-          aria-label="Selected text formatting"
+          aria-label={t("Selected text formatting")}
           className="selection-popup__tools"
         >
           {formats.map(({ label, mark, icon }) => (
@@ -273,8 +275,8 @@ export function SelectionToolbar({
           <button
             type="button"
             className="icon-button"
-            title="Edit link"
-            aria-label="Edit link"
+            title={t("Edit link")}
+            aria-label={t("Edit link")}
             aria-pressed={editor.isActive("link")}
             disabled={!editor.can().setLink({ href: "#anchor" })}
             onMouseDown={(event) => event.preventDefault()}
@@ -292,12 +294,12 @@ export function SelectionToolbar({
           }}
         >
           <div className="selection-popup__link-heading">
-            <label htmlFor="selection-link-url">Link address</label>
+            <label htmlFor="selection-link-url">{t("Link address")}</label>
             <button
               type="button"
               className="icon-button"
-              title="Cancel link editing"
-              aria-label="Cancel link editing"
+              title={t("Cancel link editing")}
+              aria-label={t("Cancel link editing")}
               onClick={() => {
                 setLink(null);
                 editor.commands.focus();
@@ -331,7 +333,7 @@ export function SelectionToolbar({
               title={
                 linkHasBookAttributes
                   ? "This link carries book attributes. Edit its address to preserve them."
-                  : "Remove link"
+                  : t("Remove link")
               }
               onClick={() => {
                 if (linkHasBookAttributes) return;
@@ -340,11 +342,11 @@ export function SelectionToolbar({
               }}
             >
               <Icon name="unlink" />
-              Remove link
+              {t("Remove link")}
             </button>
             <button type="submit" className="btn btn--primary btn--small">
               <Icon name="save" />
-              Save
+              {t("Save")}
             </button>
           </div>
         </form>

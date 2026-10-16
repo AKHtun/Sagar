@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { LibraryScreen } from "../features/library/LibraryScreen";
 import { WorkspaceFrame } from "../features/workspace/WorkspaceFrame";
+import { useTranslation } from "../lib/i18n";
 import {
   loadTextZoom,
   loadTheme,
@@ -15,6 +16,7 @@ import type { ImportWarning } from "../types/project";
  * workspace, plus global presentation preferences (theme, text zoom).
  */
 export default function App() {
+  const { t } = useTranslation();
   const [openProject, setOpenProject] = useState<{
     projectId: string;
     importWarnings: ImportWarning[];
@@ -99,7 +101,7 @@ export default function App() {
             width={32}
             height={32}
           />{" "}
-          Sagar <span className="app-brand__descriptor">Translation studio</span>
+          Sagar <span className="app-brand__descriptor">{t("Translation studio")}</span>
         </div>
       </div>
       <LibraryScreen
