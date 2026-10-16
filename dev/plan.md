@@ -1,5 +1,21 @@
 # Plan.md — EPUB Translation Studio
 
+### Rich legacy div alignment — 2026-10-16
+
+Fixed `div align` rejection in Rust document validation and attribute loss in
+Rich normalization/serialization and both text/block div editor nodes. The
+user's Myanmar example is a regression fixture covering escaped angle brackets,
+Rich typing/reload, SQLite save, draft EPUB export/reopen and source immutability.
+This continues Milestone 5 compatibility polish; no milestone checkboxes advanced.
+
+Validation: lint/TypeScript/build passed (existing bundle-size warning); Rust
+formatting and both targeted validation/export tests passed. The frontend file
+passed 25 tests with its previously documented local-image-count failure.
+Native visual/IME, light/dark/minimum-window and Windows/Linux checks remain
+unverified. Next unfinished task: verify this HTML → Rich flow in rebuilt native
+Sagar.
+
+
 ### Rich chapter parent and heading groups — 2026-10-16
 
 Rust document validation and the frontend Rich schema/serializer now preserve

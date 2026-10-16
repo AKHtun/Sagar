@@ -288,7 +288,7 @@ fn is_safe_external_link(value: &str) -> bool {
         && !lower.starts_with("vbscript:")
 }
 
-/// Presentational attributes real EPUBs carry on tables/cells/images.
+/// Presentational attributes real EPUBs carry on containers/tables/cells/images.
 /// Inert strings only; event handlers, URLs and positioning CSS are handled
 /// separately. Values are escaped on serialization.
 fn is_preserved_layout_attr(tag: &str, name: &str) -> bool {
@@ -301,6 +301,7 @@ fn is_preserved_layout_attr(tag: &str, name: &str) -> bool {
             "td" | "th",
             "width" | "height" | "align" | "valign" | "scope" | "abbr" | "headers"
         ) | ("img", "width" | "height" | "align")
+            | ("div", "align")
             | ("ol" | "ul", "type")
             | ("li", "value")
     )
@@ -877,6 +878,17 @@ mod tests {
 #[cfg(test)]
 mod document_tests {
     use super::*;
+    #[test]
+    fn aligned_div_preserves_myanmar_and_escaped_brackets() {
+        let html = include_str!("../../../tests/fixtures/editor/aligned-div.xhtml");
+        let (saved, _) = validate_document(html).expect("aligned div");
+        assert_eq!(saved, html);
+        assert_eq!(validate_document(&saved).expect("reload").0, saved);
+        let nested = "<div align=\"center\"><p>မြန်မာ</p></div>";
+        assert_eq!(validate_document(nested).expect("nested div").0, nested);
+        assert!(validate_document("<div align=\"left\" onclick=\"evil()\">မြန်မာ</div>").is_err());
+    }
+
     #[test]
     fn chapter_structure_is_preserved() {
         let html = "<h1>Title</h1><p>First <em>paragraph</em>.</p><ul><li><p>မြန်မာ</p></li></ul><blockquote><p>Quote</p></blockquote>";

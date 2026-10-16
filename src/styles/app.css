@@ -1916,14 +1916,12 @@ button {
   font-size: 16px;
   font-weight: 650;
 }
-.app-brand > span:first-child {
-  display: grid;
-  place-items: center;
+.app-brand__logo {
+  display: block;
+  flex-shrink: 0;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  background: var(--color-surface-selected);
-  color: var(--color-accent);
+  object-fit: contain;
 }
 .app-brand__descriptor {
   margin-left: 8px;

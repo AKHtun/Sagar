@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { Icon } from "../components/Icon";
 import { LibraryScreen } from "../features/library/LibraryScreen";
 import { WorkspaceFrame } from "../features/workspace/WorkspaceFrame";
 import {
@@ -93,9 +92,13 @@ export default function App() {
     <div className="app-with-controls">
       <div className="app-controls">
         <div className="app-brand">
-          <span>
-            <Icon name="book" size={21} />
-          </span>{" "}
+          <img
+            className="app-brand__logo"
+            src="/icon.png"
+            alt=""
+            width={32}
+            height={32}
+          />{" "}
           Sagar <span className="app-brand__descriptor">Translation studio</span>
         </div>
       </div>

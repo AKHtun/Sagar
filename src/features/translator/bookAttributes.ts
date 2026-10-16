@@ -8,6 +8,17 @@ export const BookAttributes = Extension.create({
   addGlobalAttributes() {
     return [
       {
+        types: ["book_div", "book_text_div"],
+        attributes: {
+          align: {
+            default: null,
+            parseHTML: (element: HTMLElement) => element.getAttribute("align"),
+            renderHTML: (attributes: Record<string, unknown>) =>
+              typeof attributes.align === "string" ? { align: attributes.align } : {},
+          },
+        },
+      },
+      {
         types: ["table"],
         attributes: {
           bookTableAppearance: {

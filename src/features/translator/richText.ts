@@ -175,6 +175,7 @@ export function documentFragment(html: string): string {
       "epub:type",
       "xmlns:epub",
       "xml:lang",
+      ...(tag === "div" ? ["align"] : []),
       ...(tag === "img"
         ? ["src", "srcset", "sizes", "alt", "width", "height", "loading", "decoding"]
         : tag === "source"

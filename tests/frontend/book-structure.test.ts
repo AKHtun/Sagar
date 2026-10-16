@@ -390,3 +390,24 @@ test("Slash inline code formats subsequent input and ignores a disabled editor",
     expect(editor.state.doc.textContent).toBe("/code");
   } finally { editor.destroy(); }
 });
+
+
+test("aligned div retains Myanmar text, escaped angle brackets and alignment through Rich reload", async () => {
+  const source = await Bun.file(new URL("../fixtures/editor/aligned-div.xhtml", import.meta.url)).text();
+  for (const html of [source, `<div align="center"><p>မြန်မာ</p></div>`]) {
+    const normalized = normalizeRichDocument(html);
+    expect(normalized).toContain('align="');
+    const editor = createEditor(normalized);
+    try {
+      expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(normalized));
+      expect(editor.view.dom.querySelector("div[align]")).not.toBeNull();
+      editor.commands.insertContentAt(1, "မင်္ဂလာပါ ");
+      const saved = documentFragment(editor.getHTML());
+      expect(saved).toContain('align="');
+      expect(saved).toContain("မင်္ဂလာပါ");
+      if (html === source) expect(saved).toContain("&lt; အခန်းအမှားတင်ပြရန် &gt;");
+      editor.commands.setContent(saved, { parseOptions: { preserveWhitespace: true } });
+      expect(comparableDocument(editor.getHTML())).toBe(comparableDocument(saved));
+    } finally { editor.destroy(); }
+  }
+});
