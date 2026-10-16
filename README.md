@@ -89,7 +89,15 @@ Images are included in previews, the draft, and EPUB export without sending
 their bytes to the translation provider. Figures keep their captions; captions
 are translated as text. Unsupported or missing resources are shown explicitly.
 
-Selected-mode proposals and completed parts are saved locally. A failed batch
+Selected-mode proposals and completed parts are saved locally until accepted.
+Translating the same source paragraph again replaces its previous saved proposal
+only after the new result succeeds and validates, even with a different model.
+Failed or cancelled attempts keep the previous proposal; there is no version picker.
+After a successful append, their saved output and older ready versions of the
+same source items are removed; the chapter draft and small insertion receipts
+remain. Unadded proposals stay available across batches and restarts. If you
+later remove accepted text from the draft, select its source to translate again.
+A failed batch
 pauses the queue: Retry the failed batch, Retry with smaller batches, or Skip and
 continue. Resume uses the saved run's original model, language direction and
 instructions. Changing these settings starts a new run. Closing cancels active

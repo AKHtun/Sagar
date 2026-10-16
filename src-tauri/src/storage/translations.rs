@@ -104,6 +104,7 @@ pub fn get_chapter_content(
 /// editor; the fragment stored for export is escaped here so no markup can
 /// enter the pipeline. Review status changes follow the design rules:
 /// reviewed requires content, skipped keeps the original.
+#[derive(Clone)]
 pub struct SaveInput {
     pub block_id: String,
     pub target_text: Option<String>,
@@ -111,11 +112,13 @@ pub struct SaveInput {
     pub expected_revision: i64,
 }
 
-pub fn save_translation(conn: &Connection, input: SaveInput) -> Result<SaveResult, AppError> {
-    let tx = conn.unchecked_transaction()?;
-    let result = save_inner(&tx, input)?;
-    tx.commit()?;
-    Ok(result)
+pub fn save_translation(conn: &mut Connection, input: SaveInput) -> Result<SaveResult, AppError> {
+    crate::storage::with_busy_retry(|| {
+        let tx = crate::storage::begin_write(&mut *conn)?;
+        let result = save_inner(&tx, input.clone())?;
+        tx.commit()?;
+        Ok(result)
+    })
 }
 
 fn save_inner(conn: &Connection, input: SaveInput) -> Result<SaveResult, AppError> {
@@ -267,11 +270,13 @@ pub fn set_last_chapter(
     project_id: &str,
     chapter_id: &str,
 ) -> Result<(), AppError> {
-    conn.execute(
-        "UPDATE projects SET last_chapter_id = ?1 WHERE id = ?2",
-        rusqlite::params![chapter_id, project_id],
-    )?;
-    Ok(())
+    crate::storage::with_busy_retry(|| {
+        conn.execute(
+            "UPDATE projects SET last_chapter_id = ?1 WHERE id = ?2",
+            rusqlite::params![chapter_id, project_id],
+        )?;
+        Ok(())
+    })
 }
 
 pub fn get_last_chapter(conn: &Connection, project_id: &str) -> Result<Option<String>, AppError> {
@@ -427,10 +432,10 @@ mod tests {
     use crate::storage::projects::{self, NewBlock, NewChapter, NewProject};
 
     fn setup() -> Connection {
-        let conn = Connection::open_in_memory().expect("open db");
-        migrations::apply(&conn).expect("migrate");
+        let mut conn = Connection::open_in_memory().expect("open db");
+        migrations::apply(&mut conn).expect("migrate");
         projects::create_project(
-            &conn,
+            &mut conn,
             &NewProject {
                 original_source_path: None,
                 id: "p1".into(),
@@ -483,10 +488,10 @@ mod tests {
 
     #[test]
     fn save_updates_revision_status_and_chapter_completion() {
-        let conn = setup();
+        let mut conn = setup();
 
         let result = save_translation(
-            &conn,
+            &mut conn,
             SaveInput {
                 block_id: "b1".into(),
                 target_text: Some("တစ်".into()),
@@ -500,7 +505,7 @@ mod tests {
         assert_eq!(result.chapter_status, "in_progress");
 
         let result = save_translation(
-            &conn,
+            &mut conn,
             SaveInput {
                 block_id: "b1".into(),
                 target_text: Some("တစ်".into()),
@@ -518,7 +523,7 @@ mod tests {
 
         // Second block reviewed → chapter completed.
         save_translation(
-            &conn,
+            &mut conn,
             SaveInput {
                 block_id: "b2".into(),
                 target_text: Some("နှစ်".into()),
@@ -539,9 +544,9 @@ mod tests {
 
     #[test]
     fn stale_revision_is_rejected_with_conflict() {
-        let conn = setup();
+        let mut conn = setup();
         save_translation(
-            &conn,
+            &mut conn,
             SaveInput {
                 block_id: "b1".into(),
                 target_text: Some("first".into()),
@@ -551,7 +556,7 @@ mod tests {
         )
         .expect("first save");
         let error = save_translation(
-            &conn,
+            &mut conn,
             SaveInput {
                 block_id: "b1".into(),
                 target_text: Some("second".into()),
@@ -565,9 +570,9 @@ mod tests {
 
     #[test]
     fn reviewed_requires_content_and_skipped_stores_none() {
-        let conn = setup();
+        let mut conn = setup();
         let error = save_translation(
-            &conn,
+            &mut conn,
             SaveInput {
                 block_id: "b1".into(),
                 target_text: Some("  ".into()),
@@ -579,7 +584,7 @@ mod tests {
         assert_eq!(error.code, "review_requires_content");
 
         let result = save_translation(
-            &conn,
+            &mut conn,
             SaveInput {
                 block_id: "b1".into(),
                 target_text: None,
@@ -596,9 +601,9 @@ mod tests {
 
     #[test]
     fn markup_in_translation_text_is_escaped() {
-        let conn = setup();
+        let mut conn = setup();
         save_translation(
-            &conn,
+            &mut conn,
             SaveInput {
                 block_id: "b1".into(),
                 target_text: Some("a <b> & c".into()),
@@ -631,9 +636,9 @@ mod tests {
 
     #[test]
     fn export_review_counts_reflect_saves() {
-        let conn = setup();
+        let mut conn = setup();
         save_translation(
-            &conn,
+            &mut conn,
             SaveInput {
                 block_id: "b1".into(),
                 target_text: Some("done".into()),
@@ -651,7 +656,7 @@ mod tests {
 
 /// Rich text uses the same revision service, in one transaction.
 pub fn save_rich_translation(
-    conn: &Connection,
+    conn: &mut Connection,
     block_id: String,
     fragment: Option<String>,
     status: String,
@@ -696,27 +701,24 @@ pub fn save_rich_translation(
             }
         }
     }
-    let tx = conn.unchecked_transaction()?;
-    let conn = &tx;
-    let result: Result<SaveResult, AppError> = (|| {
+    crate::storage::with_busy_retry(|| {
+        let tx = crate::storage::begin_write(&mut *conn)?;
         let result = save_inner(
-            conn,
+            &tx,
             SaveInput {
                 block_id: block_id.clone(),
-                target_text: Some(plain),
-                status,
+                target_text: Some(plain.clone()),
+                status: status.clone(),
                 expected_revision,
             },
         )?;
         if !matches!(result.status.as_str(), "skipped" | "pending") {
-            conn.execute(
+            tx.execute(
                 "UPDATE translations SET target_xhtml_fragment=?1 WHERE block_id=?2",
                 rusqlite::params![html, block_id],
             )?;
         }
+        tx.commit()?;
         Ok(result)
-    })();
-    let result = result?;
-    tx.commit()?;
-    Ok(result)
+    })
 }

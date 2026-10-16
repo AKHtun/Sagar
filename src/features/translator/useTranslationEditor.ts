@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { saveTranslation } from "../../lib/tauri/commands";
+import { isBusyError } from "../../lib/tauri/errors";
 import type { BlockStatus, ChapterContent } from "../../types/chapter";
 import { hasContent, plainFragment } from "./richText";
 
@@ -16,6 +17,14 @@ export type EditorBlock = {
 export type SaveIndicator = "saved" | "unsaved" | "saving" | "error";
 
 const DEBOUNCE_MS = 600;
+
+/** Transient lock-contention retries (see useChapterEditor). */
+const MAX_BUSY_RETRIES = 3;
+const BUSY_RETRY_DELAYS_MS = [250, 500, 1000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * Owns per-block translation drafts, debounced autosave with optimistic
@@ -80,13 +89,13 @@ export function useTranslationEditor(content: ChapterContent | null) {
   >(() => {});
 
   const performSave = useCallback(
-    (blockId: string, text: string, status: BlockStatus) => {
+    (blockId: string, text: string, status: BlockStatus, attempt = 0) => {
       const pending = inflight.current.get(blockId);
       if (pending) {
         void pending.then(() => {
           const current = latest.current.get(blockId);
           if (current?.dirty && !current.conflict && !current.error) {
-            performSave(blockId, current.text, current.status);
+            performSave(blockId, current.text, current.status, attempt);
           }
         });
         return;
@@ -125,7 +134,19 @@ export function useTranslationEditor(content: ChapterContent | null) {
             scheduleRef.current(blockId, saved.text, saved.status);
           }
         })
-        .catch((error: unknown) => {
+        .catch(async (error: unknown) => {
+          if (isBusyError(error) && attempt < MAX_BUSY_RETRIES) {
+            // Another block save or chapter load briefly holds the database.
+            // Retry with the newest draft for this block instead of surfacing
+            // "database is locked". The revision is unchanged because nothing
+            // was written.
+            await sleep(BUSY_RETRY_DELAYS_MS[attempt] ?? 500);
+            const current = latest.current.get(blockId);
+            if (current?.dirty && !current.conflict && !current.error) {
+              performSave(blockId, current.text, current.status, attempt + 1);
+            }
+            return;
+          }
           const code =
             typeof error === "object" && error !== null && "code" in error
               ? String((error as { code: unknown }).code)

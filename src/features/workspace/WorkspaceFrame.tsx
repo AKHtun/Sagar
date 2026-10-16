@@ -4,8 +4,10 @@ import { Splitter } from "../../components/Splitter";
 import { StatusNotice } from "../../components/StatusNotice";
 import { formatDirection } from "../../lib/languages";
 import {
+  loadScrollSync,
   loadSidebarWidth,
   loadSourceWidth,
+  saveScrollSync,
   saveSidebarWidth,
   saveSourceWidth,
 } from "../../lib/prefs";
@@ -25,6 +27,7 @@ import { TargetPane } from "../translator/TargetPane";
 import { useChapterEditor } from "../translator/useChapterEditor";
 import { BookSettingsDialog } from "./BookSettingsDialog";
 import { LanguageDialog } from "./LanguageDialog";
+import { useSyncedScroll } from "./useSyncedScroll";
 
 type ProjectState =
   | { status: "loading" }
@@ -65,6 +68,7 @@ export function WorkspaceFrame({
   const [warningsVisible, setWarningsVisible] = useState(importWarnings.length > 0);
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
   const [sourceWidth, setSourceWidth] = useState(loadSourceWidth);
+  const [scrollSyncEnabled, setScrollSyncEnabled] = useState(loadScrollSync);
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportOutcome, setExportOutcome] = useState<ExportOutcome | null>(null);
@@ -73,6 +77,8 @@ export function WorkspaceFrame({
   const readingRef = useRef<HTMLDivElement>(null);
   const loadSequence = useRef(0);
   const contentRef = useRef<ChapterContent | null>(null);
+  const sourceScrollRef = useRef<HTMLDivElement | null>(null);
+  const targetScrollRef = useRef<HTMLDivElement | null>(null);
 
   const loadChapter = useCallback(
     (chapterId: string) => {
@@ -138,6 +144,16 @@ export function WorkspaceFrame({
   const editor = useChapterEditor(
     contentState.status === "ready" ? contentState.content : null,
   );
+
+  useSyncedScroll(sourceScrollRef, targetScrollRef, activeChapterId, scrollSyncEnabled);
+
+  const toggleScrollSync = useCallback(() => {
+    setScrollSyncEnabled((current) => {
+      const next = !current;
+      saveScrollSync(next);
+      return next;
+    });
+  }, []);
 
   const selectChapter = useCallback(
     (chapterId: string) => {
@@ -287,6 +303,20 @@ export function WorkspaceFrame({
         <button
           type="button"
           className="icon-button"
+          aria-label={scrollSyncEnabled ? "Unlink pane scrolling" : "Link pane scrolling"}
+          title={
+            scrollSyncEnabled
+              ? "Unlink scrolling (panes scroll independently)"
+              : "Link scrolling (panes scroll together)"
+          }
+          aria-pressed={scrollSyncEnabled}
+          onClick={toggleScrollSync}
+        >
+          <Icon name="scrollSync" />
+        </button>
+        <button
+          type="button"
+          className="icon-button"
           aria-label="Book settings"
           title="Book metadata and AI instructions"
           disabled={!project}
@@ -372,6 +402,7 @@ export function WorkspaceFrame({
               loading={contentState.status === "loading"}
               error={contentState.status === "error" ? contentState.message : null}
               onRetry={reloadAfterConflict}
+              scrollRef={sourceScrollRef}
             />
           </div>
           <Splitter
@@ -394,6 +425,7 @@ export function WorkspaceFrame({
             onRetry={reloadAfterConflict}
             onReloadAfterConflict={reloadAfterConflict}
             editor={editor}
+            scrollRef={targetScrollRef}
           />
         </div>
       </div>

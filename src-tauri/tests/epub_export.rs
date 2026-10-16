@@ -139,7 +139,8 @@ fn import_rich_book(data_dir: &Path, source: &Path) -> Imported {
 
 /// Saves a translation for the block at `block_index` of `chapter_index`.
 fn save_block(book: &Imported, chapter_index: usize, block_index: i64, text: &str, status: &str) {
-    let conn = sagar_lib::storage::open_database(&book.data_dir.join("sagar.db")).expect("open db");
+    let mut conn =
+        sagar_lib::storage::open_database(&book.data_dir.join("sagar.db")).expect("open db");
     let block_id: String = conn
         .query_row(
             "SELECT b.id FROM blocks b WHERE b.chapter_id = ?1 AND b.block_index = ?2",
@@ -155,7 +156,7 @@ fn save_block(book: &Imported, chapter_index: usize, block_index: i64, text: &st
         )
         .expect("translation exists");
     sagar_lib::storage::translations::save_translation(
-        &conn,
+        &mut conn,
         SaveInput {
             block_id,
             target_text: Some(text.to_string()),
@@ -482,10 +483,10 @@ fn rich_translation_images_survive_save_export_and_reopen() {
     let html = format!(
         "<strong>မြန်မာ &amp; English</strong><br/><em>Translation</em><img src=\"{src}\" alt=\"New image\"/>"
     );
-    let conn = services::workspace::open_db(&data_dir).expect("db");
+    let mut conn = services::workspace::open_db(&data_dir).expect("db");
     let linked = &content.blocks[2];
     let error = sagar_lib::storage::translations::save_rich_translation(
-        &conn,
+        &mut conn,
         linked.id.clone(),
         Some("Lost link".into()),
         "draft".into(),
@@ -494,7 +495,7 @@ fn rich_translation_images_survive_save_export_and_reopen() {
     .expect_err("links must survive");
     assert_eq!(error.code, "missing_source_link");
     sagar_lib::storage::translations::save_rich_translation(
-        &conn,
+        &mut conn,
         linked.id.clone(),
         Some("<a href=\"ch2.xhtml#note-1\">Translated note</a>".into()),
         "draft".into(),
@@ -503,7 +504,7 @@ fn rich_translation_images_survive_save_export_and_reopen() {
     .expect("preserved link");
     let block = &content.blocks[1];
     sagar_lib::storage::translations::save_rich_translation(
-        &conn,
+        &mut conn,
         block.id.clone(),
         Some(html.clone()),
         "draft".into(),
@@ -519,7 +520,7 @@ fn rich_translation_images_survive_save_export_and_reopen() {
     );
     assert!(
         sagar_lib::storage::translations::save_rich_translation(
-            &conn,
+            &mut conn,
             block.id.clone(),
             Some("<script>bad</script>".into()),
             "reviewed".into(),
@@ -529,7 +530,7 @@ fn rich_translation_images_survive_save_export_and_reopen() {
     );
     assert!(
         sagar_lib::storage::translations::save_rich_translation(
-            &conn,
+            &mut conn,
             block.id.clone(),
             Some("stale".into()),
             "draft".into(),

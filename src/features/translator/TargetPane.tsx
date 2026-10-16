@@ -1,6 +1,6 @@
 import { DOMSerializer, DOMParser as ProseMirrorParser } from "@tiptap/pm/model";
 import type { Editor as TiptapEditor } from "@tiptap/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { HtmlCodeEditor } from "../../components/HtmlCode";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
@@ -49,6 +49,7 @@ export function TargetPane({
   onRetry,
   onReloadAfterConflict,
   editor,
+  scrollRef,
 }: {
   projectId: string;
   content: ChapterContent | null;
@@ -57,6 +58,7 @@ export function TargetPane({
   onRetry: () => void;
   onReloadAfterConflict: () => void;
   editor: ReturnType<typeof useChapterEditor>;
+  scrollRef?: RefObject<HTMLDivElement | null>;
 }) {
   // Scope readiness to the chapter instead of clearing it in a parent effect:
   // child mount effects can report readiness before that effect runs.
@@ -574,7 +576,7 @@ export function TargetPane({
         </div>
       ) : null}
       {imageError ? <StatusNotice kind="error">{imageError}</StatusNotice> : null}
-      <div className="pane__scroll">
+      <div className="pane__scroll" ref={scrollRef}>
         {loading ? <StatusNotice kind="loading">Loading chapter…</StatusNotice> : null}
         {error ? (
           <StatusNotice kind="error" onRetry={onRetry}>

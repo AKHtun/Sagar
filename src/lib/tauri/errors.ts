@@ -34,3 +34,33 @@ export function toCommandError(error: unknown): CommandError {
   }
   return new CommandError("unknown", "An unexpected error occurred.");
 }
+
+/**
+ * True for transient SQLite lock contention ("database is locked") that is
+ * safe to retry with the same arguments. The Rust backend already waits and
+ * retries internally, so this should rarely fire — it covers the residual
+ * overlap window (e.g. an autosave racing a chapter load on another thread).
+ */
+export function isBusyError(error: unknown): boolean {
+  if (error instanceof CommandError) {
+    if (error.code === "storage_busy") {
+      return true;
+    }
+    if (
+      typeof error.details === "object" &&
+      error.details !== null &&
+      "retryable" in error.details &&
+      (error.details as { retryable: unknown }).retryable === true
+    ) {
+      return true;
+    }
+    return /database is (locked|busy)/i.test(error.message);
+  }
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = String((error as { code: unknown }).code);
+    if (code === "storage_busy") {
+      return true;
+    }
+  }
+  return error instanceof Error && /database is (locked|busy)/i.test(error.message);
+}

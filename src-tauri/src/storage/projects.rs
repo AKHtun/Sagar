@@ -41,11 +41,11 @@ pub struct NewBlock {
 /// Inserts a project with its chapters, blocks and pending translation rows
 /// in a single transaction so an interrupted import leaves no partial project.
 pub fn create_project(
-    conn: &Connection,
+    conn: &mut Connection,
     project: &NewProject,
     chapters: &[(NewChapter, Vec<NewBlock>)],
 ) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
+    let tx = crate::storage::begin_write(conn)?;
     tx.execute(
         "INSERT INTO projects (id, source_sha256, source_snapshot_path, title, author,
             source_language, created_at, updated_at, original_source_path)

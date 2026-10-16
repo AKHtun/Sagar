@@ -10,6 +10,7 @@ const KEYS = {
   zoom: "sagar.textZoom",
   sidebarWidth: "sagar.sidebarWidth",
   sourceWidth: "sagar.sourceWidth",
+  scrollSync: "sagar.scrollSync",
 } as const;
 
 function read(key: string): string | null {
@@ -68,4 +69,12 @@ export function loadSourceWidth(): number {
 
 export function saveSourceWidth(value: number): void {
   write(KEYS.sourceWidth, String(clampWidth(value, 320, 2000)));
+}
+
+export function loadScrollSync(): boolean {
+  return read(KEYS.scrollSync) === "1";
+}
+
+export function saveScrollSync(enabled: boolean): void {
+  write(KEYS.scrollSync, enabled ? "1" : "0");
 }

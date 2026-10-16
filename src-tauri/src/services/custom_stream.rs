@@ -387,9 +387,9 @@ mod tests {
         use crate::storage::projects::{NewChapter, NewProject};
         use std::io::Write;
         let dir = tempfile::tempdir().unwrap();
-        let conn = crate::services::workspace::open_db(dir.path()).unwrap();
+        let mut conn = crate::services::workspace::open_db(dir.path()).unwrap();
         crate::storage::projects::create_project(
-            &conn,
+            &mut conn,
             &NewProject {
                 original_source_path: None,
                 id: "p".into(),

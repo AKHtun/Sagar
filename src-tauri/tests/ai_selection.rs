@@ -285,7 +285,7 @@ fn selected_content_translates_then_appends_exports_and_reopens_with_original_im
     )
     .err()
     .expect("duplicate rejected");
-    assert_eq!(duplicate.code, "already_added");
+    assert_eq!(duplicate.code, "proposal_not_ready");
     let destination = dir.path().join("translated.epub");
     services::export::export_epub(
         &data,
@@ -453,9 +453,9 @@ fn cancel_and_skip_keep_completed_work_and_revision_conflicts_do_not_create_rece
     let completed = ai_selection::load(&data, chapter).expect("done");
     assert_eq!(completed.runs[0].items[1].state, "skipped");
     assert_eq!(mock.requests.lock().expect("requests").len(), 3);
-    let conn = services::workspace::open_db(&data).expect("db");
+    let mut conn = services::workspace::open_db(&data).expect("db");
     storage::documents::save(
-        &conn,
+        &mut conn,
         chapter,
         Some("<p>Manual writing.</p>".into()),
         "draft",
@@ -494,6 +494,12 @@ fn cancel_and_skip_keep_completed_work_and_revision_conflicts_do_not_create_rece
         let _ = tx.send(e);
     })
     .expect("start");
+    assert_eq!(
+        ai_selection::delete_run(&data, chapter, &fresh)
+            .expect_err("active deletion rejected")
+            .code,
+        "run_active"
+    );
     std::thread::sleep(Duration::from_millis(50));
     ai_selection::control(&data, &fresh, "cancel", false, |_| {}).expect("cancel");
     loop {
@@ -575,7 +581,14 @@ fn out_of_order_and_duplicate_anchor_checks_leave_drafts_and_receipts_unchanged(
     let saved = ai_selection::append(&data, earlier).expect("explicit order consent");
     let html = saved.html.expect("html");
     assert!(html.find("id=\"last\"").expect("last") < html.find("id=\"first\"").expect("first"));
-    let mut repeated = append_input(chapter, vec![items[1].id.clone()], 2);
+    let fresh = ai_selection::prepare(&data, input(chapter, vec![initial.units[1].id.clone()]))
+        .expect("translate again");
+    assert_eq!(execute(&data, &fresh, "start", true).kind, "done");
+    let fresh_item = repo::items(&services::workspace::open_db(&data).expect("db"), &fresh)
+        .expect("new items")[0]
+        .id
+        .clone();
+    let mut repeated = append_input(chapter, vec![fresh_item], 2);
     repeated.allow_again = true;
     repeated.confirm_out_of_order = true;
     assert_eq!(
@@ -594,5 +607,365 @@ fn out_of_order_and_duplicate_anchor_checks_leave_drafts_and_receipts_unchanged(
             .get::<_, i64>(0))
             .expect("receipts"),
         2
+    );
+}
+
+#[test]
+fn deleting_proposals_keeps_draft_and_append_history_and_prevents_resume() {
+    let dir = tempfile::tempdir().expect("dir");
+    let source = fixture(
+        dir.path(),
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Image</title></head><body><img src=\"images/river.png\" alt=\"River\"/></body></html>",
+    );
+    let data = dir.path().join("data");
+    let imported = services::import::import_epub(&data, &source, false).expect("import");
+    let chapter = &imported.chapters[0].id;
+    let state = ai_selection::load(&data, chapter).expect("load");
+    let id = ai_selection::prepare(&data, input(chapter, vec![state.units[0].id.clone()]))
+        .expect("prepare");
+    assert_eq!(execute(&data, &id, "start", false).kind, "done");
+    let ready = ai_selection::load(&data, chapter).expect("ready");
+    let proposal = ready.runs[0].items[0].id.clone();
+    let args = append_input(chapter, vec![proposal.clone()], 0);
+    let request_id = args.request_id.clone();
+    let saved = ai_selection::append(&data, args).expect("append");
+    assert!(ai_selection::delete_run(&data, "wrong-chapter", &id).is_err());
+    assert_eq!(
+        ai_selection::load(&data, chapter)
+            .expect("not deleted")
+            .runs
+            .len(),
+        1
+    );
+    ai_selection::delete_run(&data, chapter, &id).expect("delete");
+    let after = ai_selection::load(&data, chapter).expect("after");
+    assert!(after.runs.is_empty());
+    assert!(after.units[0].added);
+    assert!(!after.units[0].has_proposal);
+    assert!(ai_selection::control(&data, &id, "start", true, |_| {}).is_err());
+    let conn = services::workspace::open_db(&data).expect("db");
+    let outputs: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM ai_selection_items WHERE run_id=?1 AND proposal IS NOT NULL",
+            [&id],
+            |row| row.get(0),
+        )
+        .expect("outputs");
+    assert_eq!(outputs, 0);
+    assert!(repo::parts(&conn, &proposal).expect("parts").is_empty());
+    let mut repeated = append_input(chapter, vec![proposal], 0);
+    repeated.request_id = request_id;
+    let replay = ai_selection::append(&data, repeated).expect("receipt replay");
+    assert_eq!(replay.html, saved.html);
+    assert_eq!(replay.revision, saved.revision);
+}
+
+#[test]
+fn removed_html_content_can_be_translated_again_without_resetting_project() {
+    let dir = tempfile::tempdir().expect("dir");
+    let source = fixture(
+        dir.path(),
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Image</title></head><body><img id=\"river\" src=\"images/river.png\" alt=\"River\"/></body></html>",
+    );
+    let data = dir.path().join("data");
+    let imported = services::import::import_epub(&data, &source, false).expect("import");
+    let chapter = &imported.chapters[0].id;
+    let state = ai_selection::load(&data, chapter).expect("load");
+    let run = ai_selection::prepare(&data, input(chapter, vec![state.units[0].id.clone()]))
+        .expect("prepare");
+    assert_eq!(execute(&data, &run, "start", false).kind, "done");
+    let saved = ai_selection::load(&data, chapter).expect("proposals");
+    let proposal = saved.runs[0].items[0].id.clone();
+    ai_selection::append(&data, append_input(chapter, vec![proposal.clone()], 0))
+        .expect("first append");
+    let mut conn = services::workspace::open_db(&data).expect("db");
+    storage::documents::save(
+        &mut conn,
+        chapter,
+        Some("<p>Other writing stays.</p>".into()),
+        "draft",
+        1,
+    )
+    .expect("manual HTML removal");
+    let history = ai_selection::load(&data, chapter).expect("history");
+    assert!(history.units[0].added);
+    assert!(history.runs[0].items[0].preview_html.is_none());
+    let fresh = ai_selection::prepare(&data, input(chapter, vec![state.units[0].id.clone()]))
+        .expect("prepare again");
+    assert_eq!(execute(&data, &fresh, "start", false).kind, "done");
+    let fresh_item = repo::items(&conn, &fresh).expect("fresh item")[0]
+        .id
+        .clone();
+    let mut restore = append_input(chapter, vec![fresh_item], 2);
+    restore.allow_again = true;
+    let restored = ai_selection::append(&data, restore).expect("restore removed content");
+    let html = restored.html.expect("html");
+    assert!(html.starts_with("<p>Other writing stays.</p>"));
+    assert_eq!(html.matches("id=\"river\"").count(), 1);
+    assert_eq!(restored.status, "draft");
+    assert_eq!(
+        ai_selection::load(&data, chapter)
+            .expect("run preserved")
+            .runs
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn separate_batches_can_be_appended_together_in_source_order_without_retranslation() {
+    let dir = tempfile::tempdir().expect("dir");
+    let images: String = (1..=6)
+        .map(|i| format!("<img src=\"images/river.png\" alt=\"Image {i}\"/>"))
+        .collect();
+    let source = fixture(
+        dir.path(),
+        &format!(
+            "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Parts</title></head><body>{images}</body></html>"
+        ),
+    );
+    let data = dir.path().join("data");
+    let imported = services::import::import_epub(&data, &source, false).expect("import");
+    let chapter = &imported.chapters[0].id;
+    let state = ai_selection::load(&data, chapter).expect("load");
+    for units in state.units.chunks(3) {
+        let run = ai_selection::prepare(
+            &data,
+            input(chapter, units.iter().map(|unit| unit.id.clone()).collect()),
+        )
+        .expect("batch");
+        assert_eq!(execute(&data, &run, "start", false).kind, "done");
+    }
+    let reloaded = ai_selection::load(&data, chapter).expect("reopen saved batches");
+    assert_eq!(reloaded.runs.len(), 2);
+    let ids = reloaded
+        .runs
+        .iter()
+        .flat_map(|run| run.items.iter().map(|item| item.id.clone()))
+        .collect();
+    let mut conn = services::workspace::open_db(&data).expect("db");
+    storage::documents::save(
+        &mut conn,
+        chapter,
+        Some("<p>Manual opening.</p>".into()),
+        "draft",
+        0,
+    )
+    .expect("manual");
+    let result =
+        ai_selection::append(&data, append_input(chapter, ids, 1)).expect("append both batches");
+    let html = result.html.expect("html");
+    assert!(html.starts_with("<p>Manual opening.</p>"));
+    assert_eq!(html.matches("<img ").count(), 6);
+    for i in 1..6 {
+        assert!(
+            html.find(&format!("Image {i}")).expect("earlier")
+                < html.find(&format!("Image {}", i + 1)).expect("later")
+        );
+    }
+}
+
+#[test]
+fn empty_draft_restoration_does_not_require_order_confirmation_from_old_history() {
+    let dir = tempfile::tempdir().expect("dir");
+    let source = fixture(
+        dir.path(),
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Images</title></head><body><img src=\"images/river.png\" alt=\"First\"/><img src=\"images/river.png\" alt=\"Second\"/></body></html>",
+    );
+    let data = dir.path().join("data");
+    let imported = services::import::import_epub(&data, &source, false).expect("import");
+    let chapter = &imported.chapters[0].id;
+    let state = ai_selection::load(&data, chapter).expect("load");
+    let run = ai_selection::prepare(
+        &data,
+        input(
+            chapter,
+            state.units.iter().map(|unit| unit.id.clone()).collect(),
+        ),
+    )
+    .expect("prepare");
+    assert_eq!(execute(&data, &run, "start", false).kind, "done");
+    let ready = ai_selection::load(&data, chapter).expect("ready");
+    let ids: Vec<_> = ready.runs[0]
+        .items
+        .iter()
+        .map(|item| item.id.clone())
+        .collect();
+    ai_selection::append(&data, append_input(chapter, ids.clone(), 0)).expect("append");
+    let mut conn = services::workspace::open_db(&data).expect("db");
+    storage::documents::save(&mut conn, chapter, None, "draft", 1).expect("clear HTML");
+    let fresh = ai_selection::prepare(
+        &data,
+        input(
+            chapter,
+            state.units.iter().map(|unit| unit.id.clone()).collect(),
+        ),
+    )
+    .expect("prepare again");
+    assert_eq!(execute(&data, &fresh, "start", false).kind, "done");
+    let new_ids = repo::items(&conn, &fresh)
+        .expect("fresh items")
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+    let mut restore = append_input(chapter, new_ids, 2);
+    restore.allow_again = true;
+    assert!(!restore.confirm_out_of_order);
+    let restored = ai_selection::append(&data, restore).expect("restore in original order");
+    assert_eq!(restored.html.expect("html").matches("<img ").count(), 2);
+}
+
+#[test]
+fn append_consumes_versions_and_checkpoints_but_preserves_unadded_units_and_receipts() {
+    let dir = tempfile::tempdir().expect("dir");
+    let source = fixture(
+        dir.path(),
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Images</title></head><body><img src=\"images/river.png\" alt=\"First\"/><img src=\"images/river.png\" alt=\"Second\"/></body></html>",
+    );
+    let data = dir.path().join("data");
+    let imported = services::import::import_epub(&data, &source, false).expect("import");
+    let chapter = &imported.chapters[0].id;
+    let state = ai_selection::load(&data, chapter).expect("load");
+    let older = ai_selection::prepare(
+        &data,
+        input(chapter, state.units.iter().map(|u| u.id.clone()).collect()),
+    )
+    .expect("older");
+    assert_eq!(execute(&data, &older, "start", false).kind, "done");
+    let newer = ai_selection::prepare(&data, input(chapter, vec![state.units[0].id.clone()]))
+        .expect("newer");
+    assert_eq!(execute(&data, &newer, "start", false).kind, "done");
+    let conn = services::workspace::open_db(&data).expect("db");
+    let item = repo::items(&conn, &newer).expect("items")[0].id.clone();
+    let args = append_input(chapter, vec![item.clone()], 0);
+    let request = args.request_id.clone();
+    let saved = ai_selection::append(&data, args).expect("append first");
+    let pending = ai_selection::load(&data, chapter).expect("reopen");
+    assert!(!pending.units[0].has_proposal);
+    assert!(pending.units[1].has_proposal);
+    for run in &pending.runs {
+        for item in &run.items {
+            if item.unit_id == state.units[0].id {
+                assert!(matches!(item.state.as_str(), "added" | "superseded"));
+                assert!(item.preview_html.is_none());
+                assert!(repo::parts(&conn, &item.id).expect("parts").is_empty());
+            }
+        }
+    }
+    let mut replay = append_input(chapter, vec![item.clone()], 0);
+    replay.request_id = request;
+    assert_eq!(
+        ai_selection::append(&data, replay).expect("replay").html,
+        saved.html
+    );
+    // Simulate accepted output retained by an earlier app version.
+    conn.execute("UPDATE ai_selection_items SET state='ready',proposal='<img src=\"images/river.png\"/>' WHERE id=?1", [&item]).expect("legacy output");
+    assert!(
+        !ai_selection::load(&data, chapter)
+            .expect("legacy cleanup")
+            .units[0]
+            .has_proposal
+    );
+    // New translations of that source occurrence must remain available.
+    let fresh = ai_selection::prepare(&data, input(chapter, vec![state.units[0].id.clone()]))
+        .expect("fresh");
+    assert_eq!(execute(&data, &fresh, "start", false).kind, "done");
+    assert!(
+        ai_selection::load(&data, chapter)
+            .expect("fresh survives cleanup")
+            .units[0]
+            .has_proposal
+    );
+}
+
+#[test]
+fn retranslating_replaces_saved_proposal_only_after_success_and_preserves_draft() {
+    let dir = tempfile::tempdir().expect("dir");
+    let source = fixture(
+        dir.path(),
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>Text</title></head><body><p>Original paragraph.</p></body></html>",
+    );
+    let data = dir.path().join("data");
+    let imported = services::import::import_epub(&data, &source, false).expect("import");
+    let chapter = &imported.chapters[0].id;
+    let mock = MockProvider::new(&data);
+    let state = ai_selection::load(&data, chapter).expect("source");
+    let unit = state.units[0].id.clone();
+    let old = ai_selection::prepare(&data, input(chapter, vec![unit.clone()])).expect("first");
+    assert_eq!(execute(&data, &old, "start", true).kind, "done");
+    let mut conn = services::workspace::open_db(&data).expect("db");
+    storage::documents::save(
+        &mut conn,
+        chapter,
+        Some("<p>Manual draft.</p>".into()),
+        "draft",
+        0,
+    )
+    .expect("manual draft");
+    mock.fail_at.store(2, Ordering::SeqCst);
+    let mut next_input = input(chapter, vec![unit]);
+    next_input.model = "another-model".into();
+    let new = ai_selection::prepare(&data, next_input).expect("second model");
+    assert_eq!(execute(&data, &new, "start", true).kind, "failed");
+    let pending = ai_selection::load(&data, chapter).expect("failed keeps original");
+    assert!(
+        pending
+            .runs
+            .iter()
+            .find(|run| run.id == old)
+            .expect("old")
+            .items[0]
+            .preview_html
+            .is_some()
+    );
+    assert_eq!(execute(&data, &new, "retry", true).kind, "done");
+    let ready = ai_selection::load(&data, chapter).expect("success replaces original");
+    let old_item = &ready
+        .runs
+        .iter()
+        .find(|run| run.id == old)
+        .expect("old")
+        .items[0];
+    assert_eq!(old_item.state, "superseded");
+    assert!(old_item.preview_html.is_none());
+    assert!(
+        repo::parts(&conn, &old_item.id)
+            .expect("old parts removed")
+            .is_empty()
+    );
+    assert_eq!(
+        ready
+            .runs
+            .iter()
+            .flat_map(|run| &run.items)
+            .filter(|item| item.preview_html.is_some())
+            .count(),
+        1
+    );
+    assert_eq!(
+        ready
+            .runs
+            .iter()
+            .find(|run| run.id == new)
+            .expect("new")
+            .config
+            .model,
+        "another-model"
+    );
+    let draft = storage::documents::load(&conn, chapter).expect("draft");
+    assert_eq!(draft.html.as_deref(), Some("<p>Manual draft.</p>"));
+    assert_eq!(draft.revision, 1);
+    // An older delayed completion cannot replace the newer run's success.
+    repo::publish_proposal(&mut conn, &old_item.id, "<p>Late old proposal.</p>")
+        .expect("late result");
+    assert!(
+        repo::items(&conn, &old).expect("old items")[0]
+            .proposal
+            .is_none()
+    );
+    assert!(
+        repo::items(&conn, &new).expect("new items")[0]
+            .proposal
+            .is_some()
     );
 }

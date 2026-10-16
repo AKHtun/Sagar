@@ -271,3 +271,86 @@ and an `env`-shebang shim resolving its runtime. Full suite (103 unit, 19
 export, 17 import), formatting and frontend lint/build passed; touched files
 are clippy-clean. Next unfinished verification: Codex Check connecting in the
 rebuilt release app, plus a real Generate run.
+
+### Selected translation UI redesign — 2026-10-15
+
+The selected-content frontend now separates source selection, translation
+progress/recovery, and paired source/result review into explicit stages. The
+footer exposes one contextual primary action and keeps text-sharing consent
+visible for new text runs. History and instructions use compact disclosures;
+ready results already added are disabled and explained. Full previews retain
+local image resolution and safe HTML; review uses two columns or stacks below
+850px. Source and proposal selection IDs remain separate, and append failures
+retain checked proposals and their request ID. Whole chapter remains the default.
+
+Frontend validation passed: lint, TypeScript, production build and 56 tests.
+Rendered synthetic-fixture checks covered both themes at normal/minimum sizes
+and a narrow stacked layout, including readable Myanmar text. The existing build
+bundle warning remains. No Rust, command, database or EPUB transformation changes
+were needed. Native IME/live provider and cross-platform checks remain open.
+
+### Saved proposal deletion — 2026-10-15
+
+History has a confirmed “Delete this saved run…” action. It clears the run’s
+proposals, checkpoints and configuration while keeping authored draft text and
+insertion receipts. Migration 11 preserves the identity mappings that prevent
+accidental re-adds. Active jobs cannot be deleted; deleted runs cannot resume.
+Frontend build checks and 58 tests passed; the Rust suite passed 209 tests with
+four existing ignored tests. Native deletion UI and other OS checks remain open.
+
+### Insertion history is not draft presence — 2026-10-15
+
+Previously inserted units are selectable for translation and review. “Added
+before” no longer locks them. Selecting such results exposes an explicit re-add
+confirmation at the footer; existing duplicate IDs still fail validation. This
+supports restoring text removed in HTML without deleting saved proposals,
+chapters or books. Bulk source selection and selection without proposals no
+longer exclude units solely because they have insertion history. Native UI
+verification remains open; frontend and Rust recovery regression tests cover
+the manual-removal-and-restore path.
+
+### Chapter-wide proposal review — 2026-10-15
+
+Saved batches now accumulate in one source-ordered review list. A subsequent
+translation run does not replace the earlier batch's visible proposals or clear
+checked results. Multiple versions of one unit remain available through a
+version picker; each preview uses its own saved language/model configuration.
+The current run still owns progress, retry and deletion; chapter-wide append
+uses the existing atomic service. No storage migration or provider change was
+needed. Verified 61 frontend tests, nine selected-content Rust integration
+tests, lint/TypeScript/build, and light/dark rendered synthetic fixtures at
+minimum/normal sizes. Native live-provider checks remain pending.
+
+### Append order recovery — 2026-10-15
+
+Order and re-add confirmation are combined beside Add in the footer. Missing
+confirmation disables Add before submission; backend order errors expose the
+same control. Append retries retain their request ID and checked proposals,
+and Retry actually retries saving. Save success/failure is visible without
+scrolling or reopening. Empty current drafts are no longer treated as containing
+later content based on history alone. Verified frontend checks/65 tests, ten
+selected-content integration tests and rendered synthetic footer checks; native
+live-provider verification remains open.
+
+### Accepted proposal lifecycle — 2026-10-15
+
+Accepted proposal output and parts are now consumed atomically with draft save.
+Other ready versions for those source occurrences are cleared at that moment;
+unaccepted source units remain in the chapter-wide pending list. Minimal
+identity/receipt history remains for idempotency and duplicate safeguards.
+Previously receipted output is cleaned when selection state loads. Newly
+translated runs remain available even for source items with insertion history.
+This replaces the earlier policy of retaining accepted proposals for restoration;
+manual removal can be followed by translating the source again. Frontend checks,
+66 frontend tests and 213 Rust tests passed (four existing ignored); native
+empty-state/retranslate and cross-platform verification remain open.
+
+### One pending translation per source occurrence — 2026-10-15
+
+Retranslation replaces the previous saved proposal only after successful complete
+validation. Replacement is transactional and deletes obsolete output/parts;
+failed/cancelled attempts retain the previous result. Newer successful runs win
+over older delayed completions. Legacy duplicate proposals are cleaned on load.
+The version picker is removed; other paragraphs and chapter drafts remain intact.
+Frontend and Rust replacement regressions passed; native interaction verification
+remains pending. This supersedes the previous multiple-version retention policy.

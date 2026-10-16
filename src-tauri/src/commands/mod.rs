@@ -460,3 +460,13 @@ pub async fn save_book_settings(
     let data_dir = app_data_dir(&app)?;
     run_blocking(move || services::book_settings::save(&data_dir, &project_id, settings)).await
 }
+
+#[tauri::command]
+pub async fn delete_ai_selection_run(
+    app: AppHandle,
+    chapter_id: String,
+    run_id: String,
+) -> Result<(), AppError> {
+    let dir = app_data_dir(&app)?;
+    run_blocking(move || services::ai_selection::delete_run(&dir, &chapter_id, &run_id)).await
+}

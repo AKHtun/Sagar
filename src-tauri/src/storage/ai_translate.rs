@@ -75,10 +75,10 @@ mod tests {
     use crate::storage::projects::{NewBlock, NewChapter, NewProject};
 
     fn setup() -> Connection {
-        let conn = Connection::open_in_memory().expect("open db");
-        migrations::apply(&conn).expect("migrate");
+        let mut conn = Connection::open_in_memory().expect("open db");
+        migrations::apply(&mut conn).expect("migrate");
         crate::storage::projects::create_project(
-            &conn,
+            &mut conn,
             &NewProject {
                 original_source_path: None,
                 id: "p1".into(),

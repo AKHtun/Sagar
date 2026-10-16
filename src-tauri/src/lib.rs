@@ -160,6 +160,7 @@ pub fn run() {
             commands::start_ai_html_fix,
             commands::cancel_ai_translation,
             commands::get_ai_selection_state,
+            commands::delete_ai_selection_run,
             commands::prepare_ai_selection_run,
             commands::control_ai_selection_run,
             commands::append_ai_selection_results,

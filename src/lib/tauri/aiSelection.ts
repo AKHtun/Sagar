@@ -47,3 +47,7 @@ export function appendAiSelectionResults(
 ): Promise<AppendSelectionResult> {
   return command("append_ai_selection_results", { input });
 }
+
+export function deleteAiSelectionRun(chapterId: string, runId: string): Promise<void> {
+  return command("delete_ai_selection_run", { chapterId, runId });
+}

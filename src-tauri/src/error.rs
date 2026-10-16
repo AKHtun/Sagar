@@ -46,7 +46,32 @@ impl std::error::Error for AppError {}
 
 impl From<rusqlite::Error> for AppError {
     fn from(error: rusqlite::Error) -> Self {
-        AppError::new("storage_error", error.to_string())
+        // Transient lock contention (overlapping autosaves, chapter loads and
+        // resource lookups on separate connections) must never surface as a
+        // raw "database is locked". Give it a stable code so the UI can retry
+        // instead of showing SQLite internals.
+        if let rusqlite::Error::SqliteFailure(err, _) = &error {
+            let code = err.code;
+            if code == rusqlite::ErrorCode::DatabaseBusy
+                || code == rusqlite::ErrorCode::DatabaseLocked
+            {
+                return AppError::with_details(
+                    "storage_busy",
+                    "The library is briefly busy saving. Your work is kept — retrying.",
+                    serde_json::json!({ "retryable": true }),
+                );
+            }
+        }
+        let message = error.to_string();
+        let lowered = message.to_ascii_lowercase();
+        if lowered.contains("database is locked") || lowered.contains("database is busy") {
+            return AppError::with_details(
+                "storage_busy",
+                "The library is briefly busy saving. Your work is kept — retrying.",
+                serde_json::json!({ "retryable": true }),
+            );
+        }
+        AppError::new("storage_error", message)
     }
 }
 

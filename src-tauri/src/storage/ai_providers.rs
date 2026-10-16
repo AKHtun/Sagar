@@ -195,8 +195,8 @@ mod tests {
     use crate::storage::migrations;
 
     fn setup() -> Connection {
-        let conn = Connection::open_in_memory().expect("open db");
-        migrations::apply(&conn).expect("migrate");
+        let mut conn = Connection::open_in_memory().expect("open db");
+        migrations::apply(&mut conn).expect("migrate");
         conn
     }
 
@@ -213,12 +213,12 @@ mod tests {
 
     #[test]
     fn migration_preserves_existing_model_and_effort_round_trips() {
-        let conn = Connection::open_in_memory().expect("db");
+        let mut conn = Connection::open_in_memory().expect("db");
         conn.execute_batch("CREATE TABLE projects (id TEXT PRIMARY KEY);
             CREATE TABLE ai_translation_selection (id INTEGER PRIMARY KEY, agent TEXT NOT NULL, model TEXT NOT NULL, updated_at TEXT NOT NULL);
             INSERT INTO ai_translation_selection VALUES (1, 'codex', 'existing-model', 'before');
             PRAGMA user_version = 5;").expect("v5");
-        migrations::apply(&conn).expect("upgrade");
+        migrations::apply(&mut conn).expect("upgrade");
         let selection = get_translation_selection(&conn)
             .expect("read")
             .expect("saved");

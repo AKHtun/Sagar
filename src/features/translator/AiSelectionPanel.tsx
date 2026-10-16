@@ -1,4 +1,3 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
@@ -6,13 +5,14 @@ import { StatusNotice } from "../../components/StatusNotice";
 import { formatDirection } from "../../lib/languages";
 import {
   controlAiSelectionRun,
+  deleteAiSelectionRun,
   getAiSelectionState,
   prepareAiSelectionRun,
 } from "../../lib/tauri/aiSelection";
-import { preparePreviewImages } from "../../lib/tauri/preview";
 import type { TranslationSelection } from "../../types/ai";
 import type { SelectionEvent, SelectionState } from "../../types/aiSelection";
 import { ApiRequestDetails } from "./ApiRequestDetails";
+import { hasContent } from "./richText";
 import type { useChapterEditor } from "./useChapterEditor";
 
 const PAGE_SIZE = 50;
@@ -21,23 +21,14 @@ const message = (error: unknown) =>
     ? error.message
     : "The selected translation could not be completed.";
 
-/** Every HTML preview comes from Rust's inert source/proposal sanitizer. */
-function Preview({ html, label }: { html: string; label: string }) {
-  return (
-    <section
-      className="ai-selection__preview"
-      aria-label={label}
-      onClickCapture={(event) => {
-        if (event.target instanceof Element && event.target.closest("a"))
-          event.preventDefault();
-      }}
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: Rust allowlisted, local-resource preview
-      dangerouslySetInnerHTML={{
-        __html: preparePreviewImages(html, (path) => convertFileSrc(path, "epubres")),
-      }}
-    />
-  );
-}
+import {
+  chapterProposals,
+  ReviewRows,
+  readyItems,
+  SourceRows,
+  stepForRun,
+  type WorkflowStep,
+} from "./AiSelectionViews";
 
 export function AiSelectionPanel({
   chapterId,
@@ -56,12 +47,24 @@ export function AiSelectionPanel({
   editor: ReturnType<typeof useChapterEditor>;
   onBusy: (busy: boolean) => void;
 }) {
+  const [step, setStep] = useState<WorkflowStep>("select");
+  const observedRun = useRef("");
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const previousStep = useRef<WorkflowStep>("select");
+  useEffect(() => {
+    if (previousStep.current !== step) {
+      previousStep.current = step;
+      bodyRef.current?.querySelector<HTMLElement>("h3")?.focus();
+    }
+  }, [step]);
   const [data, setData] = useState<SelectionState | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [runId, setRunId] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [stream, setStream] = useState("");
@@ -70,6 +73,12 @@ export function AiSelectionPanel({
   const [previewPage, setPreviewPage] = useState(0);
   const [allowAgain, setAllowAgain] = useState(false);
   const [confirmOrder, setConfirmOrder] = useState(false);
+  const [orderRequired, setOrderRequired] = useState(false);
+  const [appendError, setAppendError] = useState<{
+    message: string;
+    code: string;
+  } | null>(null);
+  const [appendNotice, setAppendNotice] = useState<string | null>(null);
   const [eventsUnavailable, setEventsUnavailable] = useState(false);
   const mounted = useRef(true);
   const activeRun = useRef<string | null>(null);
@@ -80,7 +89,7 @@ export function AiSelectionPanel({
   const loadVersion = useRef(0);
   const appendRequest = useRef<{ key: string; id: string } | null>(null);
   const run = data?.runs.find((r) => r.id === runId) ?? null;
-  const running = busy || run?.state === "running";
+  const running = busy || deleting || run?.state === "running";
   const chosen = data?.units.filter((u) => selected.has(u.id)) ?? [];
   const needsProvider = chosen.some((u) => u.text.length > 0);
   const localOnly = chosen.length > 0 && !needsProvider;
@@ -95,7 +104,16 @@ export function AiSelectionPanel({
     const next = await getAiSelectionState(chapterId);
     if (!mounted.current || version !== loadVersion.current) return;
     setData(next);
-    setRunId((id) => id ?? next.runs[0]?.id ?? null);
+    const available = new Set(
+      next.runs.flatMap((saved) => readyItems(saved).map((item) => item.id)),
+    );
+    setAccepted((previous) => {
+      const kept = new Set([...previous].filter((id) => available.has(id)));
+      return kept.size === previous.size ? previous : kept;
+    });
+    setRunId((id) =>
+      next.runs.some((value) => value.id === id) ? id : (next.runs[0]?.id ?? null),
+    );
   }, [chapterId]);
 
   useEffect(() => {
@@ -183,7 +201,6 @@ export function AiSelectionPanel({
       if (!mounted.current) return;
       activeRun.current = id;
       setRunId(id);
-      setAccepted(new Set());
       setPreviewPage(0);
       currentJob.current = await controlAiSelectionRun(id, "start", consent);
       if (!mounted.current) {
@@ -193,6 +210,7 @@ export function AiSelectionPanel({
       starting.current = false;
       for (const event of bufferedEvents.current) receiveEvent.current(event);
       bufferedEvents.current = [];
+      setStep("progress");
       await reload();
     } catch (e) {
       starting.current = false;
@@ -227,6 +245,7 @@ export function AiSelectionPanel({
       starting.current = false;
       for (const event of bufferedEvents.current) receiveEvent.current(event);
       bufferedEvents.current = [];
+      setStep("progress");
       await reload();
     } catch (e) {
       starting.current = false;
@@ -244,6 +263,8 @@ export function AiSelectionPanel({
       appendRequest.current = { key, id: crypto.randomUUID() };
     setError(null);
     setNotice(null);
+    setAppendError(null);
+    setAppendNotice(null);
     try {
       await editor.appendProposals({
         proposalIds,
@@ -256,10 +277,15 @@ export function AiSelectionPanel({
       setAccepted(new Set());
       setSelected(new Set());
       setConfirmOrder(false);
-      setNotice("Selected results were appended and saved as a draft.");
+      setAppendNotice(`${proposalIds.length} results added to your draft and saved.`);
       await reload();
     } catch (e) {
-      if (mounted.current) setError(message(e));
+      if (mounted.current) {
+        const code =
+          typeof e === "object" && e !== null && "code" in e ? String(e.code) : "unknown";
+        if (code === "append_out_of_order") setOrderRequired(true);
+        setAppendError({ message: message(e), code });
+      }
     }
   };
 
@@ -272,441 +298,663 @@ export function AiSelectionPanel({
       return next;
     });
   };
-  const ready = run?.items.filter((i) => i.state === "ready") ?? [];
+  useEffect(() => {
+    if (!run) return;
+    const identity = `${run.id}:${run.state}`;
+    if (observedRun.current !== identity) {
+      observedRun.current = identity;
+      setStep(stepForRun(run));
+    }
+  }, [run]);
+  const proposals = chapterProposals(data?.runs ?? []);
+  const ready = proposals.map(({ item }) => item);
+  const runReady = readyItems(run);
   const added = new Set(data?.units.filter((u) => u.added).map((u) => u.id));
   const hasPendingText = run?.items.some(
     (i) =>
-      !["ready", "skipped"].includes(i.state) &&
+      !["ready", "skipped", "added", "superseded"].includes(i.state) &&
       data?.units.some((u) => u.id === i.unitId && u.text.length > 0),
   );
 
-  return (
-    <section className="ai-selection" aria-label="Selected paragraphs translation">
-      <p className="dialog__muted">
-        Select text, whole tables, and images. Images stay local. Only selected text and a
-        little neighboring context go to your provider. Accepted results append to the end
-        of your draft; unselected content is not copied.
-      </p>
-      <p className="dialog__muted">
-        {selection
-          ? `${selection.agent} · ${selection.model} · ${selection.reasoningEffort ?? "Default effort"}`
-          : "Choose an AI model in Settings to translate text. Images can be included without a provider."}
-      </p>
-      {bookInstructions ? (
-        <details>
-          <summary>Book instructions</summary>
-          <p className="book-instructions">{bookInstructions}</p>
-        </details>
-      ) : null}
+  const deleteSavedRun = async () => {
+    if (!runId || running || editor.appending) return;
+    setDeleting(true);
+    setError(null);
+    ++loadVersion.current;
+    try {
+      await deleteAiSelectionRun(chapterId, runId);
+      if (!mounted.current) return;
+      activeRun.current = null;
+      currentJob.current = null;
+      observedRun.current = "";
+      appendRequest.current = null;
+      setRunId(null);
+      setAccepted(new Set());
+      setSelected(new Set());
+      setPreviewPage(0);
+      setConfirmDelete(false);
+      setConfirmOrder(false);
+      setStream("");
+      setTrace([]);
+      setStep("select");
+      setNotice("Saved proposals deleted. Your chapter draft is unchanged.");
+      await reload();
+    } catch (error) {
+      if (mounted.current) setError(message(error));
+    } finally {
+      if (mounted.current) setDeleting(false);
+    }
+  };
+
+  const previouslyAddedSelected = ready.some(
+    (item) => accepted.has(item.id) && added.has(item.unitId),
+  );
+  // Consent to re-add applies only to the exact proposal selection in this run.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset confirmation when its selection or run changes
+  useEffect(() => {
+    setAllowAgain(false);
+    setConfirmOrder(false);
+    setOrderRequired(false);
+    setAppendError(null);
+  }, [accepted, runId]);
+  const earlier =
+    hasContent(editor.draft?.html ?? "") &&
+    ready.some(
+      (item) =>
+        accepted.has(item.id) &&
+        data?.units.some((unit) => unit.added && unit.order > item.order),
+    );
+  const needsOrderConfirmation = earlier || orderRequired;
+  const placementConfirmed =
+    (!previouslyAddedSelected || allowAgain) && (!needsOrderConfirmation || confirmOrder);
+  const appendDisabled =
+    !accepted.size ||
+    running ||
+    editor.appending ||
+    !!editor.draft?.conflict ||
+    !placementConfirmed;
+  const consentBox = (
+    <label className="export-ack">
+      <input
+        type="checkbox"
+        checked={consent}
+        disabled={running}
+        onChange={(event) => setConsent(event.target.checked)}
+      />
+      <span>
+        I understand selected text and neighboring context will be sent to the chosen
+        provider. Image bytes are never sent.
+      </span>
+    </label>
+  );
+  const history = data?.runs.length ? (
+    <details className="ai-run-history">
+      <summary>History · {data.runs.length} saved runs</summary>
       <label className="form-field">
-        <span>Instructions for this run (optional)</span>
-        <textarea
-          rows={2}
-          maxLength={20000}
+        <span>Saved proposals and runs</span>
+        <select
+          value={runId ?? ""}
           disabled={running || editor.appending}
-          value={currentInstructions}
-          onChange={(e) => onInstructions(e.target.value)}
-        />
-      </label>
-      <p className="dialog__muted">
-        New selections use these instructions. Resume and Retry use the saved run's
-        original model, languages, and instructions.
-      </p>
-      {error ? (
-        <StatusNotice
-          kind="error"
-          onRetry={() => {
+          onChange={(event) => {
+            const id = event.target.value;
+            setRunId(id);
+            setConfirmDelete(false);
+            setStep(stepForRun(data.runs.find((value) => value.id === id) ?? null));
+            setPreviewPage(0);
+            setStream("");
+            setTrace([]);
             setError(null);
-            void reload().catch((e: unknown) => setError(message(e)));
           }}
         >
-          {error}
-        </StatusNotice>
-      ) : null}
-      {notice ? <StatusNotice kind="info">{notice}</StatusNotice> : null}
-      {!data ? (
-        error ? null : (
-          <StatusNotice kind="loading">Loading source selections…</StatusNotice>
-        )
-      ) : (
+          {data.runs.map((value, index) => (
+            <option key={value.id} value={value.id}>
+              Run {data.runs.length - index} · {value.config.model || "Images only"} ·{" "}
+              {value.state}
+            </option>
+          ))}
+        </select>
+      </label>
+      {run ? (
         <>
-          <div className="button-row">
-            <button
-              type="button"
-              className="btn"
-              disabled={running}
-              onClick={() =>
-                setSelected(
-                  new Set(
-                    data.units
-                      .filter((u) => !u.unavailable && (!u.added || allowAgain))
-                      .map((u) => u.id),
-                  ),
-                )
-              }
-            >
-              <Icon name="check" />
-              Select all available
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={running}
-              onClick={() =>
-                setSelected(
-                  new Set(
-                    data.units
-                      .filter((u) => !u.unavailable && !u.added && !u.hasProposal)
-                      .map((u) => u.id),
-                  ),
-                )
-              }
-            >
-              <Icon name="paragraph" />
-              Select untranslated
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={running}
-              onClick={() => setSelected(new Set())}
-            >
-              <Icon name="close" />
-              Clear selection
-            </button>
-          </div>
-          <p role="status">
-            {selected.size} selected · {data.units.length} source items
+          <p>
+            {formatDirection(run.config.sourceLanguage, run.config.targetLanguage)} ·{" "}
+            {run.config.model || "Images only"} ·{" "}
+            {run.config.reasoningEffort ?? "Default effort"}
           </p>
-          <section className="ai-selection__list" aria-label="Source selections">
-            {data.units.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((unit) => (
-              <div className="ai-selection__item" key={unit.id}>
-                <label className="ai-selection__choice">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(unit.id)}
-                    disabled={
-                      running || !!unit.unavailable || (unit.added && !allowAgain)
-                    }
-                    onChange={(e) => toggle(unit.id, e.target.checked, "source")}
-                  />
-                  <span>
-                    <strong>
-                      {unit.order + 1}. {unit.kind}
-                    </strong>{" "}
-                    — {unit.text || "Include image"}
-                    <small>
-                      {unit.unavailable ??
-                        (unit.added
-                          ? "Added earlier"
-                          : unit.hasProposal
-                            ? "Saved proposal available"
-                            : unit.text
-                              ? "Pending"
-                              : "Include image")}
-                    </small>
-                  </span>
-                </label>
-                <details>
-                  <summary>Show source</summary>
-                  <Preview
-                    html={unit.previewHtml}
-                    label={`Source item ${unit.order + 1}`}
-                  />
-                </details>
-                {unit.kind === "image" || (unit.kind === "figure" && !unit.text) ? (
-                  <Preview html={unit.previewHtml} label={`Image ${unit.order + 1}`} />
-                ) : null}
-              </div>
-            ))}
-            {!data.units.length ? (
-              <p>No selectable source content in this chapter.</p>
-            ) : null}
-          </section>
-          {data.units.length > PAGE_SIZE ? (
-            <div className="button-row">
-              <button
-                type="button"
-                className="btn"
-                disabled={page === 0}
-                onClick={() => setPage(page - 1)}
-              >
-                <Icon name="left" />
-                Previous items
-              </button>
-              <span>
-                Page {page + 1} of {Math.ceil(data.units.length / PAGE_SIZE)}
-              </span>
-              <button
-                type="button"
-                className="btn"
-                disabled={(page + 1) * PAGE_SIZE >= data.units.length}
-                onClick={() => setPage(page + 1)}
-              >
-                <Icon name="right" />
-                Next items
-              </button>
-            </div>
-          ) : null}
-          <label className="export-ack">
-            <input
-              type="checkbox"
-              checked={allowAgain}
-              disabled={running || editor.appending}
-              onChange={(e) => {
-                setAllowAgain(e.target.checked);
-                setSelected(new Set());
-                setAccepted(new Set());
-              }}
-            />
-            <span>
-              Add again: allow selecting items added earlier. Repeated anchor IDs are
-              still rejected. History covers this mode only and does not track later
-              manual deletions.
-            </span>
-          </label>
-          <label className="export-ack">
-            <input
-              type="checkbox"
-              checked={consent}
-              disabled={running}
-              onChange={(e) => setConsent(e.target.checked)}
-            />
-            <span>
-              I understand selected text and neighboring context will be sent to the
-              chosen provider. Image bytes are never sent.
-            </span>
-          </label>
-          {data.runs.length ? (
-            <label className="form-field">
-              <span>Saved proposals and runs</span>
-              <select
-                value={runId ?? ""}
-                disabled={running || editor.appending}
-                onChange={(e) => {
-                  setRunId(e.target.value);
-                  setAccepted(new Set());
-                  setPreviewPage(0);
-                  setStream("");
-                  setTrace([]);
-                  setError(null);
-                }}
-              >
-                {data.runs.map((r, i) => (
-                  <option key={r.id} value={r.id}>
-                    Run {data.runs.length - i} · {r.config.model || "Images only"} ·{" "}
-                    {r.state}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {run ? (
-            <section aria-label="Saved run">
+          <p className="dialog__muted">Resume and Retry use this saved configuration.</p>
+          {confirmDelete ? (
+            <section aria-label="Confirm deleting saved proposals">
               <p>
-                {formatDirection(run.config.sourceLanguage, run.config.targetLanguage)} ·{" "}
-                {run.config.model || "Images only"} ·{" "}
-                {run.items.filter((i) => i.state === "ready").length}/{run.items.length}{" "}
-                ready
+                Delete this run and all its saved proposals? This cannot be undone. Text
+                already added to your draft and insertion history will stay.
               </p>
-              <details>
-                <summary>Saved run instructions and model</summary>
-                <p>
-                  {run.config.agent} · {run.config.model} ·{" "}
-                  {run.config.reasoningEffort ?? "Default effort"}
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={running || editor.appending}
+                  onClick={() => void deleteSavedRun()}
+                >
+                  <Icon name="trash" />
+                  {deleting ? "Deleting…" : "Delete saved proposals"}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={deleting}
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  <Icon name="close" />
+                  Cancel deletion
+                </button>
+              </div>
+            </section>
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              disabled={running || editor.appending}
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Icon name="trash" />
+              Delete this saved run…
+            </button>
+          )}
+
+          <details>
+            <summary>Saved instructions</summary>
+            <p className="book-instructions">
+              {run.config.bookInstructions || "No book instructions"}
+            </p>
+            <p className="book-instructions">
+              {run.config.currentInstructions || "No additional instructions"}
+            </p>
+          </details>
+        </>
+      ) : null}
+    </details>
+  ) : null;
+
+  return (
+    <section className="ai-selection" aria-label="Selected paragraphs translation">
+      <nav className="ai-selection__steps" aria-label="Translation workflow">
+        {(["select", "progress", "review"] as const).map((value, index) => (
+          <button
+            type="button"
+            key={value}
+            className={step === value ? "btn btn--primary" : "btn"}
+            aria-current={step === value ? "step" : undefined}
+            disabled={
+              editor.appending ||
+              (value === "select"
+                ? running
+                : !run || (value === "review" && (!ready.length || running)))
+            }
+            onClick={() => setStep(value)}
+          >
+            <Icon
+              name={
+                value === "select"
+                  ? "paragraph"
+                  : value === "progress"
+                    ? "sparkles"
+                    : "check"
+              }
+            />
+            {index + 1}.{" "}
+            {value === "select"
+              ? "Select"
+              : value === "progress"
+                ? "Translate"
+                : "Review & Add"}
+          </button>
+        ))}
+      </nav>
+      <div className="ai-selection__body" ref={bodyRef}>
+        {error ? (
+          <StatusNotice
+            kind="error"
+            onRetry={() => {
+              setError(null);
+              void reload().catch((e: unknown) => setError(message(e)));
+            }}
+          >
+            {error}
+          </StatusNotice>
+        ) : null}
+        {notice ? <StatusNotice kind="info">{notice}</StatusNotice> : null}
+        {!data ? (
+          error ? null : (
+            <StatusNotice kind="loading">Loading source selections…</StatusNotice>
+          )
+        ) : (
+          <>
+            {history}
+            {step === "select" ? (
+              <>
+                <div className="ai-selection__heading">
+                  <h3 tabIndex={-1}>Select source items</h3>
+                  <span role="status">
+                    {selected.size} selected · {data.units.length} source items
+                  </span>
+                </div>
+                <p className="dialog__muted">
+                  {selection
+                    ? `${selection.model} · ${selection.reasoningEffort ?? "Default effort"}`
+                    : "Choose an AI model in Settings to translate text. Images need no provider."}{" "}
+                  · Images stay local.
                 </p>
-                <p className="book-instructions">
-                  {run.config.bookInstructions || "No book instructions"}
-                </p>
-                <p className="book-instructions">
-                  {run.config.currentInstructions || "No additional instructions"}
-                </p>
-              </details>
-              {run.message ? (
-                <StatusNotice kind={run.state === "failed" ? "error" : "info"}>
-                  {run.message}
-                </StatusNotice>
-              ) : null}
-              {running ? (
                 <div className="button-row">
-                  <StatusNotice kind="loading">
-                    Translating… completed parts are saved locally.
-                  </StatusNotice>
                   <button
                     type="button"
                     className="btn"
-                    onClick={() => void control("cancel")}
+                    disabled={running}
+                    onClick={() =>
+                      setSelected(
+                        new Set(
+                          data.units
+                            .filter((unit) => !unit.unavailable)
+                            .map((unit) => unit.id),
+                        ),
+                      )
+                    }
+                  >
+                    <Icon name="check" />
+                    Select all available
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={running}
+                    onClick={() =>
+                      setSelected(
+                        new Set(
+                          data.units
+                            .filter((unit) => !unit.unavailable && !unit.hasProposal)
+                            .map((unit) => unit.id),
+                        ),
+                      )
+                    }
+                  >
+                    <Icon name="paragraph" />
+                    Select untranslated
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={running}
+                    onClick={() => setSelected(new Set())}
                   >
                     <Icon name="close" />
-                    Cancel
+                    Clear selection
                   </button>
                 </div>
-              ) : run.state !== "done" ? (
-                <div className="button-row">
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={hasPendingText && !consent}
-                    onClick={() =>
-                      void control(run.state === "failed" ? "retry" : "start")
-                    }
-                  >
-                    <Icon name="refresh" />
-                    {run.state === "failed" ? "Retry failed batch" : "Resume saved run"}
-                  </button>
-                  {run.state === "failed" ? (
-                    <>
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={!consent || run.budget <= 512}
-                        onClick={() => void control("smaller")}
-                      >
-                        <Icon name="minus" />
-                        Retry with smaller batches
-                      </button>
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={hasPendingText && !consent}
-                        onClick={() => void control("skip")}
-                      >
-                        <Icon name="right" />
-                        Skip and continue
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-              <ApiRequestDetails messages={trace} />
-              {eventsUnavailable ? (
-                <p role="status">
-                  Live output is unavailable. Saved progress is refreshed while the run is
-                  active.
-                </p>
-              ) : null}
-              {stream ? (
-                <textarea
-                  className="ai-stream"
-                  aria-label="Selected translation live output"
-                  readOnly
-                  value={stream}
+                <SourceRows
+                  units={data.units.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)}
+                  selected={selected}
+                  disabled={running || editor.appending}
+                  toggle={(id, checked) => toggle(id, checked, "source")}
                 />
-              ) : null}
-              {run.items
-                .filter((i) => i.state !== "ready")
-                .slice(0, PAGE_SIZE)
-                .map((item) => (
-                  <div key={item.id} className="ai-selection__item">
-                    <p>
-                      Item {item.order + 1}: {item.state} · {item.partsDone}/
-                      {item.partsTotal} parts saved
-                    </p>
-                    {item.failedOutput ? (
-                      <details>
-                        <summary>Recoverable provider output</summary>
-                        <textarea
-                          readOnly
-                          value={item.failedOutput}
-                          aria-label={`Recoverable output for item ${item.order + 1}`}
-                        />
-                      </details>
-                    ) : null}
-                  </div>
-                ))}
-              {ready.length ? (
-                <>
-                  <h3>Preview results</h3>
+                {data.units.length > PAGE_SIZE ? (
                   <div className="button-row">
                     <button
                       type="button"
                       className="btn"
-                      disabled={editor.appending}
-                      onClick={() =>
-                        setAccepted(
-                          new Set(
-                            ready
-                              .filter((i) => !added.has(i.unitId) || allowAgain)
-                              .map((i) => i.id),
-                          ),
-                        )
-                      }
+                      disabled={!page}
+                      onClick={() => setPage(page - 1)}
                     >
-                      <Icon name="check" />
-                      Select ready results
+                      <Icon name="left" />
+                      Previous items
+                    </button>
+                    <span>
+                      Page {page + 1} of {Math.ceil(data.units.length / PAGE_SIZE)}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={(page + 1) * PAGE_SIZE >= data.units.length}
+                      onClick={() => setPage(page + 1)}
+                    >
+                      <Icon name="right" />
+                      Next items
                     </button>
                   </div>
-                  {ready
-                    .slice(previewPage * PAGE_SIZE, (previewPage + 1) * PAGE_SIZE)
-                    .map((item) => (
-                      <div key={item.id} className="ai-selection__item">
-                        <label className="ai-selection__choice">
-                          <input
-                            type="checkbox"
-                            checked={accepted.has(item.id)}
-                            disabled={
-                              editor.appending || (added.has(item.unitId) && !allowAgain)
-                            }
-                            onChange={(e) => toggle(item.id, e.target.checked, "preview")}
-                          />
-                          <strong>
-                            Include result {item.order + 1}
-                            {added.has(item.unitId) ? " — Added earlier" : ""}
-                          </strong>
-                        </label>
-                        <details>
-                          <summary>Compare source</summary>
-                          <Preview
-                            html={item.sourcePreviewHtml}
-                            label={`Original item ${item.order + 1}`}
-                          />
-                        </details>
-                        <Preview
-                          html={item.previewHtml ?? ""}
-                          label={`Translated item ${item.order + 1}`}
-                        />
+                ) : null}
+                <details>
+                  <summary>Translation instructions</summary>
+                  {bookInstructions ? (
+                    <details>
+                      <summary>Book instructions</summary>
+                      <p className="book-instructions">{bookInstructions}</p>
+                    </details>
+                  ) : null}
+                  <label className="form-field">
+                    <span>Instructions for this run (optional)</span>
+                    <textarea
+                      rows={3}
+                      maxLength={20000}
+                      value={currentInstructions}
+                      disabled={running || editor.appending}
+                      onChange={(event) => onInstructions(event.target.value)}
+                    />
+                  </label>
+                  <p className="dialog__muted">
+                    Applies to new runs. Resume and Retry keep the saved run’s
+                    instructions.
+                  </p>
+                </details>
+              </>
+            ) : run ? (
+              <>
+                {step === "progress" ? (
+                  <>
+                    <h3 tabIndex={-1}>
+                      {running
+                        ? "Translating selected items"
+                        : run.state === "failed"
+                          ? "Translation paused after an error"
+                          : "Saved translation progress"}
+                    </h3>
+                    <p role="status">
+                      {run.config.model || "Local images"} · {runReady.length} ready ·{" "}
+                      {run.items.filter((item) => item.state === "translating").length}{" "}
+                      translating ·{" "}
+                      {run.items.filter((item) => item.state === "failed").length} failed
+                    </p>
+                    {run.message ? (
+                      <StatusNotice kind={run.state === "failed" ? "error" : "info"}>
+                        {run.message}
+                      </StatusNotice>
+                    ) : null}
+                    {!running && hasPendingText ? consentBox : null}
+                    {!running && run.state !== "done" ? (
+                      <div className="button-row">
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={hasPendingText && !consent}
+                          onClick={() =>
+                            void control(run.state === "failed" ? "retry" : "start")
+                          }
+                        >
+                          <Icon name="refresh" />
+                          {run.state === "failed"
+                            ? "Retry failed batch"
+                            : "Resume saved run"}
+                        </button>
+                        {run.state === "failed" ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={!consent || run.budget <= 512}
+                              onClick={() => void control("smaller")}
+                            >
+                              <Icon name="minus" />
+                              Retry with smaller batches
+                            </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={hasPendingText && !consent}
+                              onClick={() => void control("skip")}
+                            >
+                              <Icon name="right" />
+                              Skip and continue
+                            </button>
+                          </>
+                        ) : null}
                       </div>
-                    ))}
-                  {ready.length > PAGE_SIZE ? (
+                    ) : null}
+                    {run.items
+                      .slice(previewPage * PAGE_SIZE, (previewPage + 1) * PAGE_SIZE)
+                      .map((item) => (
+                        <article key={item.id} className="ai-selection__item">
+                          <strong>
+                            {item.order + 1}.{" "}
+                            {data.units.find((unit) => unit.id === item.unitId)?.kind ??
+                              "Content"}
+                          </strong>
+                          <p>
+                            {item.state === "superseded"
+                              ? "Replaced by a newer translation"
+                              : item.state === "added"
+                                ? "Added to draft"
+                                : item.state === "ready"
+                                  ? "Ready"
+                                  : item.state === "translating"
+                                    ? "Translating…"
+                                    : item.state === "failed"
+                                      ? "Failed"
+                                      : item.state === "skipped"
+                                        ? "Skipped"
+                                        : "Pending"}{" "}
+                            {!["added", "superseded"].includes(item.state)
+                              ? `· ${item.partsDone}/${item.partsTotal} parts saved`
+                              : ""}
+                          </p>
+                          {item.failedOutput ? (
+                            <details>
+                              <summary>Recoverable provider output</summary>
+                              <textarea
+                                readOnly
+                                value={item.failedOutput}
+                                aria-label={`Recoverable output for item ${item.order + 1}`}
+                              />
+                            </details>
+                          ) : null}
+                        </article>
+                      ))}
+                    <details>
+                      <summary>Live provider output</summary>
+                      <textarea
+                        className="ai-stream"
+                        aria-label="Selected translation live output"
+                        readOnly
+                        value={stream}
+                      />
+                    </details>
+                    <details>
+                      <summary>Technical request details</summary>
+                      <ApiRequestDetails messages={trace} />
+                    </details>
+                    {eventsUnavailable ? (
+                      <p role="status">
+                        Live output is unavailable. Saved progress is refreshed while the
+                        run is active.
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <div className="ai-selection__heading">
+                      <h3 tabIndex={-1}>Review translations</h3>
+                      <p className="dialog__muted">
+                        All saved batches in this chapter · Results wait here until you
+                        add them to the draft.
+                      </p>
+                      <span>
+                        {ready.length} ready ·{" "}
+                        {ready.filter((item) => added.has(item.unitId)).length} added
+                        before
+                      </span>
+                    </div>
+                    {!ready.length ? (
+                      <StatusNotice kind="info">
+                        No results waiting to be added. Added translations are saved in
+                        your chapter draft. Select more source items to continue.
+                      </StatusNotice>
+                    ) : null}
                     <div className="button-row">
                       <button
                         type="button"
                         className="btn"
-                        disabled={!previewPage}
-                        onClick={() => setPreviewPage(previewPage - 1)}
+                        disabled={editor.appending || !ready.length}
+                        onClick={() => setAccepted(new Set(ready.map((item) => item.id)))}
                       >
-                        <Icon name="left" />
-                        Previous results
+                        <Icon name="check" />
+                        Select all results
                       </button>
                       <button
                         type="button"
                         className="btn"
-                        disabled={(previewPage + 1) * PAGE_SIZE >= ready.length}
-                        onClick={() => setPreviewPage(previewPage + 1)}
+                        disabled={editor.appending || !accepted.size}
+                        onClick={() => setAccepted(new Set())}
                       >
-                        <Icon name="right" />
-                        Next results
+                        <Icon name="close" />
+                        Clear selection
                       </button>
                     </div>
-                  ) : null}
-                  <p className="dialog__muted">
-                    Adds {accepted.size} results to the end of your current draft,
-                    preserving existing writing. Review chapter completeness and links to
-                    content you did not include before export.
-                  </p>
-                  <label className="export-ack">
-                    <input
-                      type="checkbox"
-                      checked={confirmOrder}
-                      onChange={(e) => setConfirmOrder(e.target.checked)}
+                    <p className="dialog__muted">
+                      Check results to add to the draft. Clear selection only unchecks
+                      them; it does not delete saved proposals or draft text.
+                    </p>
+                    {ready.some((item) => added.has(item.unitId)) ? (
+                      <StatusNotice kind="info">
+                        “Added before” is insertion history, not a check of your current
+                        draft. If you removed the text, select its result and add it
+                        again.
+                      </StatusNotice>
+                    ) : null}
+                    {run.items.some(
+                      (item) => !["ready", "added", "superseded"].includes(item.state),
+                    ) ? (
+                      <p className="dialog__muted">
+                        {
+                          run.items.filter(
+                            (item) =>
+                              !["ready", "added", "superseded"].includes(item.state),
+                          ).length
+                        }{" "}
+                        items are pending, failed or skipped. Return to Translate to
+                        inspect them.
+                      </p>
+                    ) : null}
+                    <ReviewRows
+                      entries={proposals.slice(
+                        previewPage * PAGE_SIZE,
+                        (previewPage + 1) * PAGE_SIZE,
+                      )}
+                      units={data.units}
+                      accepted={accepted}
+                      disabled={editor.appending}
+                      toggle={(id, checked) => toggle(id, checked, "preview")}
                     />
-                    <span>Allow appending earlier source items after later content.</span>
-                  </label>
-                </>
-              ) : null}
-            </section>
+                    <p className="dialog__muted">
+                      Adds to the end of your draft, preserving existing writing. The
+                      chapter remains Draft until you review it.
+                    </p>
+                  </>
+                )}
+                {(step === "review" ? ready.length : run.items.length) > PAGE_SIZE ? (
+                  <div className="button-row">
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={!previewPage}
+                      onClick={() => setPreviewPage(previewPage - 1)}
+                    >
+                      <Icon name="left" />
+                      Previous results
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={
+                        (previewPage + 1) * PAGE_SIZE >=
+                        (step === "review" ? ready.length : run.items.length)
+                      }
+                      onClick={() => setPreviewPage(previewPage + 1)}
+                    >
+                      <Icon name="right" />
+                      Next results
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </>
+        )}
+      </div>
+      <footer className="ai-selection__actions">
+        {step === "review" && appendNotice ? (
+          <div className="ai-selection__consent">
+            <StatusNotice kind="success">{appendNotice}</StatusNotice>
+          </div>
+        ) : null}
+        {step === "review" && appendError ? (
+          <div className="ai-selection__consent">
+            <StatusNotice
+              kind={appendError.code === "append_out_of_order" ? "info" : "error"}
+              onRetry={
+                appendError.code === "append_out_of_order" || appendDisabled
+                  ? undefined
+                  : () => void append()
+              }
+              retryLabel="Retry adding results"
+            >
+              {appendError.code === "append_out_of_order"
+                ? "Confirm placement below, then choose Add to draft again. Your results are still selected."
+                : appendError.message}
+            </StatusNotice>
+          </div>
+        ) : null}
+        {step === "review" &&
+        accepted.size > 0 &&
+        (previouslyAddedSelected || needsOrderConfirmation) ? (
+          <label className="export-ack ai-selection__consent">
+            <input
+              type="checkbox"
+              checked={placementConfirmed}
+              disabled={editor.appending}
+              onChange={(event) => {
+                setAllowAgain(previouslyAddedSelected && event.target.checked);
+                setConfirmOrder(needsOrderConfirmation && event.target.checked);
+              }}
+            />
+            <span>
+              {previouslyAddedSelected
+                ? "Add these results again. I removed the earlier text or want another copy. "
+                : ""}
+              {needsOrderConfirmation
+                ? "Add earlier source items at the end of the draft, even if this differs from source order. "
+                : ""}
+              Existing writing is preserved; duplicate anchors are still rejected.
+            </span>
+          </label>
+        ) : null}
+
+        {step === "select" && needsProvider ? (
+          <div className="ai-selection__consent">{consentBox}</div>
+        ) : null}
+        <div role="status">
+          {step === "select"
+            ? `${selected.size} items selected`
+            : step === "review"
+              ? `${accepted.size} selected · Add to end of draft`
+              : "Completed parts are saved locally"}
+          {editor.draft?.conflict ? (
+            <p className="dialog__muted">
+              Resolve the draft’s save conflict before adding results.
+            </p>
           ) : null}
-          <div className="button-row ai-selection__actions">
+          {step === "select" && needsProvider && !consent ? (
+            <p className="dialog__muted">Approve sharing selected text to translate.</p>
+          ) : null}
+        </div>
+        <div className="button-row">
+          {step !== "select" && !running ? (
+            <button
+              type="button"
+              className="btn"
+              disabled={editor.appending}
+              onClick={() => setStep("select")}
+            >
+              <Icon name="left" />
+              Select more
+            </button>
+          ) : null}
+          {step === "select" ? (
             <button
               type="button"
               className="btn btn--primary"
@@ -719,27 +967,45 @@ export function AiSelectionPanel({
               onClick={() => void start()}
             >
               <Icon name={localOnly ? "image" : "sparkles"} />
-              {generateLabel}
+              {localOnly ? generateLabel : `Translate ${selected.size} items`}
             </button>
-            {ready.length ? (
+          ) : step === "progress" ? (
+            running ? (
               <button
                 type="button"
-                className={accepted.size ? "btn btn--primary" : "btn"}
-                disabled={
-                  !accepted.size ||
-                  running ||
-                  editor.appending ||
-                  !!editor.draft?.conflict
-                }
-                onClick={() => void append()}
+                className="btn"
+                onClick={() => void control("cancel")}
               >
-                <Icon name="plus" />
-                {editor.appending ? "Saving…" : "Append selected results"}
+                <Icon name="close" />
+                Cancel translation
               </button>
-            ) : null}
-          </div>
-        </>
-      )}
+            ) : (
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={!ready.length}
+                onClick={() => {
+                  setPreviewPage(0);
+                  setStep("review");
+                }}
+              >
+                <Icon name="check" />
+                Review {ready.length} results
+              </button>
+            )
+          ) : (
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={appendDisabled}
+              onClick={() => void append()}
+            >
+              <Icon name="plus" />
+              {editor.appending ? "Saving…" : `Add ${accepted.size} results to draft`}
+            </button>
+          )}
+        </div>
+      </footer>
     </section>
   );
 }

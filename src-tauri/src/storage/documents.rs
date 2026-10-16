@@ -38,10 +38,13 @@ pub fn load(conn: &Connection, chapter_id: &str) -> Result<ChapterDocument, AppE
     }
     let html = if html.is_empty() { None } else { Some(html) };
     let status = if html.is_some() { "draft" } else { "pending" };
-    conn.execute(
-        "INSERT OR IGNORE INTO chapter_documents(chapter_id,html,status) VALUES(?1,?2,?3)",
-        rusqlite::params![chapter_id, html, status],
-    )?;
+    crate::storage::with_busy_retry(|| {
+        conn.execute(
+            "INSERT OR IGNORE INTO chapter_documents(chapter_id,html,status) VALUES(?1,?2,?3)",
+            rusqlite::params![chapter_id, html, status],
+        )?;
+        Ok(())
+    })?;
     conn.query_row(
         "SELECT html,status,revision,authored FROM chapter_documents WHERE chapter_id=?1",
         [chapter_id],
@@ -63,16 +66,18 @@ pub fn authored(conn: &Connection, chapter_id: &str) -> Result<Option<ChapterDoc
 }
 
 pub fn save(
-    conn: &Connection,
+    conn: &mut Connection,
     chapter_id: &str,
     html: Option<String>,
     status: &str,
     revision: i64,
 ) -> Result<SaveResult, AppError> {
-    let tx = conn.unchecked_transaction()?;
-    let result = save_in_transaction(&tx, chapter_id, html, status, revision)?;
-    tx.commit()?;
-    Ok(result)
+    crate::storage::with_busy_retry(|| {
+        let tx = crate::storage::begin_write(&mut *conn)?;
+        let result = save_in_transaction(&tx, chapter_id, html.clone(), status, revision)?;
+        tx.commit()?;
+        Ok(result)
+    })
 }
 
 /// Caller owns the transaction so an advanced append and its receipt commit

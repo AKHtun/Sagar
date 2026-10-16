@@ -1235,3 +1235,158 @@ images, Myanmar text, keyboard focus and Escape. Native IME, live providers,
 Windows/Linux and EPUBCheck remain unverified. Next unfinished task: rebuild and
 restart the native app, then verify consented generation, cancellation, retry,
 append and export/reopen with Myanmar IME and real book assets.
+
+### Selected translation usability — 2026-10-15
+
+Selected paragraphs now uses Select → Translate → Review & Add stages. One
+scrolling content area sits between stationary workflow controls and contextual
+footer actions. Review pairs each original and validated proposal with actual
+language labels, while source selection, history, recovery and append safeguards
+remain distinct. The backend and saved-data formats are unchanged.
+
+`bun run check` and all 56 frontend tests passed, including new pagination,
+image-only, recovery, already-added and idempotent retry coverage. Browser checks
+with synthetic data covered light/dark at 1280×800 and 960×640, plus stacked
+review at 780px. Native desktop, Myanmar IME and Windows/Linux remain unverified.
+Next unfinished task: verify this workflow in a rebuilt native Sagar with a real
+consented provider run and real book assets.
+
+### Review selection clarification — 2026-10-15
+
+Review’s misleading “Clear results” action is now “Clear selection” and disabled
+when nothing is checked. Help text explains that clearing does not delete saved
+proposals or draft writing. Already-added results remain protected by default;
+Review now exposes an explicit re-add confirmation directly beside the results,
+with duplicate-anchor and manual-deletion limitations. Turning it off clears
+selections. Saved proposals and draft content are retained.
+
+Verification: `bun run check` and 57 frontend tests passed, including the exact
+already-added/clear-selection/re-enable-checkbox case. The production bundle
+warning remains. This small control change has not been rechecked in the native
+app; next unfinished task is native interaction verification. Deleting proposals
+or previously authored draft text is not part of this selection-only fix.
+
+### Delete saved AI proposals — 2026-10-15
+
+History now offers “Delete this saved run…” with an explicit irreversible-delete
+confirmation. Rust rejects active jobs and mismatched chapters. Migration 11 adds
+a deletion marker; one transaction removes proposals, part outputs and saved
+configuration, hides the run, and preserves only identity mappings needed by
+append receipts. Draft writing and already-added history remain unchanged.
+Deleting the last run returns to source selection; another remaining run can
+still be reviewed. No provider request is made.
+
+Verification: `bun run check`, 58 frontend tests and the Rust suite passed
+(209 passed, four existing ignored). Regression tests cover confirmation/cancel,
+draft preservation, persisted insertion history, deleted-run resume rejection,
+and idempotent append replay. The build’s bundle-size warning remains. Native
+rendered interaction and Windows/Linux checks are still pending; the next task
+is checking History deletion in the rebuilt desktop app.
+
+### Restore manually removed content — 2026-10-15
+
+Insertion history no longer disables source or result checkboxes. “Added before”
+explicitly describes history rather than claiming text is still present in the
+current draft. Users can select previously inserted results and confirm re-add
+in the visible footer, or select source items again after deleting proposals.
+Bulk selection includes these items; Select untranslated now uses absence of a
+saved proposal rather than treating insertion history as current content.
+Confirmation resets when the proposal selection/run changes. Duplicate-ID,
+revision and append-order validation remain in Rust. This supersedes earlier
+UI rules that locked previously added content. No book reset is required.
+
+Frontend checks and 58 tests passed, including manual HTML removal, preserving
+other writing, confirmation and restoring saved proposals. A Rust integration
+fixture covers removal of an element with an ID followed by safe re-add while
+retaining the run. Native rendered verification remains pending; next unfinished
+task is testing this recovery flow in the rebuilt desktop app.
+
+### Accumulate part-by-part chapter proposals — 2026-10-15
+
+Review is now chapter-wide rather than restricted to the selected saved run.
+Ready proposals from all retained batches are combined in source order; starting
+another batch or inspecting history no longer clears prior result selections.
+One proposal version per source occurrence is displayed. The newest ready
+version is the default unless a previous version was explicitly chosen or
+selected for append. A version picker exposes alternatives, with the correct
+model, batch and source/target languages for each. Failed newer batches do not
+hide older completed proposals. Progress/retry/deletion still target the chosen
+run; append reuses existing cross-run Rust validation and atomic persistence.
+
+Verified `bun run check`, 61 frontend tests and nine selected-content Rust
+integration tests. Regressions cover translating 1–3 then 4–6 and appending all
+six, retaining checked proposals, reopening with a newer failed run, choosing
+older versions, and preserving manual text/source order in cross-run append.
+Rendered synthetic fixtures showed six accumulated results and visible footer
+at 960×640 light and 1280×800 dark. Native/provider and cross-platform checks
+remain open; next unfinished task is that same two-batch workflow in rebuilt
+native Sagar. The existing bundle-size warning remains.
+
+### Visible append confirmation and save feedback — 2026-10-15
+
+Append placement confirmation now lives in the stationary footer beside Add,
+combined with re-add permission when both apply. Add is disabled until required
+confirmation is checked; consent resets when the selection/run changes. A Rust
+order warning also reveals this footer confirmation without clearing checked
+results or changing the append request identity. Save failures offer “Retry
+adding results,” which retries the append rather than merely reloading history.
+Successful appends show an immediate saved confirmation in that same footer.
+
+Rust no longer requests out-of-order permission solely from insertion history
+when the saved current draft is empty. Existing nonempty-draft order validation,
+duplicate IDs and transactional saves remain protected. Tests cover proactive
+confirmation, server-requested confirmation, actual append retry, and restoring
+an emptied draft with historical inserts. `bun run check` and 65 frontend tests
+passed; all ten selected-content Rust integration tests passed. Rendered
+synthetic fixtures verified visible confirmation and success at 960×640 light
+and confirmation at 1280×800 dark. Native/provider and Windows/Linux checks
+remain pending; next unfinished task is checking this append flow in rebuilt
+native Sagar. The existing build bundle warning remains.
+Full Rust formatting and test verification also passed: 212 tests passed, four
+existing tests ignored.
+
+### Consume proposals after adding — 2026-10-15
+
+Review now holds translations waiting to be added. Successful append removes
+accepted proposal output and part checkpoints in the same SQLite transaction
+as the draft/receipt commit. Older ready versions of those source occurrences
+are cleared too, so a previous version does not reappear as pending. Unadded
+units stay available across batches. Failed saves retain proposals. Compact
+item/receipt identities preserve insertion history and idempotent replay;
+source assets and the chapter draft are unchanged. Legacy receipted output is
+cleaned on chapter selection-state load. Newly translated proposals for a
+previously inserted source occurrence remain eligible.
+
+This supersedes retaining accepted proposals for later restoration: after
+manually removing accepted draft content, source items can be selected and
+translated again without deleting the chapter/book. “Added” is terminal queue
+state, so Resume never regenerates consumed output. Review shows an explicit
+empty state when all results were added.
+
+Verified frontend lint/TypeScript/build and 66 frontend tests; Rust suite passed
+213 tests with four existing ignored tests. Coverage includes partial acceptance,
+older versions/checkpoints cleanup, preserving unadded items, receipt replay,
+legacy cleanup and translating previously accepted source again. Native rendered
+checks for this updated empty state remain pending; next unfinished task is
+checking accept/empty/retranslate in rebuilt native Sagar. The existing bundle
+warning remains.
+
+### Replace pending translations for the same paragraph — 2026-10-15
+
+A successful, fully validated translation now atomically replaces the previous
+pending proposal for the same stable source occurrence, regardless of model.
+Old output and checkpoints are deleted and its item becomes terminal Superseded;
+failed/cancelled/incomplete attempts do not discard the previous ready result.
+A delayed completion from an older run cannot replace a newer successful run.
+Existing multiple ready proposals are reduced to the newest successful one when
+selection state loads. Review has no version picker, and replacement clears
+selection of the old proposal so the new result can be reviewed before append.
+Other paragraphs and authored draft text are unchanged. This supersedes the
+earlier saved-version selection design.
+
+Verified frontend checks and tests, plus the full Rust suite (214 passed, four
+existing ignored). Regressions cover another model failing then succeeding,
+old-output cleanup, unchanged manual draft, late completion ordering, and a
+single replacement result in Review. Native rendered checks of this simplified
+review remain pending; next unfinished task is native model-change/retranslate
+verification. The existing build bundle warning remains.

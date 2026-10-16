@@ -45,6 +45,8 @@ const paths = {
   table: "M3 3h18v18H3V3Zm0 6h18M3 15h18M9 3v18M15 3v18",
   close: "M6 6l12 12M6 18 18 6",
   settings: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
+  scrollSync:
+    "M3 4h6v16H3V4ZM15 4h6v16h-6V4ZM12 7v10M12 7L10 9M12 7l2 2M12 17l-2-2M12 17l2-2",
   refresh:
     "M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
 } as const;

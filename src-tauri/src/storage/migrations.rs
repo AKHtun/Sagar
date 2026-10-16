@@ -164,6 +164,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
         proposal_ids TEXT NOT NULL, revision INTEGER NOT NULL, created_at TEXT NOT NULL);
       CREATE INDEX ai_selection_runs_chapter ON ai_selection_runs(chapter_id,created_at);
       CREATE INDEX ai_selection_parts_item ON ai_selection_parts(item_id,part_order);"),
+    (11, "ALTER TABLE ai_selection_runs ADD COLUMN deleted_at TEXT;"),
 ];
 
 /// Highest defined schema version. Currently asserted on by tests; production
@@ -179,14 +180,14 @@ pub fn latest_version() -> i64 {
 
 /// Applies pending migrations and returns the resulting schema version.
 /// Safe to call repeatedly: already-applied scripts are skipped.
-pub fn apply(conn: &Connection) -> Result<i64, AppError> {
+pub fn apply(conn: &mut Connection) -> Result<i64, AppError> {
     let mut version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     for (target, script) in MIGRATIONS {
         let target = *target;
         if target <= version {
             continue;
         }
-        let tx = conn.unchecked_transaction()?;
+        let tx = crate::storage::begin_write(&mut *conn)?;
         tx.execute_batch(script)?;
         tx.pragma_update(None, "user_version", target)?;
         tx.commit()?;
@@ -213,15 +214,15 @@ mod tests {
 
     #[test]
     fn selection_upgrade_preserves_saved_chapter_and_source_identity() {
-        let conn = rusqlite::Connection::open_in_memory().expect("db");
+        let mut conn = rusqlite::Connection::open_in_memory().expect("db");
         for (version, script) in MIGRATIONS.iter().filter(|(version, _)| *version <= 9) {
             conn.execute_batch(script).expect("prior migration");
             conn.pragma_update(None, "user_version", version)
                 .expect("version");
         }
         conn.execute_batch("INSERT INTO projects(id,source_sha256,source_snapshot_path,title,created_at,updated_at) VALUES('p','immutable-hash','projects/p/source.epub','T','t','t'); INSERT INTO chapters(id,project_id,spine_index,manifest_item_id,resource_href,title) VALUES('c','p',0,'c','c.xhtml','C'); INSERT INTO chapter_documents(chapter_id,html,status,revision,authored) VALUES('c','<p>မြန်မာစာ</p>','reviewed',5,1);").expect("saved v9 project");
-        apply(&conn).expect("upgrade");
-        apply(&conn).expect("idempotent");
+        apply(&mut conn).expect("upgrade");
+        apply(&mut conn).expect("idempotent");
         let row:(String,String,i64,String)=conn.query_row("SELECT p.source_sha256,d.html,d.revision,d.status FROM projects p JOIN chapters c ON c.project_id=p.id JOIN chapter_documents d ON d.chapter_id=c.id",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).expect("preserved");
         assert_eq!(
             row,
@@ -240,7 +241,7 @@ mod book_settings_migration_tests {
     use super::*;
     #[test]
     fn v7_preserves_existing_metadata_and_translation_documents() {
-        let conn = Connection::open_in_memory().expect("db");
+        let mut conn = Connection::open_in_memory().expect("db");
         conn.execute_batch(
             "CREATE TABLE projects(id TEXT PRIMARY KEY,title TEXT,translated_title TEXT);
           INSERT INTO projects VALUES('p','Original','Translated');
@@ -249,8 +250,8 @@ mod book_settings_migration_tests {
           PRAGMA user_version=6;",
         )
         .expect("v6");
-        apply(&conn).expect("migrate");
-        apply(&conn).expect("idempotent");
+        apply(&mut conn).expect("migrate");
+        apply(&mut conn).expect("idempotent");
         let (title, instructions): (String, String) = conn
             .query_row(
                 "SELECT translated_title,translation_instructions FROM projects",
@@ -273,13 +274,13 @@ mod source_path_upgrade_tests {
 
     #[test]
     fn upgrade_preserves_existing_projects_and_leaves_unknown_paths_null() {
-        let conn = Connection::open_in_memory().unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
         for (version, sql) in MIGRATIONS.iter().filter(|(version, _)| *version <= 7) {
             conn.execute_batch(sql).unwrap();
             conn.pragma_update(None, "user_version", version).unwrap();
         }
         conn.execute("INSERT INTO projects(id, source_sha256, source_snapshot_path, title, created_at, updated_at) VALUES('old','hash','projects/old/source.epub','Existing book','now','now')", []).unwrap();
-        assert_eq!(apply(&conn).unwrap(), latest_version());
+        assert_eq!(apply(&mut conn).unwrap(), latest_version());
         let (title, path): (String, Option<String>) = conn
             .query_row(
                 "SELECT title, original_source_path FROM projects WHERE id='old'",

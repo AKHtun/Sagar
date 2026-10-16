@@ -1,4 +1,4 @@
-import { type MouseEvent, useEffect, useRef, useState } from "react";
+import { type MouseEvent, type RefObject, useEffect, useRef, useState } from "react";
 import { HtmlCode } from "../../components/HtmlCode";
 import { Icon } from "../../components/Icon";
 import { StatusNotice } from "../../components/StatusNotice";
@@ -10,11 +10,13 @@ export function SourcePane({
   loading,
   error,
   onRetry,
+  scrollRef,
 }: {
   content: ChapterContent | null;
   loading: boolean;
   error: string | null;
   onRetry: () => void;
+  scrollRef?: RefObject<HTMLDivElement | null>;
 }) {
   const [view, setView] = useState<"reader" | "html">("reader");
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "error">(
@@ -82,7 +84,7 @@ export function SourcePane({
           </button>
         </fieldset>
       </div>
-      <div className="pane__scroll">
+      <div className="pane__scroll" ref={scrollRef}>
         {copyState === "copied" ? (
           <StatusNotice kind="success">Original HTML copied.</StatusNotice>
         ) : null}

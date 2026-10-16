@@ -39,7 +39,7 @@ pub fn import_epub(
     let sha256 = hash_file(source_path)?;
 
     storage::initialize(data_dir)?;
-    let conn = storage::open_database(&data_dir.join("sagar.db"))?;
+    let mut conn = storage::open_database(&data_dir.join("sagar.db"))?;
 
     if !allow_duplicate && let Some(existing) = projects::find_by_source_hash(&conn, &sha256)? {
         return Err(AppError::with_details(
@@ -102,7 +102,7 @@ pub fn import_epub(
         new_chapters.push((new_chapter, new_blocks));
     }
 
-    projects::create_project(&conn, &new_project, &new_chapters)?;
+    projects::create_project(&mut conn, &new_project, &new_chapters)?;
 
     // Book-level warnings plus per-chapter findings, located by chapter title
     // so the UI can point the user at the right place.

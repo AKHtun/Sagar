@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatChapterHtml } from "../../lib/html/format";
 import { appendAiSelectionResults } from "../../lib/tauri/aiSelection";
 import { saveChapterDocument } from "../../lib/tauri/commands";
+import { isBusyError } from "../../lib/tauri/errors";
 import type { BlockStatus, ChapterContent } from "../../types/chapter";
 import type { SaveIndicator } from "./useTranslationEditor";
 
@@ -15,6 +16,15 @@ export type Draft = {
   error: string | null;
   conflict: boolean;
 };
+
+/** Transient lock-contention retries: the backend already waits and retries,
+ * so these only cover the residual overlap window. */
+const MAX_BUSY_RETRIES = 3;
+const BUSY_RETRY_DELAYS_MS = [250, 500, 1000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 export function useChapterEditor(content: ChapterContent | null) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const latest = useRef<Draft | null>(null);
@@ -60,46 +70,66 @@ export function useChapterEditor(content: ChapterContent | null) {
     if (!snapshot?.dirty) return !snapshot?.error;
     if (snapshot.conflict) return false;
     setSaving(true);
-    const request = saveChapterDocument(
-      snapshot.chapterId,
-      snapshot.html || null,
-      snapshot.status,
-      snapshot.revision,
-    )
-      .then((result) => {
-        const current = latest.current;
-        if (current?.chapterId === snapshot.chapterId) {
-          const changed = current.version !== snapshot.version;
-          publish({
-            ...current,
-            revision: result.revision,
-            status: changed ? current.status : result.status,
-            dirty: changed,
-            error: null,
-            conflict: false,
-          });
-        }
-        return true;
-      })
-      .catch((error: unknown) => {
-        const current = latest.current;
-        if (current?.chapterId === snapshot.chapterId)
-          publish({
-            ...current,
-            error:
-              error instanceof Error ? error.message : "The chapter could not be saved.",
-            conflict:
-              typeof error === "object" &&
-              error !== null &&
-              "code" in error &&
-              error.code === "revision_conflict",
-          });
-        return false;
-      })
-      .finally(() => {
-        inflight.current = null;
-        setSaving(false);
-      });
+    // One chained attempt sequence per save() call: busy retries re-issue
+    // inside the same chain so `inflight` never awaits itself.
+    const issue = (issued: Draft, attempt: number): Promise<boolean> =>
+      saveChapterDocument(
+        issued.chapterId,
+        issued.html || null,
+        issued.status,
+        issued.revision,
+      )
+        .then((result) => {
+          const current = latest.current;
+          if (current?.chapterId === snapshot.chapterId) {
+            const changed = current.version !== issued.version;
+            publish({
+              ...current,
+              revision: result.revision,
+              status: changed ? current.status : result.status,
+              dirty: changed,
+              error: null,
+              conflict: false,
+            });
+          }
+          return true;
+        })
+        .catch(async (error: unknown): Promise<boolean> => {
+          if (isBusyError(error) && attempt < MAX_BUSY_RETRIES) {
+            // Another save or chapter load briefly holds the database.
+            // Retry with the newest draft instead of surfacing "database is
+            // locked". The revision is unchanged because nothing was written.
+            await sleep(BUSY_RETRY_DELAYS_MS[attempt] ?? 500);
+            const current = latest.current;
+            if (
+              current?.chapterId === snapshot.chapterId &&
+              current.dirty &&
+              !current.conflict
+            ) {
+              return issue(current, attempt + 1);
+            }
+            return false;
+          }
+          const current = latest.current;
+          if (current?.chapterId === snapshot.chapterId)
+            publish({
+              ...current,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "The chapter could not be saved.",
+              conflict:
+                typeof error === "object" &&
+                error !== null &&
+                "code" in error &&
+                error.code === "revision_conflict",
+            });
+          return false;
+        });
+    const request = issue(snapshot, 0).finally(() => {
+      inflight.current = null;
+      setSaving(false);
+    });
     inflight.current = request;
     return request;
   }, [publish]);

@@ -119,8 +119,24 @@ export function AiGenerateDialog({
             'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), summary, [tabindex="0"]',
           ) ?? [],
         );
-        const first = controls[0];
-        const last = controls[controls.length - 1];
+        const visibleControls = controls.filter((control) => {
+          if (control.closest("[hidden]")) return false;
+          for (
+            let parent = control.parentElement;
+            parent;
+            parent = parent.parentElement
+          ) {
+            if (
+              parent.tagName === "DETAILS" &&
+              !parent.hasAttribute("open") &&
+              parent.querySelector(":scope > summary") !== control
+            )
+              return false;
+          }
+          return true;
+        });
+        const first = visibleControls[0];
+        const last = visibleControls[visibleControls.length - 1];
         if (
           event.shiftKey &&
           (document.activeElement === first ||
@@ -419,6 +435,7 @@ export function AiGenerateDialog({
 
         {mode === "selected" ? (
           <AiSelectionPanel
+            key={chapterId}
             chapterId={chapterId}
             selection={selection}
             bookInstructions={bookInstructions}

@@ -100,8 +100,8 @@ pub fn save(data_dir: &Path, project_id: &str, settings: BookSettings) -> Result
     if let Some(cover) = &settings.custom_cover {
         crate::epub::rich_text::image_bytes(cover)?;
     }
-    let conn = open_db(data_dir)?;
-    let tx = conn.unchecked_transaction()?;
+    let mut conn = open_db(data_dir)?;
+    let tx = crate::storage::begin_write(&mut conn)?;
     let changed = tx.execute("UPDATE projects SET translated_title=?1, export_author=?2, export_publisher=?3,
         export_description=?4, source_language=?5, target_language=?6, translation_instructions=?7, updated_at=?8, custom_cover=?10 WHERE id=?9",
         rusqlite::params![title, nonblank(&author), nonblank(&publisher), nonblank(&description), source, target, instructions, chrono::Utc::now().to_rfc3339(), project_id, settings.custom_cover])?;

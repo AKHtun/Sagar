@@ -13,7 +13,14 @@ export type SelectionItem = {
   id: string;
   unitId: string;
   order: number;
-  state: "pending" | "translating" | "ready" | "failed" | "skipped";
+  state:
+    | "pending"
+    | "translating"
+    | "ready"
+    | "failed"
+    | "skipped"
+    | "added"
+    | "superseded";
   previewHtml: string | null;
   sourcePreviewHtml: string;
   failedOutput: string | null;

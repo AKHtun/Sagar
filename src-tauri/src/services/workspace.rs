@@ -136,8 +136,8 @@ pub fn save_translation(
     data_dir: &Path,
     input: translations::SaveInput,
 ) -> Result<SaveResult, AppError> {
-    let conn = open_db(data_dir)?;
-    let result = translations::save_translation(&conn, input)?;
+    let mut conn = open_db(data_dir)?;
+    let result = translations::save_translation(&mut conn, input)?;
     Ok(result)
 }
 
@@ -246,8 +246,8 @@ pub fn save_rich_translation(
     status: String,
     expected_revision: i64,
 ) -> Result<SaveResult, AppError> {
-    let conn = open_db(data_dir)?;
-    translations::save_rich_translation(&conn, block_id, target_html, status, expected_revision)
+    let mut conn = open_db(data_dir)?;
+    translations::save_rich_translation(&mut conn, block_id, target_html, status, expected_revision)
 }
 
 pub fn save_chapter_document(
@@ -257,8 +257,8 @@ pub fn save_chapter_document(
     status: &str,
     revision: i64,
 ) -> Result<SaveResult, AppError> {
-    let conn = open_db(data_dir)?;
-    storage::documents::save(&conn, chapter_id, html, status, revision)
+    let mut conn = open_db(data_dir)?;
+    storage::documents::save(&mut conn, chapter_id, html, status, revision)
 }
 
 #[cfg(test)]

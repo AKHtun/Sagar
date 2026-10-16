@@ -127,7 +127,7 @@ fn preview(unit: &SourceUnit, html: &str, config: &repo::RunConfig) -> String {
 }
 
 fn initialize_units(data_dir: &Path, chapter: &str) -> Result<repo::RunConfig, AppError> {
-    let conn = workspace::open_db(data_dir)?;
+    let mut conn = workspace::open_db(data_dir)?;
     let source = crate::storage::ai_translate::translation_source(&conn, chapter)?;
     let fingerprint = fingerprint(&conn, &source.project_id)?;
     let config = repo::RunConfig {
@@ -153,7 +153,7 @@ fn initialize_units(data_dir: &Path, chapter: &str) -> Result<repo::RunConfig, A
     let text = std::str::from_utf8(&bytes)
         .map_err(|_| AppError::new("invalid_epub", "The chapter is not UTF-8 XHTML."))?;
     let mut units = selection::collect(text)?;
-    let tx = conn.unchecked_transaction()?;
+    let tx = crate::storage::begin_write(&mut conn)?;
     for unit in &mut units {
         unit.id = repo::block_id(&tx, chapter, &unit.locator)?
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
@@ -220,7 +220,11 @@ fn check_images(
 
 pub fn load(data_dir: &Path, chapter: &str) -> Result<SelectionState, AppError> {
     let config = initialize_units(data_dir, chapter)?;
-    let conn = workspace::open_db(data_dir)?;
+    let mut conn = workspace::open_db(data_dir)?;
+    let cleanup = crate::storage::begin_write(&mut conn)?;
+    repo::cleanup_receipted_proposals(&cleanup, chapter)?;
+    repo::cleanup_replaced_proposals(&cleanup, chapter)?;
+    cleanup.commit()?;
     let added: HashSet<_> = repo::added_units(&conn, chapter)?.into_iter().collect();
     let mut runs = vec![];
     let mut ready = HashSet::new();
@@ -245,12 +249,16 @@ pub fn load(data_dir: &Path, chapter: &str) -> Result<SelectionState, AppError> 
                 id: item.id,
                 unit_id: item.unit.id.clone(),
                 order: item.unit.order,
-                state: item.state,
+                state: item.state.clone(),
                 preview_html: item
                     .proposal
                     .as_ref()
                     .map(|html| preview(&item.unit, html, &run.config)),
-                source_preview_html: preview(&item.unit, &item.unit.html, &run.config),
+                source_preview_html: if matches!(item.state.as_str(), "added" | "superseded") {
+                    String::new()
+                } else {
+                    preview(&item.unit, &item.unit.html, &run.config)
+                },
                 failed_output,
                 parts_done: parts.iter().filter(|p| p.state == "ready").count(),
                 parts_total: parts.len(),
@@ -284,7 +292,7 @@ pub fn load(data_dir: &Path, chapter: &str) -> Result<SelectionState, AppError> 
 
 pub fn prepare(data_dir: &Path, input: PrepareInput) -> Result<String, AppError> {
     let mut config = initialize_units(data_dir, &input.chapter_id)?;
-    let conn = workspace::open_db(data_dir)?;
+    let mut conn = workspace::open_db(data_dir)?;
     let ids: HashSet<_> = input.unit_ids.iter().cloned().collect();
     if ids.is_empty() || ids.len() != input.unit_ids.len() {
         return Err(AppError::new(
@@ -317,7 +325,7 @@ pub fn prepare(data_dir: &Path, input: PrepareInput) -> Result<String, AppError>
             ));
         }
     }
-    repo::create_run(&conn, &input.chapter_id, &config, &selected)
+    repo::create_run(&mut conn, &input.chapter_id, &config, &selected)
 }
 fn validate_provider(data_dir: &Path, config: &mut repo::RunConfig) -> Result<(), AppError> {
     let agent = ai::TranslationAgent::parse(&config.agent).ok_or_else(|| {
@@ -478,7 +486,7 @@ pub fn control(
             "This run is already active. Wait or cancel it first.",
         ));
     }
-    let conn = workspace::open_db(data_dir)?;
+    let mut conn = workspace::open_db(data_dir)?;
     let mut run = repo::run(&conn, id)?;
     if fingerprint(&conn, &run.config.project_id)? != run.config.fingerprint {
         return Err(AppError::new(
@@ -501,7 +509,10 @@ pub fn control(
     };
     let has_text = items.iter().any(|i| {
         Some(&i.id) != skip_id.as_ref()
-            && !matches!(i.state.as_str(), "ready" | "skipped")
+            && !matches!(
+                i.state.as_str(),
+                "ready" | "skipped" | "added" | "superseded"
+            )
             && !i.unit.text.is_empty()
     });
     if has_text && !consent {
@@ -514,7 +525,7 @@ pub fn control(
         validate_provider(data_dir, &mut run.config)?;
     }
     if action == "smaller" {
-        repo::reduce_budget(&conn, id)?;
+        repo::reduce_budget(&mut conn, id)?;
         run = repo::run(&conn, id)?;
     }
     if let Some(item) = skip_id {
@@ -619,13 +630,16 @@ fn process(
     cancel: &AtomicBool,
     notify: &Notify<'_>,
 ) -> Result<(), AppError> {
-    let conn = workspace::open_db(data_dir)?;
+    let mut conn = workspace::open_db(data_dir)?;
     let source_units = repo::units(&conn, &run.chapter_id)?;
     let work = ai_translate::create_work_dir(&uuid::Uuid::new_v4().to_string())?;
     let result = (|| {
         let mut provider = None;
         for item in repo::items(&conn, &run.id)? {
-            if matches!(item.state.as_str(), "ready" | "skipped") {
+            if matches!(
+                item.state.as_str(),
+                "ready" | "skipped" | "added" | "superseded"
+            ) {
                 continue;
             }
             if cancel.load(Ordering::SeqCst) {
@@ -637,7 +651,7 @@ fn process(
             repo::set_item(&conn, &item.id, "translating", None)?;
             if repo::parts(&conn, &item.id)?.is_empty() {
                 repo::insert_parts(
-                    &conn,
+                    &mut conn,
                     &item.id,
                     &selection::parts(&item.unit.html, run.budget)?,
                 )?;
@@ -767,7 +781,7 @@ fn process(
                 item.unit.clone(),
                 html.clone(),
             )]))?;
-            repo::set_item(&conn, &item.id, "ready", Some(&html))?;
+            repo::publish_proposal(&mut conn, &item.id, &html)?;
             notify(
                 "checkpoint",
                 Some(&item.id),
@@ -789,8 +803,8 @@ pub fn append(data_dir: &Path, input: AppendInput) -> Result<AppendResult, AppEr
             "The append request identity is invalid.",
         ));
     }
-    let conn = workspace::open_db(data_dir)?;
-    let tx = conn.unchecked_transaction()?;
+    let mut conn = workspace::open_db(data_dir)?;
+    let tx = crate::storage::begin_write(&mut conn)?;
     let ids_json = repo::json(&input.proposal_ids)?;
     if let Some((chapter, ids)) = repo::append_receipt(&tx, &input.request_id)? {
         if chapter != input.chapter_id || ids != ids_json {
@@ -860,7 +874,12 @@ pub fn append(data_dir: &Path, input: AppendInput) -> Result<AppendResult, AppEr
         .filter(|u| added.contains(&u.id))
         .map(|u| u.order)
         .max();
-    if !input.confirm_out_of_order
+    let current = documents::load(&tx, &input.chapter_id)?;
+    if current
+        .html
+        .as_ref()
+        .is_some_and(|html| !html.trim().is_empty())
+        && !input.confirm_out_of_order
         && previous_max.is_some_and(|max| accepted.iter().any(|(u, _)| u.order < max))
     {
         return Err(AppError::new(
@@ -868,7 +887,6 @@ pub fn append(data_dir: &Path, input: AppendInput) -> Result<AppendResult, AppEr
             "These results will be added after later source content. Confirm to append them at the end.",
         ));
     }
-    let current = documents::load(&tx, &input.chapter_id)?;
     let appended = selection::assemble(&accepted);
     let html = format!("{}{appended}", current.html.as_deref().unwrap_or(""));
     reject_duplicate_ids(&html)?;
@@ -886,6 +904,9 @@ pub fn append(data_dir: &Path, input: AppendInput) -> Result<AppendResult, AppEr
         &ids_json,
         result.revision,
     )?;
+    for (unit, _) in &accepted {
+        repo::consume_ready_versions(&tx, &unit.id)?;
+    }
     let saved = documents::load(&tx, &input.chapter_id)?;
     tx.commit()?;
     Ok(AppendResult {
@@ -913,4 +934,17 @@ fn reject_duplicate_ids(html: &str) -> Result<(), AppError> {
         }
     }
     Ok(())
+}
+
+/// Delete proposals without changing authored drafts or append history.
+pub fn delete_run(data_dir: &Path, chapter: &str, id: &str) -> Result<(), AppError> {
+    let registry = active_lock()?;
+    if registry.contains_key(id) {
+        return Err(AppError::new(
+            "run_active",
+            "Cancel translation and wait for it to stop before deleting this run.",
+        ));
+    }
+    let mut conn = workspace::open_db(data_dir)?;
+    repo::delete_run(&mut conn, chapter, id)
 }

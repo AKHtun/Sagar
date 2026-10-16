@@ -124,7 +124,7 @@ pub fn block_id(
 pub fn run(conn: &Connection, id: &str) -> Result<Run, AppError> {
     let row = conn
         .query_row(
-            "SELECT id,chapter_id,config,state,message,budget FROM ai_selection_runs WHERE id=?1",
+            "SELECT id,chapter_id,config,state,message,budget FROM ai_selection_runs WHERE id=?1 AND deleted_at IS NULL",
             [id],
             |r| {
                 Ok((
@@ -155,19 +155,19 @@ pub fn run(conn: &Connection, id: &str) -> Result<Run, AppError> {
 }
 pub fn runs(conn: &Connection, chapter: &str) -> Result<Vec<Run>, AppError> {
     let mut stmt = conn.prepare(
-        "SELECT id FROM ai_selection_runs WHERE chapter_id=?1 ORDER BY created_at DESC,id",
+        "SELECT id FROM ai_selection_runs WHERE chapter_id=?1 AND deleted_at IS NULL ORDER BY created_at DESC,id",
     )?;
     stmt.query_map([chapter], |r| r.get::<_, String>(0))?
         .map(|r| run(conn, &r?))
         .collect()
 }
 pub fn create_run(
-    conn: &Connection,
+    conn: &mut Connection,
     chapter: &str,
     config: &RunConfig,
     selected: &[SourceUnit],
 ) -> Result<String, AppError> {
-    let tx = conn.unchecked_transaction()?;
+    let tx = crate::storage::begin_write(conn)?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     tx.execute("INSERT INTO ai_selection_runs(id,chapter_id,config,state,created_at,updated_at) VALUES(?1,?2,?3,'paused',?4,?4)",params![id,chapter,json(config)?,now])?;
@@ -239,11 +239,11 @@ pub fn parts(conn: &Connection, item: &str) -> Result<Vec<Part>, AppError> {
         .collect::<Result<Vec<_>, _>>()?)
 }
 pub fn insert_parts(
-    conn: &Connection,
+    conn: &mut Connection,
     item: &str,
     parts: &[crate::epub::selection::TextPart],
 ) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
+    let tx = crate::storage::begin_write(conn)?;
     for (order, p) in parts.iter().enumerate() {
         tx.execute("INSERT INTO ai_selection_parts(id,item_id,part_order,node_index,start_byte,end_byte,source) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![uuid::Uuid::new_v4().to_string(),item,order,p.node,p.start,p.end,p.text])?;
     }
@@ -271,7 +271,7 @@ pub fn fail_part(conn: &Connection, id: &str, text: &str) -> Result<(), AppError
     )?;
     Ok(())
 }
-pub fn reduce_budget(conn: &Connection, run_id: &str) -> Result<(), AppError> {
+pub fn reduce_budget(conn: &mut Connection, run_id: &str) -> Result<(), AppError> {
     let current = run(conn, run_id)?;
     if current.budget <= 512 {
         return Err(AppError::new(
@@ -279,7 +279,7 @@ pub fn reduce_budget(conn: &Connection, run_id: &str) -> Result<(), AppError> {
             "The smallest batch size has been reached. Retry, skip this item, or choose another model.",
         ));
     }
-    let tx = conn.unchecked_transaction()?;
+    let tx = crate::storage::begin_write(conn)?;
     tx.execute(
         "UPDATE ai_selection_runs SET budget=?1 WHERE id=?2",
         params![(current.budget / 2).max(512), run_id],
@@ -287,7 +287,12 @@ pub fn reduce_budget(conn: &Connection, run_id: &str) -> Result<(), AppError> {
     // Only unfinished ranges are rebuilt; completed translated ranges survive.
     let unfinished: Vec<_> = items(&tx, run_id)?
         .into_iter()
-        .filter(|i| !matches!(i.state.as_str(), "ready" | "skipped"))
+        .filter(|i| {
+            !matches!(
+                i.state.as_str(),
+                "ready" | "skipped" | "added" | "superseded"
+            )
+        })
         .collect();
     for item in unfinished {
         let saved = parts(&tx, &item.id)?;
@@ -328,4 +333,100 @@ pub fn added_units(conn: &Connection, chapter: &str) -> Result<Vec<String>, AppE
         }
     }
     Ok(result)
+}
+
+/// Retain only identity mappings needed by existing append receipts.
+pub fn delete_run(conn: &mut Connection, chapter: &str, id: &str) -> Result<(), AppError> {
+    let tx = crate::storage::begin_write(conn)?;
+    let saved = run(&tx, id)?;
+    if saved.chapter_id != chapter {
+        return Err(AppError::new(
+            "run_not_found",
+            "This run does not belong to this chapter.",
+        ));
+    }
+    tx.execute("DELETE FROM ai_selection_parts WHERE item_id IN (SELECT id FROM ai_selection_items WHERE run_id=?1)", [id])?;
+    tx.execute(
+        "UPDATE ai_selection_items SET proposal=NULL, state='skipped' WHERE run_id=?1",
+        [id],
+    )?;
+    tx.execute(
+        "UPDATE ai_selection_runs SET deleted_at=?2, config='{}', message=NULL WHERE id=?1",
+        params![id, chrono::Utc::now().to_rfc3339()],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Caller owns the transaction. Keep receipt identities, discard consumed content.
+pub fn consume_item(conn: &Connection, id: &str) -> Result<(), AppError> {
+    conn.execute("DELETE FROM ai_selection_parts WHERE item_id=?1 AND EXISTS (SELECT 1 FROM ai_selection_items WHERE id=?1 AND state='ready')", [id])?;
+    conn.execute(
+        "UPDATE ai_selection_items SET proposal=NULL,state='added' WHERE id=?1 AND state='ready'",
+        [id],
+    )?;
+    Ok(())
+}
+
+pub fn consume_ready_versions(conn: &Connection, unit: &str) -> Result<(), AppError> {
+    let ids: Vec<String> = conn
+        .prepare("SELECT id FROM ai_selection_items WHERE unit_id=?1 AND state='ready'")?
+        .query_map([unit], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    for id in ids {
+        consume_item(conn, &id)?;
+    }
+    Ok(())
+}
+
+/// Clean accepted outputs retained by older app versions, never newly translated proposals.
+pub fn cleanup_receipted_proposals(conn: &Connection, chapter: &str) -> Result<(), AppError> {
+    let rows: Vec<String> = conn
+        .prepare("SELECT proposal_ids FROM ai_selection_appends WHERE chapter_id=?1")?
+        .query_map([chapter], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    for row in rows {
+        for id in decode::<Vec<String>>(&row)? {
+            consume_item(conn, &id)?;
+        }
+    }
+    Ok(())
+}
+
+fn retain_newest_ready(conn: &Connection, unit: &str) -> Result<(), AppError> {
+    let ids: Vec<String> = conn.prepare("SELECT i.id FROM ai_selection_items i JOIN ai_selection_runs r ON r.id=i.run_id WHERE i.unit_id=?1 AND i.state='ready' AND r.deleted_at IS NULL ORDER BY r.created_at DESC,r.id")?
+        .query_map([unit], |row| row.get(0))?.collect::<Result<_,_>>()?;
+    for id in ids.into_iter().skip(1) {
+        conn.execute("DELETE FROM ai_selection_parts WHERE item_id=?1", [&id])?;
+        conn.execute(
+            "UPDATE ai_selection_items SET proposal=NULL,state='superseded' WHERE id=?1",
+            [&id],
+        )?;
+    }
+    Ok(())
+}
+
+/// Only a complete, validated success can replace an earlier proposal.
+pub fn publish_proposal(conn: &mut Connection, id: &str, html: &str) -> Result<(), AppError> {
+    let tx = crate::storage::begin_write(conn)?;
+    set_item(&tx, id, "ready", Some(html))?;
+    let unit: String = tx.query_row(
+        "SELECT unit_id FROM ai_selection_items WHERE id=?1",
+        [id],
+        |row| row.get(0),
+    )?;
+    retain_newest_ready(&tx, &unit)?;
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn cleanup_replaced_proposals(conn: &Connection, chapter: &str) -> Result<(), AppError> {
+    let units: Vec<String> = conn
+        .prepare("SELECT id FROM ai_selection_units WHERE chapter_id=?1")?
+        .query_map([chapter], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    for unit in units {
+        retain_newest_ready(conn, &unit)?;
+    }
+    Ok(())
 }
