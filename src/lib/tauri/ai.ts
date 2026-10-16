@@ -3,6 +3,7 @@ import type {
   AiHtmlFixStart,
   AiProviderList,
   AiTranslationStart,
+  ApiProtocol,
   CliCheckResult,
   CustomProviderSummary,
   CustomTestResult,
@@ -30,6 +31,7 @@ export async function checkAiCli(providerId: string): Promise<CliCheckResult> {
 }
 
 export async function saveAiCustomProvider(input: {
+  protocol: ApiProtocol;
   id?: string;
   name: string;
   baseUrl: string;
@@ -38,6 +40,7 @@ export async function saveAiCustomProvider(input: {
 }): Promise<CustomProviderSummary> {
   try {
     return await invoke<CustomProviderSummary>("save_ai_custom_provider", {
+      protocol: input.protocol,
       id: input.id ?? null,
       name: input.name,
       baseUrl: input.baseUrl,

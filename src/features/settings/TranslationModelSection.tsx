@@ -121,14 +121,19 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
     catalog?.agent === agent
       ? catalog.models.find((model) => model.id === draft.trim())
       : undefined;
-  const effortOptions = agent.startsWith("custom:")
-    ? ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
-    : (selectedModel?.reasoningEfforts ??
-      (agent === "codex"
+  const customProtocol =
+    custom.find((provider) => `custom:${provider.id}` === agent)?.protocol ?? "openai";
+  const effortOptions =
+    agent.startsWith("custom:") && customProtocol !== "openai"
+      ? []
+      : agent.startsWith("custom:")
         ? ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
-        : agent === "agy"
-          ? ["low", "medium", "high"]
-          : []));
+        : (selectedModel?.reasoningEfforts ??
+          (agent === "codex"
+            ? ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
+            : agent === "agy"
+              ? ["low", "medium", "high"]
+              : []));
   const effortOrder = [
     "none",
     "minimal",
@@ -327,7 +332,7 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
         <span>Reasoning effort{agent === "opencode" ? " / model variant" : ""}</span>
         <select
           value={effectiveEffort}
-          disabled={loading || draft.trim() === ""}
+          disabled={loading || draft.trim() === "" || effortOptions.length === 0}
           aria-describedby="reasoning-effort-help"
           onChange={(event) => {
             setEffort(event.target.value);
@@ -344,7 +349,7 @@ export function TranslationModelSection({ cli, custom }: TranslationModelSection
         </select>
       </label>
       <p className="dialog__muted" id="reasoning-effort-help">
-        {agent.startsWith("custom:")
+        {agent.startsWith("custom:") && customProtocol === "openai"
           ? "Send the selected reasoning effort to your API provider. Available choices are overrides, not detected model capabilities. If the provider rejects a value, choose another level or Default to use its own setting."
           : effortOptions.length === 0
             ? "No adjustable effort levels are listed for this model. The provider default will be used."

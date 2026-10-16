@@ -165,6 +165,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
       CREATE INDEX ai_selection_runs_chapter ON ai_selection_runs(chapter_id,created_at);
       CREATE INDEX ai_selection_parts_item ON ai_selection_parts(item_id,part_order);"),
     (11, "ALTER TABLE ai_selection_runs ADD COLUMN deleted_at TEXT;"),
+    (12, "ALTER TABLE ai_custom_providers ADD COLUMN protocol TEXT NOT NULL DEFAULT 'openai' CHECK(protocol IN ('openai', 'gemini', 'anthropic'));"),
 ];
 
 /// Highest defined schema version. Currently asserted on by tests; production
@@ -247,7 +248,7 @@ mod book_settings_migration_tests {
           INSERT INTO projects VALUES('p','Original','Translated');
           CREATE TABLE chapter_documents(chapter_id TEXT,html TEXT,revision INTEGER);
           INSERT INTO chapter_documents VALUES('c','<p>Saved draft</p>',4);
-          PRAGMA user_version=6;",
+          CREATE TABLE ai_custom_providers (id TEXT PRIMARY KEY); PRAGMA user_version=6;",
         )
         .expect("v6");
         apply(&mut conn).expect("migrate");

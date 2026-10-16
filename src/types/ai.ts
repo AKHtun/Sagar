@@ -16,7 +16,10 @@ export type CliCheckResult = {
   message: string;
 };
 
+export type ApiProtocol = "openai" | "gemini" | "anthropic";
+
 export type CustomProviderSummary = {
+  protocol: ApiProtocol;
   id: string;
   name: string;
   baseUrl: string;

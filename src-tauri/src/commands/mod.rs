@@ -293,6 +293,7 @@ pub async fn check_ai_cli(app: AppHandle, provider_id: String) -> Result<CliChec
 #[tauri::command]
 pub async fn save_ai_custom_provider(
     app: AppHandle,
+    protocol: Option<String>,
     id: Option<String>,
     name: String,
     base_url: String,
@@ -304,6 +305,7 @@ pub async fn save_ai_custom_provider(
         services::ai::save_ai_custom_provider(
             &data_dir,
             services::ai::SaveCustomInput {
+                protocol: protocol.unwrap_or_else(|| "openai".into()),
                 id,
                 name,
                 base_url,

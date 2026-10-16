@@ -1,5 +1,153 @@
 # Plan.md — EPUB Translation Studio
 
+### Corrected saved ZAI API format — 2026-10-16
+
+The repeated “HTTP 200 returned JSON instead of an SSE stream” message was traced
+to the non-Anthropic branch. Read-only inspection of local settings confirmed the
+selected ZAI provider had the Anthropic endpoint and glm-5.3 model but protocol
+openai. Corrected that provider through the existing Rust settings service to
+anthropic, retaining its stored key and model. The endpoint normalizes to
+`https://api.z.ai/api/anthropic/v1`; Messages requests append `/messages`.
+Verified the persisted protocol and active selection without reading/displaying
+secrets or sending book text. A temporary maintenance example invoked the service
+and was removed afterward. No implementation change or additional automated test
+was needed. No live provider request made. Next unfinished task: reopen Sagar and
+retry the existing ZAI selection; native/provider success remains unverified.
+
+
+### Anthropic-compatible response formats and Z.ai auth — 2026-10-16
+
+The user reported a successful HTTP response rejected for lacking the SSE content
+type, using `https://api.z.ai/api/anthropic` and `glm-5.3`. Z.ai documents that base
+URL with ANTHROPIC_AUTH_TOKEN. Anthropic calls and model probes now send Bearer
+authentication alongside x-api-key; the same saved key goes only to the chosen
+endpoint. Existing base normalization retains `/api/anthropic/v1/messages`.
+
+The transport reports a fixed response-format classification in request details.
+For Anthropic only, bounded response inspection accepts SSE carrying a nonstandard
+content type or a complete Messages JSON envelope when stream=true was ignored.
+A JSON success requires assistant/message identity, text-only output (thinking is
+excluded), nonempty text and end_turn. Tool/error/wrong-protocol/HTML responses
+remain rejected. Incomplete JSON answers emit recoverable partial text before
+failure; existing proposal validation and draft-review boundaries still apply.
+No extra request or automatic protocol fallback occurs. Cancellation/deadlines
+cover inspection and JSON reads, and mislabeled completed SSE avoids waiting for
+connection closure. Response bodies, credentials, book text and reasoning remain
+excluded from diagnostics. References:
+https://docs.z.ai/devpack/tool/claude and
+https://platform.claude.com/docs/en/api/messages/create.
+
+Local HTTP tests cover the user's Z.ai path/model with Bearer authentication,
+JSON/mislabeled SSE, private error handling, HTML/wrong-protocol/tool rejection,
+recoverable truncation and cancellation. Rust formatting and the full suite
+passed (173 unit, 13 selection, 22 export, 20 import tests; four existing tests
+ignored); the 17 transport tests passed after adding the final JSON cancellation
+regression. No frontend code changed in this follow-up. This does not establish the actual
+response body returned by the user's account; no live authenticated Z.ai request
+was made. No UI layout or persistence schema changed. Next unfinished task:
+rebuild/restart Sagar and retry the saved provider, checking response-format/status
+details if it fails. Native and Windows/Linux behavior remain unverified.
+No milestone checkboxes advanced.
+
+
+### Gemini Interactions and precise HTTP failures — 2026-10-16
+
+The user reported “The provider is temporarily unavailable” after testing Gemini.
+That message covered every HTTP 5xx response and does not establish the precise
+status, selected model or cause; no authenticated Google request was reproduced.
+This follow-up corrects the confirmed API mismatch discussed with the user's
+Interactions example: Gemini now posts model/input/stream=true/store=false to
+`{base}/interactions`, authenticating with x-goog-api-key. Both a versioned base
+and full Interactions URL work, preserving proxy prefixes; models/ is removed
+from model IDs. Existing settings and saved translations remain intact.
+
+The SSE adapter follows Google's current step.start/delta/stop and interaction
+lifecycle events, emitting only model-output text and counting thought summaries
+without exposing them. Completed status and closed steps are required; tools,
+non-text output, malformed/truncated streams and failed/incomplete status are
+rejected with recoverable partial text. Translation, Retry, HTML repair and
+cancellation still use the existing services. Gemini reasoning/output-token
+configuration remains at provider defaults; this change does not add controls
+for the example's max_output_tokens or thinking_level. No automatic HTTP retry
+or fallback to a different API/model is introduced.
+
+HTTP failures now retain their numeric status with fixed, actionable messages
+for internal errors, service unavailability, quota, access and missing endpoints/
+models, without returning provider bodies or private content. This improves
+diagnosis; it does not guarantee Google's availability. Settings help names the
+Interactions API and stateless behavior. API reference:
+https://ai.google.dev/api/interactions-api.
+
+Validation: frontend lint/build and four affected component tests passed; the
+existing bundle-size warning remains. Rust formatting and full suite passed
+(169 unit, 13 selection, 22 export, 20 import tests; four existing tests ignored),
+with additional Interactions regressions covering full endpoint/proxy paths,
+model prefix, request privacy, partial recovery and HTTP 500/503 status feedback.
+Native light/dark/minimum-window/keyboard, Windows/Linux and live Gemini checks
+remain unverified. Next unfinished task: rebuild/restart Sagar and retry the
+chosen Gemini model; inspect the numeric HTTP status if Google still rejects it.
+No milestone checkboxes advanced.
+
+
+### Anthropic BYOK proxy URLs — 2026-10-15
+
+The user confirmed direct API key + configurable endpoint support, including
+DeepSeek's Anthropic-compatible API. Anthropic URL handling now accepts SDK roots
+(`https://api.deepseek.com/anthropic`), versioned bases and full Messages URLs
+(`https://api.anthropic.com/v1/messages`). Root inputs gain `/v1`; full endpoints
+are normalized to their containing base. Translation and model probes use the
+same normalized base, retaining proxy prefixes and avoiding duplicated paths.
+The settings help now describes these inputs. Existing saved versioned bases
+continue working; no additional schema migration is needed. Model IDs remain
+editable manually when a compatible service does not offer a model list.
+Reference: https://api-docs.deepseek.com/guides/anthropic_api/ and the official
+Anthropic SDK's `/v1/messages` request path. Regression tests cover root/versioned/
+full/proxy URL normalization and real local HTTP requests with DeepSeek-style
+paths, API-key authentication and the selected model. Frontend lint/build and
+four affected component tests passed; Rust formatting and full suite passed
+(169 unit, 13 selection, 22 export, 20 import tests; four existing tests ignored),
+with the URL unit regression rerun after the final input-validation adjustment.
+The existing bundle-size warning remains. No live DeepSeek call made.
+Next unfinished task: rebuild/restart and verify with the user's chosen key/model.
+Native visual/interaction and Windows/Linux checks remain unverified.
+
+
+### Gemini and Anthropic-compatible APIs — 2026-10-15
+
+Explicitly requested follow-up to the existing custom API translation workflow.
+Settings → AI Providers now offers OpenAI Compatible, Gemini API Compatible and
+Anthropic (Claude) API Compatible. Claude API support means the Anthropic Messages
+protocol used by Claude Code; the existing Claude Code CLI remains a separate
+provider. The form explains the protocol and versioned base URL, supplies official
+Gemini/Anthropic endpoint defaults, and keeps custom endpoints editable.
+
+Schema migration 12 adds a persisted protocol, defaulting existing providers to
+OpenAI without changing secrets or translations. Rust model discovery/testing uses
+protocol-specific authentication. Native Gemini Generate Content and Anthropic
+Messages streaming feed the same translation, Retry, HTML repair, consent,
+validation and proposal-review services. Keys remain masked; redirects are disabled.
+Only answer text enters proposals; thinking is counted without exposing it, and
+blocked/truncated/tool/error responses fail with recoverable partial output.
+Gemini/Anthropic use provider-default reasoning; OpenAI overrides are unchanged.
+Anthropic requests allow 8192 output tokens; truncated output uses existing Retry.
+Model discovery uses the returned page; other IDs can be entered manually.
+
+References: https://ai.google.dev/api/generate-content and
+https://platform.claude.com/docs/en/build-with-claude/streaming.
+Validation: frontend lint/build passed (existing bundle-size warning), all 75
+frontend tests passed, Rust formatting and full suite passed: 167 unit, 13 AI
+selection integration, 22 export and 20 import tests; four existing tests ignored.
+Local HTTP regressions cover native auth/payload/model discovery, split Myanmar
+Unicode, completion/error handling, translation/Retry/HTML repair, source/draft
+immutability and cancellation/deadlines. Migration tests preserve existing keys;
+component tests cover format selection/default URLs/persistence and default effort.
+No live provider credentials were used. Native visual, keyboard, minimum-window,
+light/dark appearance and Windows/Linux checks remain unverified: computer-use
+inspection reported the Mac locked. Next unfinished task: rebuild/restart Sagar
+and verify both providers with a real chapter, Cancel, Retry and HTML repair.
+No milestone checkboxes advanced.
+
+
 ### Selection formatting popup — 2026-10-15
 
 Milestone 2 editing follow-up: selecting text in Translation → Rich text now

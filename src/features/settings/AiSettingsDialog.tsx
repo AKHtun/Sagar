@@ -11,6 +11,7 @@ import {
 import { CommandError } from "../../lib/tauri/errors";
 import type {
   AiProviderList,
+  ApiProtocol,
   CliCheckResult,
   CustomProviderSummary,
   CustomTestResult,
@@ -24,6 +25,7 @@ type AiSettingsDialogProps = {
 };
 
 type CustomFormState = {
+  protocol: ApiProtocol;
   editingId: string | null;
   name: string;
   baseUrl: string;
@@ -34,6 +36,7 @@ type CustomFormState = {
 };
 
 const emptyForm: CustomFormState = {
+  protocol: "openai",
   editingId: null,
   name: "",
   baseUrl: "",
@@ -45,7 +48,7 @@ const emptyForm: CustomFormState = {
 
 /**
  * AI provider settings dialog (settings-only slice): CLI availability for
- * Codex / OpenCode / Claude Code plus user-added OpenAI-compatible
+ * Codex / OpenCode / Claude Code plus user-added API-compatible
  * endpoints. Nothing here sends book text anywhere.
  */
 export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps) {
@@ -144,6 +147,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
 
   function openEditForm(provider: CustomProviderSummary) {
     setForm({
+      protocol: provider.protocol ?? "openai",
       editingId: provider.id,
       name: provider.name,
       baseUrl: provider.baseUrl,
@@ -178,6 +182,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
       await saveAiCustomProvider({
         id: form.editingId ?? undefined,
         name: form.name,
+        protocol: form.protocol,
         baseUrl: form.baseUrl,
         apiKey: form.apiKey === "" ? null : form.apiKey,
         model: form.model,
@@ -426,8 +431,8 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                   Custom providers
                 </h3>
                 <p className="dialog__muted">
-                  OpenAI-compatible endpoints: a base URL, an API key and a model. Test
-                  requests only the model list.
+                  OpenAI, Gemini and Anthropic-compatible endpoints: a base URL, an API
+                  key and a model. Test requests only the model list.
                 </p>
                 {providers.custom.length === 0 ? (
                   <p className="dialog__muted">No custom providers yet.</p>
@@ -442,7 +447,12 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                             <span className="project-row__main">
                               <span className="project-row__title">{provider.name}</span>
                               <span className="project-row__meta">
-                                {provider.baseUrl} · {provider.model} ·{" "}
+                                {provider.protocol === "gemini"
+                                  ? "Gemini"
+                                  : provider.protocol === "anthropic"
+                                    ? "Anthropic (Claude)"
+                                    : "OpenAI"}{" "}
+                                · {provider.baseUrl} · {provider.model} ·{" "}
                                 {provider.hasApiKey ? "key saved" : "no key"}
                                 {result ? ` · ${result.message}` : null}
                               </span>
@@ -518,6 +528,41 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
 
               {formOpen ? (
                 <section aria-label={form.editingId ? "Edit provider" : "Add provider"}>
+                  <label className="form-field">
+                    <span>API format</span>
+                    <select
+                      value={form.protocol}
+                      disabled={form.saving}
+                      onChange={(event) => {
+                        const protocol = event.target.value as ApiProtocol;
+                        const defaults = {
+                          openai: "https://api.openai.com/v1",
+                          gemini: "https://generativelanguage.googleapis.com/v1beta",
+                          anthropic: "https://api.anthropic.com/v1",
+                        };
+                        setForm((current) => ({
+                          ...current,
+                          protocol,
+                          baseUrl:
+                            !current.baseUrl ||
+                            Object.values(defaults).includes(current.baseUrl)
+                              ? defaults[protocol]
+                              : current.baseUrl,
+                        }));
+                      }}
+                    >
+                      <option value="openai">OpenAI Compatible</option>
+                      <option value="gemini">Gemini API Compatible</option>
+                      <option value="anthropic">Anthropic (Claude) API Compatible</option>
+                    </select>
+                    <span className="dialog__muted">
+                      {form.protocol === "gemini"
+                        ? "Uses Gemini Interactions without saved conversation state. Use https://generativelanguage.googleapis.com/v1beta or the full /v1beta/interactions endpoint."
+                        : form.protocol === "anthropic"
+                          ? "Uses Anthropic Messages with your API key. Accepts a base URL or full /v1/messages endpoint, including compatible services such as https://api.deepseek.com/anthropic. No CLI installation is needed."
+                          : "Uses OpenAI Chat Completions. Include the API version path in the base URL."}
+                    </span>
+                  </label>
                   <div className="form-grid">
                     <label className="form-field">
                       <span>Name</span>
@@ -614,7 +659,7 @@ export function AiSettingsDialog({ onClose, appearance }: AiSettingsDialogProps)
                       onClick={() => void handleSaveForm()}
                     >
                       <Icon name="save" />
-                      {form.saving ? "Saving…" : form.editingId ? "Save" : "Add provider"}
+                      {form.saving ? "Saving…" : "Save"}
                     </button>
                   </div>
                 </section>

@@ -88,11 +88,12 @@ pub struct CliCheckResult {
     pub message: String,
 }
 
-/// A user-added OpenAI-compatible provider. The secret itself is never
+/// A user-added API provider with an explicit wire protocol. The secret itself is never
 /// serialized; only its presence is reported.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomProviderSummary {
+    pub protocol: String,
     pub id: String,
     pub name: String,
     pub base_url: String,

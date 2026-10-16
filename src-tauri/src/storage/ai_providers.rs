@@ -8,6 +8,7 @@ use crate::domain::{CustomProviderSummary, TranslationSelection};
 use crate::error::AppError;
 
 pub struct NewCustomProvider {
+    pub protocol: String,
     pub id: String,
     pub name: String,
     pub base_url: String,
@@ -19,6 +20,7 @@ pub struct NewCustomProvider {
 fn summary_from_row(row: &rusqlite::Row<'_>) -> Result<CustomProviderSummary, rusqlite::Error> {
     let api_key: String = row.get(3)?;
     Ok(CustomProviderSummary {
+        protocol: row.get(7)?,
         id: row.get(0)?,
         name: row.get(1)?,
         base_url: row.get(2)?,
@@ -32,7 +34,7 @@ fn summary_from_row(row: &rusqlite::Row<'_>) -> Result<CustomProviderSummary, ru
 /// Masked summaries in creation order (rowid), oldest first.
 pub fn list_custom(conn: &Connection) -> Result<Vec<CustomProviderSummary>, AppError> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, base_url, api_key, model, created_at, updated_at
+        "SELECT id, name, base_url, api_key, model, created_at, updated_at, protocol
          FROM ai_custom_providers ORDER BY rowid",
     )?;
     let rows = stmt.query_map([], summary_from_row)?;
@@ -46,8 +48,8 @@ pub fn list_custom(conn: &Connection) -> Result<Vec<CustomProviderSummary>, AppE
 pub fn create_custom(conn: &Connection, provider: &NewCustomProvider) -> Result<(), AppError> {
     conn.execute(
         "INSERT INTO ai_custom_providers
-            (id, name, base_url, api_key, model, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            (id, name, base_url, api_key, model, created_at, updated_at, protocol)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7)",
         rusqlite::params![
             provider.id,
             provider.name,
@@ -55,6 +57,7 @@ pub fn create_custom(conn: &Connection, provider: &NewCustomProvider) -> Result<
             provider.api_key,
             provider.model,
             provider.created_at,
+            provider.protocol,
         ],
     )?;
     Ok(())
@@ -62,6 +65,7 @@ pub fn create_custom(conn: &Connection, provider: &NewCustomProvider) -> Result<
 
 /// Secret material for a connection test. Kept inside Rust; never serialized.
 pub struct CustomSecret {
+    pub protocol: String,
     pub base_url: String,
     pub api_key: String,
     pub model: String,
@@ -69,10 +73,11 @@ pub struct CustomSecret {
 
 pub fn get_secret(conn: &Connection, id: &str) -> Result<CustomSecret, AppError> {
     conn.query_row(
-        "SELECT base_url, api_key, model FROM ai_custom_providers WHERE id = ?1",
+        "SELECT base_url, api_key, model, protocol FROM ai_custom_providers WHERE id = ?1",
         rusqlite::params![id],
         |row| {
             Ok(CustomSecret {
+                protocol: row.get(3)?,
                 base_url: row.get(0)?,
                 api_key: row.get(1)?,
                 model: row.get(2)?,
@@ -95,13 +100,14 @@ pub fn update_custom(
     api_key: Option<&str>,
     model: &str,
     updated_at: &str,
+    protocol: &str,
 ) -> Result<CustomProviderSummary, AppError> {
     if api_key.is_some() {
         let changed = conn.execute(
             "UPDATE ai_custom_providers
-             SET name = ?1, base_url = ?2, api_key = ?3, model = ?4, updated_at = ?5
+             SET name = ?1, base_url = ?2, api_key = ?3, model = ?4, updated_at = ?5, protocol = ?7
              WHERE id = ?6",
-            rusqlite::params![name, base_url, api_key, model, updated_at, id],
+            rusqlite::params![name, base_url, api_key, model, updated_at, id, protocol],
         )?;
         if changed == 0 {
             return Err(AppError::new(
@@ -112,9 +118,9 @@ pub fn update_custom(
     } else {
         let changed = conn.execute(
             "UPDATE ai_custom_providers
-             SET name = ?1, base_url = ?2, model = ?3, updated_at = ?4
+             SET name = ?1, base_url = ?2, model = ?3, updated_at = ?4, protocol = ?6
              WHERE id = ?5",
-            rusqlite::params![name, base_url, model, updated_at, id],
+            rusqlite::params![name, base_url, model, updated_at, id, protocol],
         )?;
         if changed == 0 {
             return Err(AppError::new(
@@ -124,7 +130,7 @@ pub fn update_custom(
         }
     }
     conn.query_row(
-        "SELECT id, name, base_url, api_key, model, created_at, updated_at
+        "SELECT id, name, base_url, api_key, model, created_at, updated_at, protocol
          FROM ai_custom_providers WHERE id = ?1",
         rusqlite::params![id],
         summary_from_row,
@@ -202,6 +208,7 @@ mod tests {
 
     fn sample(id: &str) -> NewCustomProvider {
         NewCustomProvider {
+            protocol: "openai".into(),
             id: id.into(),
             name: "Local AI".into(),
             base_url: "http://localhost:1234/v1".into(),
@@ -212,12 +219,44 @@ mod tests {
     }
 
     #[test]
+    fn protocol_upgrade_defaults_existing_providers_without_changing_secrets() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE ai_custom_providers(id TEXT PRIMARY KEY,name TEXT,base_url TEXT,api_key TEXT,model TEXT,created_at TEXT,updated_at TEXT);
+            INSERT INTO ai_custom_providers VALUES ('p','Existing','https://example.invalid/v1','private-key','m','before','before');
+            PRAGMA user_version=11;").unwrap();
+        migrations::apply(&mut conn).unwrap();
+        assert_eq!(list_custom(&conn).unwrap()[0].protocol, "openai");
+        for protocol in ["gemini", "anthropic", "openai"] {
+            let summary = update_custom(
+                &conn,
+                "p",
+                "Existing",
+                "https://example.invalid/v1",
+                None,
+                "m",
+                "after",
+                protocol,
+            )
+            .unwrap();
+            assert_eq!(summary.protocol, protocol);
+            let secret = get_secret(&conn, "p").unwrap();
+            assert_eq!(secret.protocol, protocol);
+            assert_eq!(secret.api_key, "private-key");
+            assert!(
+                !serde_json::to_string(&summary)
+                    .unwrap()
+                    .contains("private-key")
+            );
+        }
+    }
+
+    #[test]
     fn migration_preserves_existing_model_and_effort_round_trips() {
         let mut conn = Connection::open_in_memory().expect("db");
         conn.execute_batch("CREATE TABLE projects (id TEXT PRIMARY KEY);
             CREATE TABLE ai_translation_selection (id INTEGER PRIMARY KEY, agent TEXT NOT NULL, model TEXT NOT NULL, updated_at TEXT NOT NULL);
             INSERT INTO ai_translation_selection VALUES (1, 'codex', 'existing-model', 'before');
-            PRAGMA user_version = 5;").expect("v5");
+            CREATE TABLE ai_custom_providers (id TEXT PRIMARY KEY); PRAGMA user_version = 5;").expect("v5");
         migrations::apply(&mut conn).expect("upgrade");
         let selection = get_translation_selection(&conn)
             .expect("read")
@@ -269,6 +308,7 @@ mod tests {
             None,
             "other-model",
             "2026-10-13T01:00:00Z",
+            "openai",
         )
         .expect("update");
         let secret = get_secret(&conn, "p1").expect("secret");

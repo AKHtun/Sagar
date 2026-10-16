@@ -64,6 +64,7 @@ impl MockProvider {
         storage::ai_providers::create_custom(
             &conn,
             &storage::ai_providers::NewCustomProvider {
+                protocol: "openai".into(),
                 id: "test".into(),
                 name: "Loopback".into(),
                 base_url: format!("http://{}/v1", listener.local_addr().expect("address")),

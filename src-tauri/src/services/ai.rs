@@ -3,7 +3,7 @@
 //! Built-in CLI providers (Codex, OpenCode, Claude Code) are detected on
 //! `PATH`; the list view never spawns processes or touches the network.
 //! An explicit per-provider check runs `<binary> --version` with a timeout.
-//! Custom OpenAI-compatible providers are stored in app-owned SQLite with
+//! Custom API providers are stored in app-owned SQLite with
 //! masked reads, and an explicit test performs a single `GET {base}/models`
 //! request carrying only the stored key. No book content is ever sent.
 
@@ -30,6 +30,7 @@ const MAX_MODELS: usize = 2000;
 const MAX_MODEL_ID_CHARS: usize = 256;
 
 pub struct SaveCustomInput {
+    pub protocol: String,
     pub id: Option<String>,
     pub name: String,
     pub base_url: String,
@@ -591,6 +592,35 @@ pub fn normalize_base_url(raw: &str) -> Result<String, AppError> {
     Ok(url.to_string().trim_end_matches('/').to_string())
 }
 
+/// Normalize versioned API bases and full endpoint URLs while preserving proxy prefixes.
+/// Anthropic also accepts SDK-style roots; Gemini accepts a full Interactions URL.
+pub(crate) fn normalize_provider_base_url(raw: &str, protocol: &str) -> Result<String, AppError> {
+    let base = normalize_base_url(raw)?;
+    if protocol == "gemini" {
+        return Ok(base
+            .strip_suffix("/interactions")
+            .unwrap_or(&base)
+            .to_string());
+    }
+    if protocol != "anthropic" {
+        return Ok(base);
+    }
+    if let Some(base) = base.strip_suffix("/messages") {
+        if !base.ends_with("/v1") {
+            return Err(AppError::new(
+                "invalid_base_url",
+                "Use an Anthropic base URL or a full endpoint ending in /v1/messages.",
+            ));
+        }
+        return Ok(base.to_string());
+    }
+    if base.ends_with("/v1") {
+        Ok(base)
+    } else {
+        Ok(format!("{base}/v1"))
+    }
+}
+
 // -------------------------------------------------------------- service
 
 pub fn list_ai_providers(data_dir: &Path) -> Result<AiProviderList, AppError> {
@@ -655,8 +685,14 @@ pub fn save_ai_custom_provider(
     data_dir: &Path,
     input: SaveCustomInput,
 ) -> Result<CustomProviderSummary, AppError> {
+    if !matches!(input.protocol.as_str(), "openai" | "gemini" | "anthropic") {
+        return Err(AppError::new(
+            "invalid_protocol",
+            "Choose a supported API format.",
+        ));
+    }
     let name = validate_name(&input.name)?;
-    let base_url = normalize_base_url(&input.base_url)?;
+    let base_url = normalize_provider_base_url(&input.base_url, &input.protocol)?;
     let model = validate_model(&input.model)?;
     let creating = input.id.as_deref().is_none_or(|id| id.trim().is_empty());
     let api_key = validate_api_key(input.api_key.as_deref(), creating)?;
@@ -677,6 +713,7 @@ pub fn save_ai_custom_provider(
         ai_providers::create_custom(
             &conn,
             &ai_providers::NewCustomProvider {
+                protocol: input.protocol.clone(),
                 id: id.clone(),
                 name,
                 base_url,
@@ -699,6 +736,7 @@ pub fn save_ai_custom_provider(
             api_key.as_deref(),
             &model,
             &now,
+            &input.protocol,
         )
     }
 }
@@ -731,7 +769,7 @@ pub fn test_ai_custom_provider(data_dir: &Path, id: &str) -> Result<CustomTestRe
     }
     let conn = open_settings_db(data_dir)?;
     let secret = ai_providers::get_secret(&conn, id.trim())?;
-    let base_url = normalize_base_url(&secret.base_url)?;
+    let base_url = normalize_provider_base_url(&secret.base_url, &secret.protocol)?;
     if secret.api_key.trim().is_empty() {
         return Err(AppError::new(
             "invalid_api_key",
@@ -739,12 +777,11 @@ pub fn test_ai_custom_provider(data_dir: &Path, id: &str) -> Result<CustomTestRe
         ));
     }
     let client = reqwest::blocking::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
         .timeout(MODELS_TIMEOUT)
         .build()
         .map_err(|_| AppError::new("connection_failed", "The connection test could not start."))?;
-    let response = client
-        .get(format!("{base_url}/models"))
-        .bearer_auth(secret.api_key)
+    let response = models_request(&client, &base_url, &secret.api_key, &secret.protocol)
         .header("Accept", "application/json")
         .send();
     let response = match response {
@@ -793,10 +830,15 @@ pub fn test_ai_custom_provider(data_dir: &Path, id: &str) -> Result<CustomTestRe
             message: format!("The server returned an error (status {}).", status.as_u16()),
         });
     }
-    let model_count = response
-        .json::<serde_json::Value>()
-        .ok()
-        .and_then(|body| body.get("data")?.as_array().map(|items| items.len()));
+    let model_count = response.json::<serde_json::Value>().ok().and_then(|body| {
+        body.get(if secret.protocol == "gemini" {
+            "models"
+        } else {
+            "data"
+        })?
+        .as_array()
+        .map(|items| items.len())
+    });
     Ok(CustomTestResult {
         ok: true,
         model_count,
@@ -1176,8 +1218,8 @@ pub fn validate_reasoning_effort(
             .and_then(|entry| entry.reasoning_efforts)
     } else if let Some(TranslationAgent::Custom(id)) = TranslationAgent::parse(agent) {
         let conn = open_settings_db(data_dir)?;
-        let _ = ai_providers::get_secret(&conn, &id)?;
-        Some(custom_reasoning_efforts())
+        let secret = ai_providers::get_secret(&conn, &id)?;
+        Some(protocol_efforts(&secret.protocol))
     } else {
         return Err(invalid());
     };
@@ -1261,10 +1303,61 @@ fn parse_openai_model_list(body: &serde_json::Value) -> Vec<TranslationModel> {
     models
 }
 
-/// Fetches a live model list from an OpenAI-compatible endpoint. Carries only
+fn protocol_efforts(protocol: &str) -> Vec<String> {
+    if protocol == "openai" {
+        custom_reasoning_efforts()
+    } else {
+        Vec::new()
+    }
+}
+
+fn models_request(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    key: &str,
+    protocol: &str,
+) -> reqwest::blocking::RequestBuilder {
+    let request = client.get(format!("{base}/models"));
+    match protocol {
+        "gemini" => request.header("x-goog-api-key", key),
+        "anthropic" => request
+            .bearer_auth(key)
+            .header("x-api-key", key)
+            .header("anthropic-version", "2023-06-01"),
+        _ => request.bearer_auth(key),
+    }
+}
+
+fn parse_api_model_list(body: &serde_json::Value, protocol: &str) -> Vec<TranslationModel> {
+    if protocol != "gemini" {
+        return parse_openai_model_list(body);
+    }
+    let data: Vec<serde_json::Value> = body["models"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|item| {
+            item["supportedGenerationMethods"]
+                .as_array()
+                .is_some_and(|methods| methods.iter().any(|method| method == "generateContent"))
+        })
+        .filter_map(|item| {
+            item["name"]
+                .as_str()
+                .map(|name| serde_json::json!({"id":name.strip_prefix("models/").unwrap_or(name)}))
+        })
+        .collect();
+    parse_openai_model_list(&serde_json::json!({"data":data}))
+}
+
+/// Fetches a live model list using the saved API protocol. Carries only
 /// the stored key; no book content is attached.
-fn fetch_openai_models(base_url: &str, api_key: &str) -> Result<Vec<TranslationModel>, AppError> {
-    let base_url = normalize_base_url(base_url)?;
+fn fetch_api_models(
+    base_url: &str,
+    api_key: &str,
+    protocol: &str,
+) -> Result<Vec<TranslationModel>, AppError> {
+    let base_url = normalize_provider_base_url(base_url, protocol)?;
     if api_key.trim().is_empty() {
         return Err(AppError::new(
             "invalid_api_key",
@@ -1272,12 +1365,11 @@ fn fetch_openai_models(base_url: &str, api_key: &str) -> Result<Vec<TranslationM
         ));
     }
     let client = reqwest::blocking::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
         .timeout(MODELS_TIMEOUT)
         .build()
         .map_err(|_| AppError::new("connection_failed", "The model list could not be loaded."))?;
-    let response = client
-        .get(format!("{base_url}/models"))
-        .bearer_auth(api_key)
+    let response = models_request(&client, &base_url, api_key, protocol)
         .header("Accept", "application/json")
         .send()
         .map_err(|_| AppError::new("connection_failed", "The model list could not be loaded."))?;
@@ -1289,7 +1381,7 @@ fn fetch_openai_models(base_url: &str, api_key: &str) -> Result<Vec<TranslationM
     }
     response
         .json::<serde_json::Value>()
-        .map(|body| parse_openai_model_list(&body))
+        .map(|body| parse_api_model_list(&body, protocol))
         .map_err(|_| AppError::new("models_unavailable", "The model list could not be read."))
 }
 
@@ -1404,10 +1496,10 @@ pub fn list_translation_models(
         }),
         TranslationAgent::Custom(id) => {
             let secret = ai_providers::get_secret(&conn, &id)?;
-            match fetch_openai_models(&secret.base_url, &secret.api_key) {
+            match fetch_api_models(&secret.base_url, &secret.api_key, &secret.protocol) {
                 Ok(mut models) if !models.is_empty() => {
                     for model in &mut models {
-                        model.reasoning_efforts = Some(custom_reasoning_efforts());
+                        model.reasoning_efforts = Some(protocol_efforts(&secret.protocol));
                     }
                     Ok(TranslationModelList {
                         agent: format!("custom:{id}"),
@@ -1426,7 +1518,7 @@ pub fn list_translation_models(
                                 id: id.clone(),
                                 label: id,
                                 detail: Some("Saved model".to_string()),
-                                reasoning_efforts: Some(custom_reasoning_efforts()),
+                                reasoning_efforts: Some(protocol_efforts(&secret.protocol)),
                             })
                             .into_iter()
                             .collect(),
@@ -1473,6 +1565,135 @@ mod tests {
     use super::*;
 
     #[test]
+    fn anthropic_base_urls_accept_sdk_roots_and_full_endpoints() {
+        for (input, expected) in [
+            ("https://api.anthropic.com", "https://api.anthropic.com/v1"),
+            (
+                "https://api.anthropic.com/v1/",
+                "https://api.anthropic.com/v1",
+            ),
+            (
+                "https://api.anthropic.com/v1/messages",
+                "https://api.anthropic.com/v1",
+            ),
+            (
+                "https://api.deepseek.com/anthropic",
+                "https://api.deepseek.com/anthropic/v1",
+            ),
+            (
+                "https://api.deepseek.com/anthropic/v1/messages/",
+                "https://api.deepseek.com/anthropic/v1",
+            ),
+            (
+                "http://localhost:8000/proxy/v1/messages",
+                "http://localhost:8000/proxy/v1",
+            ),
+        ] {
+            assert_eq!(
+                normalize_provider_base_url(input, "anthropic").unwrap(),
+                expected
+            );
+        }
+        assert_eq!(
+            normalize_provider_base_url("https://example.invalid/openai", "openai").unwrap(),
+            "https://example.invalid/openai"
+        );
+        assert!(
+            normalize_provider_base_url(
+                "https://example.invalid/v1/messages?key=secret",
+                "anthropic"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn native_model_discovery_and_connection_test_use_protocol_auth() {
+        use std::io::{Read, Write};
+        for protocol in ["gemini", "anthropic"] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!(
+                "http://{}/v1{}",
+                listener.local_addr().unwrap(),
+                if protocol == "gemini" {
+                    "/interactions"
+                } else {
+                    ""
+                }
+            );
+            let body = if protocol == "gemini" {
+                serde_json::json!({"models":[{"name":"models/gemini-test","supportedGenerationMethods":["generateContent"]},{"name":"models/embedding","supportedGenerationMethods":["embedContent"]}]})
+            } else { serde_json::json!({"data":[{"id":"claude-test"}]}) }.to_string();
+            let server = std::thread::spawn(move || {
+                for _ in 0..2 {
+                    let (mut socket, _) = listener.accept().unwrap();
+                    socket
+                        .set_read_timeout(Some(Duration::from_secs(3)))
+                        .unwrap();
+                    let mut request = Vec::new();
+                    let mut byte = [0];
+                    while !request.ends_with(b"\r\n\r\n") {
+                        socket.read_exact(&mut byte).unwrap();
+                        request.push(byte[0]);
+                    }
+                    let request = String::from_utf8(request).unwrap().to_ascii_lowercase();
+                    assert!(request.starts_with("get /v1/models http/1.1"));
+                    assert!(request.contains(if protocol == "gemini" {
+                        "x-goog-api-key: private-key"
+                    } else {
+                        "x-api-key: private-key"
+                    }));
+                    if protocol == "anthropic" {
+                        assert!(request.contains("authorization: bearer private-key"));
+                    } else {
+                        assert!(!request.contains("authorization:"));
+                    }
+                    if protocol == "anthropic" {
+                        assert!(request.contains("anthropic-version: 2023-06-01"));
+                    }
+                    write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+                }
+            });
+            let dir = tempfile::tempdir().unwrap();
+            let saved = save_ai_custom_provider(
+                dir.path(),
+                SaveCustomInput {
+                    protocol: protocol.into(),
+                    id: None,
+                    name: "Native API".into(),
+                    base_url: base,
+                    api_key: Some("private-key".into()),
+                    model: "saved-model".into(),
+                },
+            )
+            .unwrap();
+            assert_eq!(saved.protocol, protocol);
+            assert!(test_ai_custom_provider(dir.path(), &saved.id).unwrap().ok);
+            let agent = format!("custom:{}", saved.id);
+            let models = list_translation_models(dir.path(), &agent).unwrap();
+            assert_eq!(models.source, "live");
+            assert_eq!(models.models.len(), 1);
+            assert_eq!(
+                models.models[0].id,
+                if protocol == "gemini" {
+                    "gemini-test"
+                } else {
+                    "claude-test"
+                }
+            );
+            assert_eq!(models.models[0].reasoning_efforts, Some(vec![]));
+            assert!(
+                validate_reasoning_effort(dir.path(), &agent, "saved-model", Some("low")).is_err()
+            );
+            assert_eq!(
+                validate_reasoning_effort(dir.path(), &agent, "saved-model", None).unwrap(),
+                None
+            );
+            server.join().unwrap();
+        }
+    }
+
+    #[test]
     fn agy_models_selection_and_discovery() {
         let models = parse_agy_models(
             "Available models:\ngemini-example-high  Gemini Example (High)\ngemini-example-high Duplicate\n",
@@ -1514,6 +1735,7 @@ mod tests {
             let provider = save_ai_custom_provider(
                 dir.path(),
                 SaveCustomInput {
+                    protocol: "openai".into(),
                     id: None,
                     name: "Custom".into(),
                     base_url: base_url.into(),
@@ -1735,6 +1957,7 @@ opencode/no-adjustment
         let error = save_ai_custom_provider(
             dir.path(),
             SaveCustomInput {
+                protocol: "openai".into(),
                 id: None,
                 name: "Local".into(),
                 base_url: "not-a-url".into(),
@@ -1748,6 +1971,7 @@ opencode/no-adjustment
         let created = save_ai_custom_provider(
             dir.path(),
             SaveCustomInput {
+                protocol: "openai".into(),
                 id: None,
                 name: "Local".into(),
                 base_url: "http://localhost:1234/v1/".into(),
@@ -1861,6 +2085,7 @@ opencode/no-adjustment
         let custom = save_ai_custom_provider(
             dir.path(),
             SaveCustomInput {
+                protocol: "openai".into(),
                 id: None,
                 name: "Local".into(),
                 base_url: "http://localhost:1234/v1".into(),

@@ -7,6 +7,7 @@ import type { AiHtmlFixEvent } from "../../src/types/ai";
 let receive: (event: { payload: AiHtmlFixEvent }) => void = () => {};
 const calls: string[] = [];
 let savedSelection: Record<string, unknown> | undefined;
+let savedProvider: Record<string, unknown> | undefined;
 const progressEvent: AiHtmlFixEvent = {
   jobId: "job", chapterId: "chapter", kind: "stream", fixedHtml: null,
   partialText: "<p>မြန်မာ</p>", message: "",
@@ -29,6 +30,7 @@ mock.module("@tauri-apps/api/core", () => ({
     if (command === "list_translation_models") return {
       agent: args?.agent, source: "live", message: "", models: ["glm-5.3", "glm-5.3-flash", "unrelated-model"].map(id => ({ id, label: id, detail: null, reasoningEfforts: null })),
     };
+    if (command === "save_ai_custom_provider") { savedProvider = args; return { ...args, id: "test", hasApiKey: true }; }
     if (command === "set_translation_selection") {
       savedSelection = args;
       return { ...args, updatedAt: "" };
@@ -142,4 +144,55 @@ test("all custom models expose reasoning overrides without model capability meta
     container.remove();
     await window.happyDOM.close();
   }
+});
+
+
+test("native API formats populate endpoints and persist their protocol", async () => {
+  const { AiSettingsDialog } = await import("../../src/features/settings/AiSettingsDialog");
+  const window = new Window();
+  Object.assign(globalThis, { window, document: window.document, navigator: window.navigator,
+    HTMLElement: window.HTMLElement, Node: window.Node, Element: window.Element, IS_REACT_ACT_ENVIRONMENT: true });
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(AiSettingsDialog, { onClose: () => {}, appearance: {
+      theme: "light", textSize: 18, onThemeChange: () => {}, onTextSizeChange: () => {},
+    } })));
+    await act(async () => container.querySelector<HTMLButtonElement>('#ai-tab-providers')!.click());
+    for (const [protocol, endpoint] of [["gemini", "https://generativelanguage.googleapis.com/v1beta"], ["anthropic", "https://api.anthropic.com/v1"]]) {
+      await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Add custom provider")!.click());
+      const select = [...container.querySelectorAll("label")].find(label => label.textContent?.includes("API format"))!.querySelector("select")!;
+      await act(async () => { select.value = protocol!; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+      expect(container.querySelector<HTMLInputElement>('input[type="url"]')!.value).toBe(endpoint!);
+      expect(container.textContent).toContain(protocol === "gemini" ? "Gemini Interactions" : "Anthropic Messages");
+      await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Save")!.click());
+      expect(savedProvider?.protocol).toBe(protocol!);
+      expect(savedProvider?.baseUrl).toBe(endpoint!);
+    }
+  } finally { await act(async () => root.unmount()); container.remove(); await window.happyDOM.close(); }
+});
+
+test("native API models use default effort and do not forward OpenAI overrides", async () => {
+  const { TranslationModelSection } = await import("../../src/features/settings/TranslationModelSection");
+  const window = new Window();
+  Object.assign(globalThis, { window, document: window.document, navigator: window.navigator,
+    HTMLElement: window.HTMLElement, Node: window.Node, Element: window.Element, IS_REACT_ACT_ENVIRONMENT: true });
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    for (const protocol of ["gemini", "anthropic"] as const) {
+      await act(async () => root.render(createElement(TranslationModelSection, { cli: [], custom: [{
+        protocol, id: "native", name: "Native API", baseUrl: "https://example.invalid/v1", hasApiKey: true,
+        model: "unrelated-model", createdAt: "", updatedAt: "",
+      }] })));
+      const agent = container.querySelector<HTMLSelectElement>('[aria-label="Translation agent"]')!;
+      await act(async () => { agent.value = "custom:native"; agent.dispatchEvent(new window.Event("change", { bubbles: true })); });
+      await act(async () => [...container.querySelectorAll<HTMLLabelElement>(".model-list__row")].find(row => row.textContent?.trim() === "unrelated-model")!.querySelector<HTMLInputElement>("input")!.click());
+      const effort = container.querySelector<HTMLSelectElement>('[aria-describedby="reasoning-effort-help"]')!;
+      expect([...effort.options].map(option => option.value)).toEqual([""]);
+      expect(effort.disabled).toBe(true);
+      await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Save")!.click());
+      expect(savedSelection?.reasoningEffort).toBeNull();
+    }
+  } finally { await act(async () => root.unmount()); container.remove(); await window.happyDOM.close(); }
 });
