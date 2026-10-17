@@ -185,6 +185,27 @@ pub static GLOSSARY: &[GlossaryEntry] = &[
         myanmar: "တည်ဆောက်ပုံစနစ် (Architecture)",
         domain: "Computing",
     },
+    // --- Cultural, Academic & Kinship ---
+    GlossaryEntry {
+        english: "extended 'ohana",
+        myanmar: "မွေးချင်းပေါက်ဖော်အိုဟာနာများ",
+        domain: "Cultural",
+    },
+    GlossaryEntry {
+        english: "extended ‘ohana",
+        myanmar: "မွေးချင်းပေါက်ဖော်အိုဟာနာများ",
+        domain: "Cultural",
+    },
+    GlossaryEntry {
+        english: "ohana",
+        myanmar: "အိုဟာနာ (မွေးချင်းပေါက်ဖော်မိသားစု)",
+        domain: "Cultural",
+    },
+    GlossaryEntry {
+        english: "‘ohana",
+        myanmar: "အိုဟာနာ (မွေးချင်းပေါက်ဖော်မိသားစု)",
+        domain: "Cultural",
+    },
 ];
 
 /// Scans the given HTML/text for occurrences of glossary terms (case-insensitively)
