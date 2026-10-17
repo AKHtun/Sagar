@@ -875,3 +875,17 @@ fn app_language_sets_only_new_import_targets_and_survives_reopen() {
     }
     assert_eq!(std::fs::read(source).expect("unchanged source"), original);
 }
+
+#[test]
+fn direct_pdf_import_converts_to_project() {
+    let sample_pdf = std::path::Path::new(r"C:\Dev\WEcoS_Beta\03_knowledge\PDF_Library\BS\WZ-BS-0020_Report_of_Analysis.pdf");
+    if !sample_pdf.exists() {
+        return;
+    }
+    let temp = tempfile::tempdir().expect("tempdir");
+    let data_dir = temp.path().join("data");
+    let result = services::import::import_epub(&data_dir, sample_pdf, false).expect("pdf import");
+    assert!(!result.chapters.is_empty());
+    assert_eq!(result.project.target_language, "my");
+    assert!(result.project.title.contains("WZ-BS-0020") || result.project.title.contains("Report"));
+}

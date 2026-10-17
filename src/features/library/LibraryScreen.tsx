@@ -163,7 +163,7 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
             disabled={importingName !== null}
             onClick={() => void handleOpenEpub()}
           >
-            <Icon name="plus" /> {t("Import EPUB")}
+            <Icon name="plus" /> {t("Import Book")}
           </button>
         </div>
       </header>
@@ -272,7 +272,7 @@ export function LibraryScreen({ onOpenProject, appearance }: LibraryScreenProps)
           <div className="empty-state">
             <Icon name="book" size={36} />
             <h3 className="empty-state__heading">{t("Add your first book")}</h3>
-            <p>{t("Import an EPUB to start translating.")}</p>
+            <p>{t("Import an EPUB or PDF to start translating.")}</p>
           </div>
         ) : null}
         {library.status === "ready" && library.projects.length > 0 ? (

@@ -67,15 +67,28 @@ pub fn import_epub_with_app_language(
         ));
     }
 
-    let parsed = epub::inspect(source_path)?;
-
     let project_id = uuid::Uuid::new_v4().to_string();
     let snapshot_rel_path = format!("projects/{project_id}/source.epub");
     let snapshot_abs_path = data_dir.join(&snapshot_rel_path);
     if let Some(parent) = snapshot_abs_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::copy(source_path, &snapshot_abs_path)?;
+
+    let is_pdf = source_path
+        .extension()
+        .map_or(false, |ext| ext.eq_ignore_ascii_case("pdf"));
+
+    if is_pdf {
+        crate::epub::pdf_convert::convert_pdf_to_epub(source_path, &snapshot_abs_path)?;
+    } else {
+        std::fs::copy(source_path, &snapshot_abs_path)?;
+    }
+
+    let parsed = if is_pdf {
+        epub::inspect(&snapshot_abs_path)?
+    } else {
+        epub::inspect(source_path)?
+    };
 
     let original_source_path = source_path.canonicalize()?;
     let now = chrono::Utc::now().to_rfc3339();

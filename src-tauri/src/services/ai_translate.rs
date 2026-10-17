@@ -104,13 +104,22 @@ pub fn build_translation_prompt(
                 .join(", ")
         })
         .unwrap_or_else(|_| "Preserve the supplied element structure exactly.".to_string());
-    let myanmar_rules = if target_language.trim().to_lowercase().starts_with("my") {
-        "\n          Myanmar translation & orthography quality:\n\
+    let is_myanmar = target_language.trim().to_lowercase().starts_with("my");
+    let glossary_section = if is_myanmar {
+        crate::epub::myanmar_glossary::build_glossary_prompt_section(body_html).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let myanmar_rules = if is_myanmar {
+        format!(
+            "\n          Myanmar translation & orthography quality:\n\
           - Always use official Myanmar Unicode standard. Never use Zawgyi font encoding.\n\
           - Adhere to official Myanmar Language Commission spelling conventions.\n\
-          - Terminology standard: translate 'Executive Summary' as 'အစီရင်ခံစာအကျဉ်းချုပ်' (never 'အမှုဆောင်အကျဉ်းချုပ်').\n"
+          - Terminology standard: translate 'Executive Summary' as 'အစီရင်ခံစာအကျဉ်းချုပ်' (never 'အမှုဆောင်အကျဉ်းချုပ်').\n\
+{glossary_section}"
+        )
     } else {
-        ""
+        String::new()
     };
     format!(
         "Translate this book chapter from {source} into {target}.\n\
@@ -2059,6 +2068,13 @@ mod tests {
         assert!(my_prompt.contains("Myanmar translation & orthography quality:"));
         assert!(my_prompt.contains("အစီရင်ခံစာအကျဉ်းချုပ်"));
         assert!(my_prompt.contains("Never use Zawgyi"));
+
+        let tech_prompt = build_translation_prompt(Some("en"), "my", "<p>Testing Viscosity and Acid Number of turbine oil.</p>");
+        assert!(tech_prompt.contains("Mandatory Technical Terminology Mapping:"));
+        assert!(tech_prompt.contains("viscosity"));
+        assert!(tech_prompt.contains("စေးပျစ်မှု (Viscosity)"));
+        assert!(tech_prompt.contains("acid number"));
+        assert!(tech_prompt.contains("အက်ဆစ်တန်ဖိုး (Acid Number)"));
 
         let en_prompt = build_translation_prompt(Some("my"), "en", "<p>အစီရင်ခံစာအကျဉ်းချုပ်</p>");
         assert!(!en_prompt.contains("Myanmar translation & orthography quality:"));

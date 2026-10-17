@@ -37,7 +37,11 @@ export async function pickEpubFile(): Promise<string | null> {
     const selection = await open({
       multiple: false,
       directory: false,
-      filters: [{ name: "EPUB books", extensions: ["epub"] }],
+      filters: [
+        { name: "Books and Documents", extensions: ["epub", "pdf"] },
+        { name: "EPUB books", extensions: ["epub"] },
+        { name: "PDF documents", extensions: ["pdf"] },
+      ],
     });
     return typeof selection === "string" ? selection : null;
   } catch (error) {
