@@ -18,6 +18,9 @@ use crate::security::ArchiveLimits;
 use crate::storage::translations::BlockForExport;
 
 pub const MIMETYPE: &str = "application/epub+zip";
+const XHTML_NS: &str = "http://www.w3.org/1999/xhtml";
+const EPUB_NS: &str = "http://www.idpf.org/2007/ops";
+const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
 
 /// Builds the output archive from `snapshot_path` with the given patched
 /// resources (ZIP-root path → bytes) and writes it to `destination`.
@@ -300,11 +303,15 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
     let mut nav_labels: HashMap<String, String> = HashMap::new();
     let mut added_images: HashMap<String, (String, Vec<u8>)> = HashMap::new();
     let mut excluded: HashSet<String> = HashSet::new();
+    let mut translated_chapters: HashSet<String> = HashSet::new();
     let mut included_count = 0usize;
 
     for (chapter_id, resource_href) in &input.chapters {
         let mut blocks = (input.load_blocks)(chapter_id)?;
         let has_translation = blocks.iter().any(|b| b.target_fragment.is_some());
+        if has_translation {
+            translated_chapters.insert(resource_href.clone());
+        }
         if !input.include_original && !has_translation {
             excluded.insert(resource_href.clone());
             continue;
@@ -330,7 +337,9 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
                 return Some(crate::domain::strip_fragment(fragment));
             }
             if block.structural_locator == "__chapter_document__" {
-                let wrapped = format!("<w>{fragment}</w>");
+                let wrapped = format!(
+                    "<w xmlns=\"{XHTML_NS}\" xmlns:epub=\"{EPUB_NS}\" xmlns:xlink=\"{XLINK_NS}\">{fragment}</w>"
+                );
                 let doc = crate::epub::xml::parse(&wrapped).ok()?;
                 let heading = doc.descendants().find(|node| {
                     node.is_element()
@@ -474,6 +483,14 @@ pub fn run_export(input: ExportInput) -> Result<ExportOutcome, AppError> {
             cover,
         )?;
     }
+
+    embed_myanmar_font_if_needed(
+        &input.target_language,
+        &opf_path,
+        &mut opf_out,
+        &mut patched,
+        &translated_chapters,
+    )?;
     let text = String::from_utf8_lossy(&opf_out);
     if crate::epub::xml::parse(text.as_ref()).is_err() {
         return Err(AppError::new(
@@ -742,7 +759,9 @@ fn package_images(
     snapshot: &SafeArchive,
     images: &mut HashMap<String, (String, Vec<u8>)>,
 ) -> Result<String, AppError> {
-    let wrapped = format!("<w>{fragment}</w>");
+    let wrapped = format!(
+        "<w xmlns=\"{XHTML_NS}\" xmlns:epub=\"{EPUB_NS}\" xmlns:xlink=\"{XLINK_NS}\">{fragment}</w>"
+    );
     let doc = crate::epub::xml::parse(&wrapped)
         .map_err(|_| AppError::new("invalid_translation", "Invalid saved XHTML."))?;
     let mut result = fragment.to_string();
@@ -916,7 +935,9 @@ fn replace_chapter_body(original: &[u8], html: &str) -> Result<Vec<u8>, AppError
         _ => return Err(invalid()),
     };
     let end = range.start + source[range.clone()].rfind('<').ok_or_else(invalid)?;
-    let wrapped = format!("<w>{html}</w>");
+    let wrapped = format!(
+        "<w xmlns=\"{XHTML_NS}\" xmlns:epub=\"{EPUB_NS}\" xmlns:xlink=\"{XLINK_NS}\">{html}</w>"
+    );
     let target = crate::epub::xml::parse(&wrapped).map_err(|_| invalid())?;
     let mut anchors = String::new();
     for node in body.descendants().skip(1).filter(|n| n.is_element()) {
@@ -940,6 +961,124 @@ fn replace_chapter_body(original: &[u8], html: &str) -> Result<Vec<u8>, AppError
     crate::epub::xml::parse(std::str::from_utf8(&out).map_err(|_| invalid())?)
         .map_err(|_| invalid())?;
     Ok(out)
+}
+
+fn find_myanmar_font_bytes() -> Option<Vec<u8>> {
+    #[cfg(windows)]
+    {
+        for path in [
+            r"C:\Windows\Fonts\mmrtext.ttf",
+            r"C:\Windows\Fonts\Pyidaungsu.ttf",
+            r"C:\Windows\Fonts\padauk.ttf",
+        ] {
+            if let Ok(bytes) = std::fs::read(path) {
+                return Some(bytes);
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        for path in [
+            "/Library/Fonts/Myanmar Text.ttf",
+            "/Library/Fonts/NotoSansMyanmar-Regular.ttf",
+            "/System/Library/Fonts/Supplemental/NotoSansMyanmar.ttc",
+        ] {
+            if let Ok(bytes) = std::fs::read(path) {
+                return Some(bytes);
+            }
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        for path in [
+            "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansMyanmar-Regular.otf",
+            "/usr/share/fonts/truetype/padauk/Padauk.ttf",
+        ] {
+            if let Ok(bytes) = std::fs::read(path) {
+                return Some(bytes);
+            }
+        }
+    }
+    None
+}
+
+fn embed_myanmar_font_if_needed(
+    target_language: &str,
+    opf_path: &str,
+    opf_out: &mut Vec<u8>,
+    patched: &mut HashMap<String, Vec<u8>>,
+    translated_chapters: &HashSet<String>,
+) -> Result<(), AppError> {
+    if translated_chapters.is_empty() {
+        return Ok(());
+    }
+    if !target_language.eq_ignore_ascii_case("my")
+        && !target_language.to_ascii_lowercase().starts_with("my-")
+    {
+        return Ok(());
+    }
+
+    let Some(font_bytes) = find_myanmar_font_bytes() else {
+        return Ok(());
+    };
+
+    let opf_dir = match opf_path.rfind('/') {
+        Some(idx) => &opf_path[..idx],
+        None => "",
+    };
+
+    let font_zip_path = if opf_dir.is_empty() {
+        "fonts/MyanmarText.ttf".to_string()
+    } else {
+        format!("{opf_dir}/fonts/MyanmarText.ttf")
+    };
+
+    let relative_font_from_opf = relative_resource(opf_path, &font_zip_path);
+
+    // 1. Add font item to OPF manifest
+    let text = std::str::from_utf8(opf_out)
+        .map_err(|_| AppError::new("export_failed", "Invalid package encoding."))?;
+    let doc = crate::epub::xml::parse(text)
+        .map_err(|_| AppError::new("export_failed", "Invalid package document."))?;
+    if let Some(manifest) = doc
+        .descendants()
+        .find(|n| n.has_tag_name(("http://www.idpf.org/2007/opf", "manifest")))
+    {
+        let range = manifest.range();
+        if let Some(pos) = text[range.clone()].rfind('<') {
+            let closing = pos + range.start;
+            let item_decl = format!(
+                "<item xmlns=\"http://www.idpf.org/2007/opf\" id=\"font-myanmar-embedded\" href=\"{}\" media-type=\"font/ttf\"/>",
+                relative_font_from_opf
+            );
+            opf_out.splice(closing..closing, item_decl.bytes());
+        }
+    }
+
+    // 2. Put font bytes into patched archive
+    patched.insert(font_zip_path.clone(), font_bytes);
+
+    // 3. Inject @font-face CSS rule into each translated chapter
+    for resource_href in translated_chapters {
+        if let Some(chapter_bytes) = patched.get_mut(resource_href) {
+            if let Ok(chapter_html) = std::str::from_utf8(chapter_bytes) {
+                if let Some(head_end) = chapter_html.find("</head>") {
+                    let rel_font_path = relative_resource(resource_href, &font_zip_path);
+                    let css_injection = format!(
+                        "<style>\n@font-face {{\n  font-family: 'MyanmarTextEmbedded';\n  src: url('{}');\n}}\nbody, p, h1, h2, h3, h4, h5, h6, div, span, li, dt, dd, td, th, caption, figcaption {{\n  font-family: 'MyanmarTextEmbedded', 'Pyidaungsu', 'Padauk', 'Myanmar Text', sans-serif !important;\n}}\n</style>\n",
+                        rel_font_path
+                    );
+                    let mut updated = chapter_html[..head_end].to_string();
+                    updated.push_str(&css_injection);
+                    updated.push_str(&chapter_html[head_end..]);
+                    *chapter_bytes = updated.into_bytes();
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@ pub mod blocks;
 pub mod container;
 pub mod cover;
 pub mod export;
+pub mod myanmar_orthography;
 pub mod nav;
 pub mod opf;
 pub mod patch;

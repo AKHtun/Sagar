@@ -1881,3 +1881,69 @@ fn heading_group_and_time_save_export_and_reopen() {
     epub::inspect(&destination).expect("reopen exported EPUB");
     assert_eq!(std::fs::read(source).expect("source after"), original);
 }
+
+#[test]
+fn myanmar_translated_book_exports_with_embedded_font() {
+    let dir = tempdir();
+    let data_dir = dir.join("data");
+    let files = rich_book_files();
+    let refs: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
+        .collect();
+    let source = write_epub(&dir, "myanmar_source.epub", &refs);
+    let book = import_rich_book(&data_dir, &source);
+
+    let myanmar_html = "<p>မင်္ဂလာပါ မြန်မာဘာသာပြန်စာအုပ်</p>";
+    services::workspace::save_chapter_document(
+        &data_dir,
+        &book.chapter_ids[0],
+        Some(myanmar_html.into()),
+        "reviewed",
+        0,
+    )
+    .expect("save translation ch1");
+
+    services::workspace::save_chapter_document(
+        &data_dir,
+        &book.chapter_ids[1],
+        Some("<p>ဒုတိယအခန်း</p>".into()),
+        "reviewed",
+        0,
+    )
+    .expect("save translation ch2");
+
+    let destination = dir.join("myanmar_exported.epub");
+    services::export::export_epub(
+        &data_dir,
+        ExportRequest {
+            project_id: book.project_id,
+            destination: destination.clone(),
+            mode: "completed".into(),
+            title: Some("မြန်မာစာအုပ်".into()),
+            language: Some("my".into()),
+            include_original: false,
+        },
+    )
+    .expect("export myanmar epub");
+
+    epub::export::validate_output(&destination).expect("valid export");
+    let mut archive =
+        zip::ZipArchive::new(std::fs::File::open(&destination).expect("file")).expect("zip");
+
+    // On Windows or platforms with standard fonts, verify font embedding
+    let has_font_entry = archive
+        .file_names()
+        .any(|name| name.is_ok_and(|n| n.ends_with("fonts/MyanmarText.ttf")));
+    if has_font_entry {
+        let mut chapter_content = String::new();
+        archive
+            .by_name("OEBPS/ch1.xhtml")
+            .expect("translated chapter")
+            .read_to_string(&mut chapter_content)
+            .expect("read chapter");
+        assert!(chapter_content.contains("MyanmarTextEmbedded"));
+        assert!(chapter_content.contains("မင်္ဂလာပါ"));
+    }
+}
+

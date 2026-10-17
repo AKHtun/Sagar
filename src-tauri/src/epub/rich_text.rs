@@ -385,8 +385,9 @@ fn validate_schema(fragment: &str, document: bool) -> Result<(String, String), A
                     "Table text must be inside a cell.",
                 ));
             }
-            html.push_str(&escape_html_text(text));
-            plain.push_str(text);
+            let normalized = crate::epub::myanmar_orthography::normalize_myanmar_text(text);
+            html.push_str(&escape_html_text(&normalized));
+            plain.push_str(&normalized);
             return Ok(());
         }
         if !node.is_element() {
@@ -1238,3 +1239,35 @@ mod table_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod myanmar_orthography_tests {
+    use super::*;
+
+    #[test]
+    fn myanmar_out_of_order_diacritics_are_normalized_in_proposals() {
+        // Visual pre-base e-vowel (1031) + Ka (1000) inside an XHTML paragraph
+        let input = "<p class=\"calibre\">\u{1031}\u{1000}</p>";
+        let (html, text) = validate_document(input).expect("normalized myanmar proposal");
+        assert_eq!(text, "\u{1000}\u{1031}");
+        assert!(html.contains("\u{1000}\u{1031}"));
+        assert!(html.contains("class=\"calibre\""));
+
+        // Inverted lower vowel (102F) + upper vowel (102D)
+        let input_vowels = "<p>က\u{102F}\u{102D}</p>";
+        let (_, text_vowels) = validate_document(input_vowels).expect("normalized vowels");
+        assert_eq!(text_vowels, "က\u{102D}\u{102F}");
+    }
+
+    #[test]
+    fn myanmar_real_chapter_fragment_normalizes_and_preserves_structure() {
+        let input = "<p class=\"calibre26\"><a id=\"_heading_h.3znysh7\"></a><span id=\"1T144-0f0136ff8f1c41ee974661d7849705b5\" class=\"calibre27\">နိဒါန်း</span></p><p class=\"calibre28\"><span class=\"calibre12\">ပြဿနာများကို စိတ်ကူးဉာဏ်ဖြင့် ဖြေရှင်းခြင်းသည် အရေးကြီးပါသည်။</span></p>";
+        let (html, text) = validate_document(input).expect("validated real chapter");
+        assert!(html.contains("id=\"_heading_h.3znysh7\""));
+        assert!(html.contains("id=\"1T144-0f0136ff8f1c41ee974661d7849705b5\""));
+        assert!(html.contains("class=\"calibre27\""));
+        assert!(text.contains("နိဒါန်း"));
+        assert!(text.contains("ပြဿနာများကို"));
+    }
+}
+

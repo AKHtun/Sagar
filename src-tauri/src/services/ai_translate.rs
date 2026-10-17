@@ -104,6 +104,14 @@ pub fn build_translation_prompt(
                 .join(", ")
         })
         .unwrap_or_else(|_| "Preserve the supplied element structure exactly.".to_string());
+    let myanmar_rules = if target_language.trim().to_lowercase().starts_with("my") {
+        "\n          Myanmar translation & orthography quality:\n\
+          - Always use official Myanmar Unicode standard. Never use Zawgyi font encoding.\n\
+          - Adhere to official Myanmar Language Commission spelling conventions.\n\
+          - Terminology standard: translate 'Executive Summary' as 'အစီရင်ခံစာအကျဉ်းချုပ်' (never 'အမှုဆောင်အကျဉ်းချုပ်').\n"
+    } else {
+        ""
+    };
     format!(
         "Translate this book chapter from {source} into {target}.\n\
          Source language (Book Settings): {source}.\n\
@@ -157,7 +165,7 @@ pub fn build_translation_prompt(
            target language, rather than a rewritten copy of the source.\n\
          - Output only the translated XHTML body fragment: no explanations, no\n\
            commentary, no code fences, and no <html>, <head> or <body> wrapper.\n\
-         \n\
+         {myanmar_rules}\n\
          HTML to translate:\n\
          {html}",
         target = target,
@@ -1555,7 +1563,6 @@ pub fn cancel_ai_translation(job_id: &str) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicBool;
 
     fn decode_provider_fixture(
         id: CliProviderId,
@@ -2044,6 +2051,18 @@ mod tests {
     fn prompt_falls_back_without_a_source_language() {
         let prompt = build_translation_prompt(None, "my", "<p>Hi.</p>");
         assert!(prompt.contains("the original language"), "{prompt}");
+    }
+
+    #[test]
+    fn prompt_injects_myanmar_quality_directive_for_myanmar_targets() {
+        let my_prompt = build_translation_prompt(Some("en"), "my", "<p>Executive Summary</p>");
+        assert!(my_prompt.contains("Myanmar translation & orthography quality:"));
+        assert!(my_prompt.contains("အစီရင်ခံစာအကျဉ်းချုပ်"));
+        assert!(my_prompt.contains("Never use Zawgyi"));
+
+        let en_prompt = build_translation_prompt(Some("my"), "en", "<p>အစီရင်ခံစာအကျဉ်းချုပ်</p>");
+        assert!(!en_prompt.contains("Myanmar translation & orthography quality:"));
+        assert!(!en_prompt.contains("အစီရင်ခံစာအကျဉ်းချုပ်\n         \n         HTML to translate:"));
     }
 
     #[test]
