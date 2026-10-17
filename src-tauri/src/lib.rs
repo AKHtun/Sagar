@@ -121,9 +121,46 @@ fn media_type_for(resource: &str) -> String {
     .to_string()
 }
 
+#[cfg(windows)]
+fn cleanup_orphaned_webviews() {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let _ = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'msedgewebview2.exe' -and $_.CommandLine -like '*--webview-exe-name=sagar.exe*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status();
+
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        let lockfile = std::path::PathBuf::from(local_app_data)
+            .join("app.myanmars.sagar")
+            .join("EBWebView")
+            .join("lockfile");
+        if lockfile.exists() {
+            let _ = std::fs::remove_file(&lockfile);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    cleanup_orphaned_webviews();
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .register_uri_scheme_protocol("epubres", |ctx, request| {
