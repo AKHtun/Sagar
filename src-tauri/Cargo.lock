@@ -3295,6 +3295,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "quick-xml",
+ "regex",
  "reqwest",
  "roxmltree",
  "rusqlite",

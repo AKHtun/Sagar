@@ -5,6 +5,7 @@ pub mod error;
 pub mod security;
 pub mod services;
 pub mod storage;
+pub mod wecos;
 
 use tauri::Manager;
 use tauri::http::header::{CACHE_CONTROL, CONTENT_TYPE};

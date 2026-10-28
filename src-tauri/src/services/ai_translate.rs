@@ -1218,6 +1218,108 @@ fn event(
 /// Minimum gap between `stream` progress events.
 const STREAM_EMIT_INTERVAL: Duration = Duration::from_millis(750);
 
+/// Enriches the chapter translation payload via the WEcoS Tri-Engine (Engine 1 NPU RAG,
+/// Engine 2 Dawei Guard pre-LLM gate, and `TagCodec` inline XHTML placeholder dehydration).
+/// Degrades gracefully in <=150ms when WEcoS daemons are offline so standalone Sagar runs
+/// never block.
+pub fn prepare_wecos_translation_payload(
+    source_language: Option<&str>,
+    target_language: &str,
+    body_html: &str,
+    book_guidance: &str,
+    run_guidance: &str,
+) -> Result<(String, crate::epub::tag_codec::TagMap), AppError> {
+    let guard = crate::wecos::dawei_client::DaweiGuardClient::new(Duration::from_millis(150));
+    if let Ok(check) = guard.pre_check(body_html)
+        && !check.passed
+    {
+        return Err(AppError::new(
+            "dawei_guard_rejected",
+            format!(
+                "Dawei Guard blocked translation preflight (score {:.2}): {}",
+                check.score,
+                check.flags.join(", ")
+            ),
+        ));
+    }
+
+    let is_myanmar = target_language.trim().to_ascii_lowercase().starts_with("my");
+    let mut effective_run_guidance = run_guidance.to_string();
+    if is_myanmar {
+        let rag = crate::wecos::rag_client::WecosRagClient::new(Duration::from_millis(150));
+        let query_sample: String = body_html.chars().take(500).collect();
+        if let Ok(chunks) = rag.query_context(&query_sample, 3)
+            && !chunks.is_empty()
+        {
+            let rag_lines: Vec<String> = chunks
+                .into_iter()
+                .map(|c| {
+                    let src = c.source.unwrap_or_else(|| c.id.clone());
+                    format!("- [{src} (score {:.2})]: {}", c.score, c.text.trim())
+                })
+                .collect();
+            if !effective_run_guidance.is_empty() {
+                effective_run_guidance.push_str("\n\n");
+            }
+            effective_run_guidance.push_str(
+                "WEcoS Sovereign RAG Reference Context (Engine 1 NPU + LanceDB):\n",
+            );
+            effective_run_guidance.push_str(&rag_lines.join("\n"));
+        }
+    }
+
+    let (dehydrated_html, tag_map) = crate::epub::tag_codec::TagCodec::dehydrate(body_html);
+    if !tag_map.is_empty() {
+        if !effective_run_guidance.is_empty() {
+            effective_run_guidance.push_str("\n\n");
+        }
+        effective_run_guidance.push_str(
+            "Inline TagCodec placeholders: Preserve every `{{N}}...{{/N}}` paired placeholder and `{{N/}}` self-closing placeholder in exact order around its translated inner text.",
+        );
+    }
+
+    let base = build_translation_prompt(source_language, target_language, body_html);
+    let prompt_body = if tag_map.is_empty() {
+        base
+    } else {
+        let marker = "HTML to translate:\n";
+        if let Some((head, _)) = base.rsplit_once(marker) {
+            format!("{head}{marker}{dehydrated_html}")
+        } else {
+            base
+        }
+    };
+    let guidance = format!(
+        "Book-wide translation guidance (names, terminology and style):\n{}\n\nCurrent-run translation guidance:\n{}\n\nApply both sets of guidance to text translation; current-run guidance takes precedence for naming/style conflicts. The structural preservation and output-only rules still apply.\n\n",
+        serde_json::to_string(book_guidance).unwrap_or_default(),
+        serde_json::to_string(&effective_run_guidance).unwrap_or_default()
+    );
+    Ok((format!("{guidance}{prompt_body}"), tag_map))
+}
+
+/// Finalizes raw LLM translation output by stripping Markdown fences, rehydrating
+/// `TagCodec` inline placeholders back to exact XHTML tags/attributes, and running
+/// Engine 2 Dawei Guard post-LLM Burmese orthographic verification (with automatic
+/// local canonical fallback when Engine 2 is offline).
+pub fn finalize_wecos_proposal(
+    raw_output: &str,
+    target_language: &str,
+    tag_map: &crate::epub::tag_codec::TagMap,
+) -> String {
+    let stripped = strip_code_fences(raw_output);
+    let rehydrated = if tag_map.is_empty() {
+        stripped.to_string()
+    } else {
+        crate::epub::tag_codec::TagCodec::rehydrate(stripped, tag_map)
+    };
+    if target_language.trim().to_ascii_lowercase().starts_with("my") {
+        let guard = crate::wecos::dawei_client::DaweiGuardClient::new(Duration::from_millis(150));
+        guard.verify_or_normalize(&rehydrated)
+    } else {
+        rehydrated
+    }
+}
+
 /// Starts a translation run after synchronous preflight (consent, agent,
 /// model, chapter source, tool presence). Only execution is asynchronous;
 /// progress arrives through `emit`. The saved draft is never modified here.
@@ -1286,20 +1388,20 @@ where
     let provider = TranslationProvider::prepare(data_dir, &agent)?;
     drop(conn);
 
+    let (prompt, tag_map) = prepare_wecos_translation_payload(
+        source.source_language.as_deref(),
+        &source.target_language,
+        &remaining,
+        &source.instructions,
+        &current_instructions,
+    )?;
+
     let job_id = uuid::Uuid::new_v4().to_string();
     let job = std::sync::Arc::new(ActiveJob {
         cancel: AtomicBool::new(false),
     });
     lock_jobs()?.insert(job_id.clone(), std::sync::Arc::clone(&job));
     let thread_job_id = job_id.clone();
-
-    let prompt = build_book_translation_prompt(
-        source.source_language.as_deref(),
-        &source.target_language,
-        &remaining,
-        &source.instructions,
-        &current_instructions,
-    );
 
     let chapter_id = input.chapter_id.trim().to_string();
     std::thread::spawn(move || {
@@ -1370,8 +1472,9 @@ where
                 )
                 .and_then(|result| {
                     let decoded = String::from_utf8_lossy(&result);
-                    let stripped = strip_code_fences(&decoded);
-                    validate_proposal(format!("{prefix}{stripped}").as_bytes())
+                    let finalized =
+                        finalize_wecos_proposal(&decoded, &source.target_language, &tag_map);
+                    validate_proposal(format!("{prefix}{finalized}").as_bytes())
                 })
         }
         .and_then(|proposal| {
@@ -2152,6 +2255,45 @@ mod tests {
             validate_proposal(&big).expect_err("oversized").code,
             "proposal_too_large"
         );
+    }
+
+    #[test]
+    fn wecos_payload_and_finalizer_preserve_skeleton_and_normalize_burmese() {
+        let original = r##"<p id="p1">Review <em class="term">turbine oil</em> and <a href="#fn1">viscosity</a><br/>Carefully.</p>"##;
+        let (prompt, tag_map) = prepare_wecos_translation_payload(
+            Some("en"),
+            "my",
+            original,
+            "Keep technical register.",
+            "Translate into formal Burmese.",
+        )
+        .expect("prepare payload offline-safe");
+        assert!(!tag_map.is_empty());
+        assert!(prompt.contains("Inline TagCodec placeholders:"));
+        assert!(!prompt.contains(r#"<em class="term">"#));
+
+        // Simulate LLM output with code fences, TagCodec placeholders, and malformed Burmese Unicode
+        // (\u{200B} zero-width space, \u{1037}\u{1036} inverted tone/anusvara, \u{1031}\u{1000} visual e-vowel).
+        let (_, sample_map) = crate::epub::tag_codec::TagCodec::dehydrate(original);
+        let dehydrated_source = crate::epub::tag_codec::TagCodec::dehydrate(original).0;
+        let simulated_llm = format!(
+            "```xml\n{}\n```",
+            dehydrated_source
+                .replace("Review ", "စစ်ဆေး\u{200B}ပါ ")
+                .replace("turbine oil", "တာဘိုင်ဆီ\u{1037}\u{1036}")
+                .replace("viscosity", "\u{1031}\u{1000}စေးပျစ်မှု")
+                .replace("Carefully.", "သေချာစွာ။")
+        );
+
+        let finalized = finalize_wecos_proposal(&simulated_llm, "my", &sample_map);
+        let validated = validate_proposal(finalized.as_bytes()).expect("valid XHTML after rehydrate");
+        check_skeleton(original, &validated).expect("exact skeleton match after TagCodec round-trip");
+        assert!(!validated.contains('\u{200B}'));
+        assert!(!validated.contains("\u{1037}\u{1036}"));
+        assert!(validated.contains("\u{1036}\u{1037}"));
+        assert!(validated.contains("\u{1000}\u{1031}"));
+        assert!(validated.contains(r#"<em class="term">"#));
+        assert!(validated.contains(r##"<a href="#fn1">"##));
     }
 
     #[cfg(unix)]

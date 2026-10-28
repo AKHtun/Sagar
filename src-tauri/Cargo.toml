@@ -1,6 +1,7 @@
 [package]
 name = "sagar"
 version = "0.3.0"
+default-run = "sagar"
 description = "EPUB Translation Studio — offline manual EPUB translation"
 authors = ["you"]
 edition = "2024"
@@ -32,6 +33,7 @@ chrono = "0.4.45"
 base64 = "0.23.1"
 quick-xml = "0.42.0"
 unicode-segmentation = "1.12"
+regex = "1.10"
 # Provider discovery and explicitly consented streaming translation requests.
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls", "charset"] }
 

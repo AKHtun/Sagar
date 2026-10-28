@@ -15,6 +15,7 @@ pub mod patch;
 pub mod pdf_convert;
 pub mod preview;
 pub mod rich_text;
+pub mod tag_codec;
 pub(crate) mod xml;
 
 use std::path::Path;
