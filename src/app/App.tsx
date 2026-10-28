@@ -101,7 +101,7 @@ export default function App() {
             width={32}
             height={32}
           />{" "}
-          Sagar <span className="app-brand__descriptor">{t("Translation studio")}</span>
+          WEcoSagar <span className="app-brand__descriptor">{t("Translation studio")}</span>
         </div>
       </div>
       <LibraryScreen

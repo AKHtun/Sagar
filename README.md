@@ -1,4 +1,18 @@
-# Sagar — EPUB Translation Studio
+﻿# WEcoSagar — Sovereign EPUB & PDF Translation Studio
+
+> ### 🌸 Attribution & Acknowledgements
+> **WEcoSagar** is an extended sovereign edition built upon **[Sagar](https://github.com/saturngod/Sagar)**, the open-source EPUB Translation Studio originally created by **[saturngod](https://github.com/saturngod)** (Saturngod / Htain Lin Shwe).
+> 
+> We extend deep gratitude and honor to **saturngod** for envisioning and engineering the original offline-first, dual-pane EPUB translation studio for Myanmar translators. The original vision of privacy-first, zero-telemetry local translation remains the foundational bedrock of this tool.
+>
+> **Enhancements in this WEcoS edition:**
+> - **Tri-Engine Sovereign Integration**: Intel NPU dense embedding retrieval (Engine 1), Intel Arc Dawei Guard security & orthography gate (Engine 2), and local/gated LLM cascade.
+> - **TagCodec**: Reversible inline XHTML tag dehydration/rehydration protecting complex formatting attributes against LLM drift.
+> - **Direct PDF Ingestion**: Native PyMuPDF converter generating valid EPUB3 archives from technical PDF manuals and books.
+> - **Myanmar Canonical Orthography Normalizer**: Eliminates dotted-circle rendering artifacts and diacritic inversion.
+> - **Font Auto-Embedding**: Canonical Pyidaungsu and epigraphical font packaging for seamless multi-platform e-reader display.
+> - **Standalone CLI Utilities**: Headless import/export and batch processing binaries.
+
 An offline-first desktop app for manually translating DRM-free EPUB books,
 side by side, without losing the original formatting. Read the original
 chapter on the left, write the translation on the right, review chapters, and export a separate translated EPUB.
@@ -26,7 +40,7 @@ Requires the **Tauri** **2** **prerequisites** for your OS (see
 
 The version lives in 4 files that must always agree: `package.json`,
 `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and
-`src-tauri/Cargo.lock` (the `sagar` entry). Never edit them by hand —
+`src-tauri/Cargo.lock` (the `sagar` entry). Never edit them by hand â€”
 one command bumps all four, commits, and tags:
 
 ```bash
@@ -48,17 +62,17 @@ the tagged commit itself and blocks mismatched tags before they reach CI.
 
 ## How it works
 
-1. **Import** — open a DRM-free, reflowable EPUB 3 file. The app validates the
+1. **Import** â€” open a DRM-free, reflowable EPUB 3 file. The app validates the
 archive safely, reads metadata/manifest/spine/navigation, copies an
 immutable snapshot into app-owned storage, and detects translatable blocks
 (headings, paragraphs, list items, captions).
-1. **Translate** — chapters are listed in reading order. Each chapter shows
+1. **Translate** â€” chapters are listed in reading order. Each chapter shows
 the original (read-only) next to an editable translation. Chapter documents autosave
 with revision protection; you can mark chapters **reviewed** or choose
 **keep** **original**. Text structures the editor cannot translate safely
-(tables, preformatted text, MathML…) are preserved unchanged and listed as
+(tables, preformatted text, MathMLâ€¦) are preserved unchanged and listed as
 import notes.
-1. **Export** — a review dialog shows exactly what is translated. A
+1. **Export** â€” a review dialog shows exactly what is translated. A
 completed export requires every chapter reviewed or intentionally
 kept original; a draft export keeps untranslated chapters in the original
 language after explicit acknowledgement. The exported book is a new file:
